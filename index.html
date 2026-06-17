@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Womo Admin</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">WO<span>MO</span></div>
+    <nav>
+      <button class="nav-btn active" data-view="home">Home</button>
+      <button class="nav-btn" data-view="movies">Películas</button>
+      <button class="nav-btn" data-view="series">Series</button>
+    </nav>
+  </aside>
+
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Wolffel Motion</p>
+        <h1 id="pageTitle">Home</h1>
+      </div>
+      <button id="primaryAction" class="primary-btn">Agregar película</button>
+    </header>
+
+    <section id="status" class="status hidden"></section>
+
+    <section id="homeView" class="view active">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Inicio app</p>
+            <h2>Contenido visible en Womo</h2>
+          </div>
+          <button id="saveHomeBtn" class="primary-btn small">Guardar Home</button>
+        </div>
+        <p class="helper">Selecciona qué aparece en Lo nuevo y en las secciones principales.</p>
+        <div class="admin-list" id="homeContentList"></div>
+      </div>
+    </section>
+
+    <section id="moviesView" class="view">
+      <div class="grid-list" id="moviesList"></div>
+    </section>
+
+    <section id="seriesView" class="view">
+      <div class="grid-list" id="seriesList"></div>
+    </section>
+  </main>
+
+  <dialog id="editorDialog" class="editor">
+    <form method="dialog" id="editorForm">
+      <div class="editor-head">
+        <div>
+          <p class="eyebrow" id="editorType">Película</p>
+          <h2 id="editorTitle">Agregar película</h2>
+        </div>
+        <button class="icon-btn" value="cancel" type="button" id="closeEditor">×</button>
+      </div>
+
+      <div class="form-grid">
+        <label>
+          ID del documento
+          <input id="docId" required placeholder="american-psycho" />
+        </label>
+        <label>
+          Título
+          <input id="title" required placeholder="American Psycho" />
+        </label>
+        <label>
+          Año
+          <input id="year" type="number" placeholder="2000" />
+        </label>
+        <label id="durationField">
+          Duración en minutos
+          <input id="duration" type="number" placeholder="117" />
+        </label>
+        <label class="full">
+          Géneros separados por coma
+          <input id="genres" placeholder="Thriller, Slasher" />
+        </label>
+        <label class="full">
+          Poster URL
+          <input id="posterUrl" placeholder="https://..." />
+        </label>
+        <label class="full movie-only">
+          HLS URL
+          <input id="hlsUrl" placeholder="https://.../playlist.m3u8" />
+        </label>
+        <label class="full">
+          Sinopsis
+          <textarea id="synopsis" rows="5" placeholder="Sinopsis..."></textarea>
+        </label>
+      </div>
+
+      <div class="checks">
+        <label><input id="isFavorite" type="checkbox" /> Favorita</label>
+        <label><input id="showInNew" type="checkbox" /> Mostrar en Lo nuevo</label>
+        <label><input id="showInHome" type="checkbox" checked /> Mostrar en sección principal</label>
+      </div>
+
+      <div id="episodesPanel" class="episodes-panel hidden">
+        <div class="panel-head compact">
+          <h3>Episodios</h3>
+          <button type="button" id="addEpisodeBtn" class="secondary-btn small">Agregar episodio</button>
+        </div>
+        <div id="episodesList" class="episode-list"></div>
+      </div>
+
+      <div class="editor-actions">
+        <button type="button" id="deleteBtn" class="danger-btn hidden">Eliminar</button>
+        <div class="spacer"></div>
+        <button type="button" id="cancelBtn" class="secondary-btn">Cancelar</button>
+        <button type="submit" class="primary-btn">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="episodeDialog" class="editor small-editor">
+    <form method="dialog" id="episodeForm">
+      <div class="editor-head">
+        <div>
+          <p class="eyebrow">Episodio</p>
+          <h2 id="episodeEditorTitle">Agregar episodio</h2>
+        </div>
+        <button class="icon-btn" value="cancel" type="button" id="closeEpisodeEditor">×</button>
+      </div>
+      <div class="form-grid">
+        <label>
+          ID
+          <input id="episodeDocId" required placeholder="s01e01" />
+        </label>
+        <label>
+          Título
+          <input id="episodeTitle" required placeholder="Tony" />
+        </label>
+        <label>
+          Temporada
+          <input id="seasonNumber" type="number" required placeholder="1" />
+        </label>
+        <label>
+          Episodio
+          <input id="episodeNumber" type="number" required placeholder="1" />
+        </label>
+        <label>
+          Duración en minutos
+          <input id="episodeDuration" type="number" placeholder="45" />
+        </label>
+        <label class="full">
+          HLS URL
+          <input id="episodeHlsUrl" placeholder="https://.../playlist.m3u8" />
+        </label>
+        <label class="full">
+          Sinopsis
+          <textarea id="episodeSynopsis" rows="4"></textarea>
+        </label>
+      </div>
+      <div class="editor-actions">
+        <button type="button" id="deleteEpisodeBtn" class="danger-btn hidden">Eliminar</button>
+        <div class="spacer"></div>
+        <button type="button" id="cancelEpisodeBtn" class="secondary-btn">Cancelar</button>
+        <button type="submit" class="primary-btn">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
