@@ -170,9 +170,12 @@
       </div>
 
       <div id="episodesPanel" class="episodes-panel hidden">
-        <div class="panel-head compact">
+        <div class="panel-head compact episodes-head">
           <h3>Episodios</h3>
-          <button type="button" id="addEpisodeBtn" class="secondary-btn small">Agregar episodio</button>
+          <div class="episode-toolbar">
+            <select id="seasonFilter" aria-label="Temporada"></select>
+            <button type="button" id="addEpisodeBtn" class="secondary-btn small">Agregar episodio</button>
+          </div>
         </div>
         <div id="episodesList" class="episode-list"></div>
       </div>
@@ -193,7 +196,11 @@
           <p class="eyebrow">Episodio</p>
           <h2 id="episodeEditorTitle">Agregar episodio</h2>
         </div>
-        <button class="icon-btn" value="cancel" type="button" id="closeEpisodeEditor">×</button>
+        <div class="dialog-tools">
+          <button type="button" id="importEpisodeBtn" class="secondary-btn small">Importar</button>
+          <input id="importEpisodeInput" type="file" accept="application/json,.json" class="hidden" />
+          <button class="icon-btn" value="cancel" type="button" id="closeEpisodeEditor">×</button>
+        </div>
       </div>
       <div class="form-grid">
         <label>

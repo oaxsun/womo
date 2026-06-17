@@ -35,3 +35,9 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
 .episode-item{cursor:pointer;transition:border-color .18s ease, background .18s ease}
 .episode-item:hover{border-color:rgba(235,255,0,.45);background:#161616}
 
+
+/* Episode season selector */
+.episodes-head{align-items:center}
+.episode-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.episode-toolbar select{min-width:170px;padding:10px 14px;font-size:13px}
+.dialog-tools{display:flex;gap:10px;align-items:center}

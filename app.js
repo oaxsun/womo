@@ -34,6 +34,8 @@ const state = {
   editingId: null,
   editingSeriesId: null,
   editingEpisodeId: null,
+  currentEpisodes: [],
+  selectedSeason: null,
   drag: null
 };
 
@@ -490,31 +492,104 @@ async function saveHome() {
   await loadAll();
 }
 
-async function loadEpisodes(seriesId) {
+async function loadEpisodes(seriesId, preferredSeason = null) {
   state.editingSeriesId = seriesId;
   const snap = await getDocs(collection(db, "series", seriesId, "episodes"));
-  const episodes = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (a.seasonNumber - b.seasonNumber) || (a.episodeNumber - b.episodeNumber));
+  state.currentEpisodes = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (Number(a.seasonNumber || 0) - Number(b.seasonNumber || 0)) || (Number(a.episodeNumber || 0) - Number(b.episodeNumber || 0)));
+
+  const seasons = [...new Set(state.currentEpisodes.map(ep => Number(ep.seasonNumber || 1)))].sort((a, b) => a - b);
+
+  if (preferredSeason) {
+    state.selectedSeason = Number(preferredSeason);
+  } else if (!state.selectedSeason || !seasons.includes(Number(state.selectedSeason))) {
+    state.selectedSeason = seasons[0] || 1;
+  }
+
+  renderSeasonFilter(seasons);
+  renderEpisodesList();
+}
+
+function renderSeasonFilter(seasons) {
+  const filter = $("seasonFilter");
+  if (!filter) return;
+
+  const allSeasons = seasons.length ? seasons : [Number(state.selectedSeason || 1)];
+  filter.innerHTML = allSeasons
+    .map(season => `<option value="${season}">Temporada ${season}</option>`)
+    .join("");
+  filter.value = String(state.selectedSeason || allSeasons[0] || 1);
+}
+
+function renderEpisodesList() {
+  const season = Number(state.selectedSeason || 1);
+  const episodes = state.currentEpisodes.filter(ep => Number(ep.seasonNumber || 1) === season);
+
   $("episodesList").innerHTML = episodes.map(ep => `
     <div class="episode-item" data-id="${ep.id}">
-      <div><strong>${ep.title}</strong><br><span>T${ep.seasonNumber} · E${ep.episodeNumber}</span></div>
+      <div><strong>${ep.title || ep.id}</strong><br><span>T${ep.seasonNumber} · E${ep.episodeNumber}</span></div>
       <span>${ep.duration || 0} min</span>
     </div>
-  `).join("") || `<p class="helper">Aún no hay episodios. Usa “Agregar episodio” para capítulos nuevos o nuevas temporadas.</p>`;
+  `).join("") || `<p class="helper">No hay episodios en la temporada ${season}. Usa “Agregar episodio” para crear el primero.</p>`;
+}
+
+function nextEpisodeNumberForSeason(season) {
+  const nums = state.currentEpisodes
+    .filter(ep => Number(ep.seasonNumber || 1) === Number(season))
+    .map(ep => Number(ep.episodeNumber || 0));
+  return nums.length ? Math.max(...nums) + 1 : 1;
+}
+
+function episodeDocId(season, episode) {
+  return `s${String(season || 1).padStart(2, "0")}e${String(episode || 1).padStart(2, "0")}`;
+}
+
+function fillEpisodeForm(data = {}) {
+  const season = Number(data.seasonNumber || data.season || state.selectedSeason || 1);
+  const episode = Number(data.episodeNumber || data.episode || nextEpisodeNumberForSeason(season));
+
+  $("episodeDocId").value = data.id || data.docId || data.slug || episodeDocId(season, episode);
+  $("episodeTitle").value = data.title || data.name || `Episodio ${episode}`;
+  $("seasonNumber").value = season;
+  $("episodeNumber").value = episode;
+  $("episodeDuration").value = data.duration || "";
+  $("episodeHlsUrl").value = data.hlsUrl || data.videoUrl || data.url || "";
+  $("episodeSynopsis").value = data.synopsis || data.overview || data.description || "";
 }
 
 function openEpisodeEditor(ep = null) {
   state.editingEpisodeId = ep?.id ?? null;
-  $("episodeEditorTitle").textContent = ep ? `Editar ${ep.title}` : "Agregar episodio";
+  $("episodeEditorTitle").textContent = ep ? `Editar ${ep.title || ep.id}` : "Agregar episodio";
   $("episodeDocId").disabled = Boolean(ep);
-  $("episodeDocId").value = ep?.id ?? "";
-  $("episodeTitle").value = ep?.title ?? "";
-  $("seasonNumber").value = ep?.seasonNumber ?? "";
-  $("episodeNumber").value = ep?.episodeNumber ?? "";
-  $("episodeDuration").value = ep?.duration ?? "";
-  $("episodeHlsUrl").value = ep?.hlsUrl ?? "";
-  $("episodeSynopsis").value = ep?.synopsis ?? "";
+
+  if (ep) {
+    fillEpisodeForm(ep);
+  } else {
+    const season = Number(state.selectedSeason || 1);
+    const nextEpisode = nextEpisodeNumberForSeason(season);
+    fillEpisodeForm({ seasonNumber: season, episodeNumber: nextEpisode, title: "" });
+    $("episodeTitle").value = "";
+  }
+
   $("deleteEpisodeBtn").classList.toggle("hidden", !ep);
   $("episodeDialog").showModal();
+}
+
+async function importEpisodeFromJson(file) {
+  try {
+    const text = await file.text();
+    const json = JSON.parse(text);
+    const raw = Array.isArray(json) ? json[0] : Array.isArray(json.episodes) ? json.episodes[0] : json;
+    if (!raw) return alert("El JSON no contiene episodio.");
+    fillEpisodeForm(raw);
+    showStatus("Campos del episodio importados. Revisa y guarda.");
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo importar el episodio. Revisa que sea JSON válido.");
+  } finally {
+    $("importEpisodeInput").value = "";
+  }
 }
 
 async function saveEpisode(e) {
@@ -535,15 +610,16 @@ async function saveEpisode(e) {
   await setDoc(doc(db, "series", seriesId, "episodes", id), data, { merge: true });
   $("episodeDialog").close();
   showStatus("Episodio guardado");
-  await loadEpisodes(seriesId);
+  await loadEpisodes(seriesId, data.seasonNumber);
 }
 
 async function deleteEpisode() {
   if (!state.editingEpisodeId || !state.editingSeriesId) return;
   if (!confirm("¿Eliminar episodio?")) return;
+  const season = Number($("seasonNumber").value || state.selectedSeason || 1);
   await deleteDoc(doc(db, "series", state.editingSeriesId, "episodes", state.editingEpisodeId));
   $("episodeDialog").close();
-  await loadEpisodes(state.editingSeriesId);
+  await loadEpisodes(state.editingSeriesId, season);
 }
 
 function addHomeItem(sectionKey, id, type) {
@@ -615,6 +691,12 @@ $("cancelBtn").addEventListener("click", () => $("editorDialog").close());
 $("deleteBtn").addEventListener("click", deleteCurrent);
 $("saveHomeBtn").addEventListener("click", saveHome);
 $("addEpisodeBtn").addEventListener("click", () => openEpisodeEditor());
+$("seasonFilter").addEventListener("change", () => {
+  state.selectedSeason = Number($("seasonFilter").value || 1);
+  renderEpisodesList();
+});
+$("importEpisodeBtn").addEventListener("click", () => $("importEpisodeInput").click());
+$("importEpisodeInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importEpisodeFromJson(file); });
 $("episodeForm").addEventListener("submit", saveEpisode);
 $("closeEpisodeEditor").addEventListener("click", () => $("episodeDialog").close());
 $("cancelEpisodeBtn").addEventListener("click", () => $("episodeDialog").close());
@@ -687,9 +769,7 @@ $("seasonNumber").addEventListener("input", updateEpisodeIdHint);
 $("episodeNumber").addEventListener("input", updateEpisodeIdHint);
 function updateEpisodeIdHint() {
   if (state.editingEpisodeId) return;
-  const s = String($("seasonNumber").value || "1").padStart(2,"0");
-  const e = String($("episodeNumber").value || "1").padStart(2,"0");
-  $("episodeDocId").value = `s${s}e${e}`;
+  $("episodeDocId").value = episodeDocId(Number($("seasonNumber").value || 1), Number($("episodeNumber").value || 1));
 }
 
 setView("home");
