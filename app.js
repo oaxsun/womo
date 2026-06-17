@@ -392,7 +392,7 @@ function renderSelectedItems(sectionKey) {
 
 function renderCards(containerId, items, type) {
   $(containerId).innerHTML = items.map(item => `
-    <article class="card" data-id="${item.id}" data-type="${type}" role="button" tabindex="0">
+    <article class="card" data-id="${item.id}" data-type="${type}" data-edit-content="true" role="button" tabindex="0" title="Abrir editor">
       <img class="poster" src="${item.posterUrl || ""}" alt="" />
       <h3>${item.title || item.id}</h3>
       <p>${item.year || "Sin año"}</p>
@@ -400,6 +400,7 @@ function renderCards(containerId, items, type) {
         ${item.isFavorite ? '<span class="badge on">Favorita</span>' : ''}
         ${Number(item.popularity ?? 0) ? `<span class="badge">Popularidad ${Number(item.popularity ?? 0)}</span>` : ''}
       </div>
+      <button class="edit-card-btn" type="button" data-edit-content="true" data-id="${item.id}" data-type="${type}">Editar</button>
     </article>
   `).join("") || `<p class="helper">No hay ${type === "movie" ? "películas" : "series"} todavía.</p>`;
 }
@@ -574,12 +575,19 @@ function reorderHomeItem(sectionKey, fromIndex, toIndex) {
 }
 
 function handleCardActivation(target) {
-  const card = target.closest(".card");
+  const trigger = target.closest("[data-edit-content]");
+  const card = trigger?.closest(".card") || target.closest(".card");
   if (!card) return false;
-  const list = card.dataset.type === "movie" ? state.movies : state.series;
-  const item = list.find(i => i.id === card.dataset.id);
+
+  const contentType = trigger?.dataset.type || card.dataset.type;
+  const contentId = trigger?.dataset.id || card.dataset.id;
+  if (!contentType || !contentId) return false;
+
+  const list = contentType === "movie" ? state.movies : state.series;
+  const item = list.find(i => i.id === contentId);
   if (!item) return false;
-  openEditor(card.dataset.type, item);
+
+  openEditor(contentType, item);
   return true;
 }
 
@@ -589,6 +597,11 @@ $("importMovieBtn").addEventListener("click", () => $("importMovieInput").click(
 $("importMovieInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importMoviesFromJson(file); });
 $("importSeriesBtn").addEventListener("click", () => $("importSeriesInput").click());
 $("importSeriesInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importSeriesFromJson(file); });
+
+// Extra direct listeners for the Películas and Series grids.
+// This makes the entire card open the same editor used by the manual add flow.
+$("moviesList").addEventListener("click", (e) => handleCardActivation(e.target));
+$("seriesList").addEventListener("click", (e) => handleCardActivation(e.target));
 $("editorForm").addEventListener("submit", saveEditor);
 $("closeEditor").addEventListener("click", () => $("editorDialog").close());
 $("cancelBtn").addEventListener("click", () => $("editorDialog").close());

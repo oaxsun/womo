@@ -33,3 +33,5 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
 .card:hover{transform:translateY(-2px);border-color:rgba(235,255,0,.45)}
 .episode-item{cursor:pointer;transition:border-color .18s ease, background .18s ease}
 .episode-item:hover{border-color:rgba(235,255,0,.45);background:#161616}
+
+.edit-card-btn{width:100%;margin-top:12px;border:1px solid var(--border);background:#1f1f1f;color:var(--accent);border-radius:999px;padding:9px 12px;font-weight:700;cursor:pointer}.edit-card-btn:hover{background:rgba(235,255,0,.08);border-color:rgba(235,255,0,.45)}
