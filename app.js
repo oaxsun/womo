@@ -62,6 +62,12 @@ function splitGenres(value) {
   return String(value || "").split(",").map(g => g.trim()).filter(Boolean);
 }
 
+function formatGenresForInput(value) {
+  if (Array.isArray(value)) return value.map(g => String(g).trim()).filter(Boolean).join(", ");
+  if (typeof value === "string") return value;
+  return "";
+}
+
 function getAllContent() {
   return [...state.movies, ...state.series];
 }
@@ -229,8 +235,8 @@ async function importMoviesFromJson(file) {
     if (!items.length) return showStatus("El JSON no contiene películas");
 
     const normalized = items.map(normalizeMovieFromJson);
-    const invalid = normalized.find(item => !item.data.title || !item.data.posterUrl || !item.data.hlsUrl);
-    if (invalid) return alert("El JSON debe incluir al menos title, posterUrl y hlsUrl en cada película.");
+    const invalid = normalized.find(item => !item.data.title);
+    if (invalid) return alert("El JSON debe incluir al menos title en cada película. Poster URL y HLS URL se pueden agregar después desde el editor.");
 
     await Promise.all(normalized.map(item => setDoc(doc(db, "movies", item.id), item.data, { merge: true })));
     showStatus(`${normalized.length} película${normalized.length === 1 ? "" : "s"} importada${normalized.length === 1 ? "" : "s"}`);
@@ -252,8 +258,8 @@ async function importSeriesFromJson(file) {
     if (!items.length) return showStatus("El JSON no contiene series");
 
     const normalized = items.map(normalizeSeriesFromJson);
-    const invalid = normalized.find(item => !item.data.title || !item.data.posterUrl);
-    if (invalid) return alert("El JSON debe incluir al menos title y posterUrl en cada serie.");
+    const invalid = normalized.find(item => !item.data.title);
+    if (invalid) return alert("El JSON debe incluir al menos title en cada serie. Poster URL se puede agregar después desde el editor.");
 
     await Promise.all(normalized.map(async item => {
       await setDoc(doc(db, "series", item.id), item.data, { merge: true });
@@ -418,7 +424,7 @@ function openEditor(type, item = null) {
   $("title").value = item?.title ?? "";
   $("year").value = item?.year ?? "";
   $("duration").value = item?.duration ?? "";
-  $("genres").value = (item?.genres ?? []).join(", ");
+  $("genres").value = formatGenresForInput(item?.genres);
   $("posterUrl").value = item?.posterUrl ?? "";
   $("hlsUrl").value = item?.hlsUrl ?? "";
   $("synopsis").value = item?.synopsis ?? "";
@@ -585,9 +591,17 @@ function handleCardActivation(target) {
 
   const list = contentType === "movie" ? state.movies : state.series;
   const item = list.find(i => i.id === contentId);
-  if (!item) return false;
+  if (!item) {
+    showStatus("No encontré ese contenido en memoria. Refresca la página.");
+    return true;
+  }
 
-  openEditor(contentType, item);
+  try {
+    openEditor(contentType, item);
+  } catch (error) {
+    console.error("Error abriendo editor:", error);
+    showStatus("Error abriendo editor. Revisa la consola.");
+  }
   return true;
 }
 
