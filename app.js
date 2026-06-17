@@ -4,8 +4,6 @@ import {
   serverTimestamp, updateDoc
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-// 1) Pega aquí la configuración web de Firebase.
-// Firebase Console > Project settings > General > Your apps > Web app.
 const firebaseConfig = {
   apiKey: "AIzaSyBGUUoYmYNcQk_T7QvDUKwZmNh-nHOwENY",
   authDomain: "womo-5d922.firebaseapp.com",
@@ -19,10 +17,19 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+const defaultHomeConfig = {
+  sections: {
+    new: { mode: "recent", limit: 10, selectedItems: [] },
+    movies: { mode: "recent", limit: 10, selectedItems: [] },
+    series: { mode: "recent", limit: 10, selectedItems: [] }
+  }
+};
+
 const state = {
   view: "home",
   movies: [],
   series: [],
+  homeConfig: structuredClone(defaultHomeConfig),
   editingType: "movie",
   editingId: null,
   editingSeriesId: null,
@@ -49,13 +56,156 @@ function splitGenres(value) {
   return value.split(",").map(g => g.trim()).filter(Boolean);
 }
 
+function getAllContent() {
+  return [...state.movies, ...state.series];
+}
+
+function getContentForSection(sectionKey) {
+  if (sectionKey === "movies") return state.movies;
+  if (sectionKey === "series") return state.series;
+  return getAllContent();
+}
+
+function normalizeSelectedItem(item) {
+  return {
+    id: item.id,
+    type: item.type === "series" ? "series" : "movie"
+  };
+}
+
+function findContentItem(ref) {
+  const list = ref.type === "series" ? state.series : state.movies;
+  return list.find(item => item.id === ref.id);
+}
+
+function getSectionConfig(sectionKey) {
+  if (!state.homeConfig.sections) state.homeConfig.sections = {};
+  if (!state.homeConfig.sections[sectionKey]) {
+    state.homeConfig.sections[sectionKey] = structuredClone(defaultHomeConfig.sections[sectionKey]);
+  }
+  const config = state.homeConfig.sections[sectionKey];
+  config.limit = 10;
+  config.selectedItems = Array.isArray(config.selectedItems) ? config.selectedItems : [];
+  config.mode = config.mode || "recent";
+  return config;
+}
+
+function sortByRecent(items) {
+  return [...items].sort((a, b) => {
+    const aTime = a.createdAt?.seconds ?? 0;
+    const bTime = b.createdAt?.seconds ?? 0;
+    return bTime - aTime;
+  });
+}
+
+function sortByPopularity(items) {
+  return [...items].sort((a, b) => {
+    const aPop = Number(a.popularity ?? a.views ?? 0);
+    const bPop = Number(b.popularity ?? b.views ?? 0);
+    if (bPop !== aPop) return bPop - aPop;
+    return (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0);
+  });
+}
+
+function getPreviewItems(sectionKey) {
+  const config = getSectionConfig(sectionKey);
+  const source = getContentForSection(sectionKey);
+  if (config.mode === "manual") {
+    return config.selectedItems.map(findContentItem).filter(Boolean).slice(0, 10);
+  }
+  if (config.mode === "popular") return sortByPopularity(source).slice(0, 10);
+  return sortByRecent(source).slice(0, 10);
+}
+
+function normalizeMovieFromJson(rawMovie, index = 0) {
+  const title = String(rawMovie.title || rawMovie.name || "").trim();
+  const idSource = rawMovie.id || rawMovie.docId || rawMovie.slug || title || `movie-${Date.now()}-${index}`;
+  const id = slugify(String(idSource));
+
+  let genres = [];
+  if (Array.isArray(rawMovie.genres)) {
+    genres = rawMovie.genres.map(g => String(g).trim()).filter(Boolean);
+  } else if (typeof rawMovie.genres === "string") {
+    genres = splitGenres(rawMovie.genres);
+  } else if (typeof rawMovie.genre === "string") {
+    genres = splitGenres(rawMovie.genre);
+  }
+
+  return {
+    id,
+    data: {
+      title,
+      year: Number(rawMovie.year) || null,
+      genres,
+      duration: Number(rawMovie.duration) || 0,
+      synopsis: String(rawMovie.synopsis || rawMovie.overview || rawMovie.description || "").trim(),
+      posterUrl: String(rawMovie.posterUrl || rawMovie.posterURL || rawMovie.poster || "").trim(),
+      hlsUrl: String(rawMovie.hlsUrl || rawMovie.movieURL || rawMovie.videoUrl || rawMovie.url || "").trim(),
+      type: "movie",
+      isFavorite: Boolean(rawMovie.isFavorite),
+      popularity: Number(rawMovie.popularity) || 0,
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    }
+  };
+}
+
+async function importMoviesFromJson(file) {
+  try {
+    const text = await file.text();
+    const json = JSON.parse(text);
+    const items = Array.isArray(json) ? json : Array.isArray(json.movies) ? json.movies : [json];
+
+    if (!items.length) {
+      showStatus("El JSON no contiene películas");
+      return;
+    }
+
+    const normalized = items.map(normalizeMovieFromJson);
+    const invalid = normalized.find(item => !item.data.title || !item.data.posterUrl || !item.data.hlsUrl);
+    if (invalid) {
+      alert("El JSON debe incluir al menos title, posterUrl y hlsUrl en cada película.");
+      return;
+    }
+
+    await Promise.all(normalized.map(item =>
+      setDoc(doc(db, "movies", item.id), item.data, { merge: true })
+    ));
+
+    showStatus(`${normalized.length} película${normalized.length === 1 ? "" : "s"} importada${normalized.length === 1 ? "" : "s"}`);
+    await loadAll();
+    setView("movies");
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo importar el JSON. Revisa que el archivo sea válido.");
+  } finally {
+    $("importMovieInput").value = "";
+  }
+}
+
 async function loadAll() {
-  const [moviesSnap, seriesSnap] = await Promise.all([
+  const [moviesSnap, seriesSnap, homeSnap] = await Promise.all([
     getDocs(collection(db, "movies")),
-    getDocs(collection(db, "series"))
+    getDocs(collection(db, "series")),
+    getDoc(doc(db, "homeConfig", "main"))
   ]);
+
   state.movies = moviesSnap.docs.map(d => ({ id: d.id, ...d.data(), type: "movie" }));
   state.series = seriesSnap.docs.map(d => ({ id: d.id, ...d.data(), type: "series" }));
+
+  if (homeSnap.exists()) {
+    state.homeConfig = {
+      ...structuredClone(defaultHomeConfig),
+      ...homeSnap.data(),
+      sections: {
+        ...structuredClone(defaultHomeConfig.sections),
+        ...(homeSnap.data().sections || {})
+      }
+    };
+  } else {
+    state.homeConfig = structuredClone(defaultHomeConfig);
+  }
+
   render();
 }
 
@@ -66,6 +216,7 @@ function setView(view) {
   pageTitle.textContent = view === "home" ? "Home" : view === "movies" ? "Películas" : "Series";
   primaryAction.textContent = view === "series" ? "Agregar serie" : "Agregar película";
   primaryAction.style.visibility = view === "home" ? "hidden" : "visible";
+  $("importMovieBtn").classList.toggle("hidden", view !== "movies");
   render();
 }
 
@@ -76,21 +227,71 @@ function render() {
 }
 
 function renderHome() {
-  const all = [...state.movies, ...state.series].sort((a,b) => (a.homeOrder ?? 999) - (b.homeOrder ?? 999));
-  $("homeContentList").innerHTML = all.map(item => `
-    <div class="admin-row" data-id="${item.id}" data-type="${item.type}">
-      <img src="${item.posterUrl || ""}" alt="" />
-      <div>
-        <strong>${item.title || item.id}</strong>
-        <span>${item.type === "movie" ? "Película" : "Serie"} · ${item.year || "Sin año"}</span>
+  ["new", "movies", "series"].forEach(sectionKey => {
+    const config = getSectionConfig(sectionKey);
+    const modeSelect = document.querySelector(`[data-home-mode="${sectionKey}"]`);
+    const picker = document.querySelector(`[data-picker="${sectionKey}"]`);
+    if (modeSelect) modeSelect.value = config.mode;
+    if (picker) picker.classList.toggle("active", config.mode === "manual");
+    renderSearchResults(sectionKey);
+    renderSelectedItems(sectionKey);
+  });
+}
+
+function renderSearchResults(sectionKey) {
+  const resultsEl = document.querySelector(`[data-results="${sectionKey}"]`);
+  const searchInput = document.querySelector(`[data-home-search="${sectionKey}"]`);
+  if (!resultsEl || !searchInput) return;
+
+  const query = searchInput.value.trim().toLowerCase();
+  if (!query) {
+    resultsEl.innerHTML = `<p class="helper">Busca contenido para agregarlo manualmente.</p>`;
+    return;
+  }
+
+  const config = getSectionConfig(sectionKey);
+  const selectedKeys = new Set(config.selectedItems.map(item => `${item.type}:${item.id}`));
+  const source = getContentForSection(sectionKey)
+    .filter(item => (item.title || item.id).toLowerCase().includes(query))
+    .slice(0, 8);
+
+  resultsEl.innerHTML = source.map(item => {
+    const key = `${item.type}:${item.id}`;
+    const disabled = selectedKeys.has(key) || config.selectedItems.length >= 10;
+    return `
+      <div class="search-result">
+        <img src="${item.posterUrl || ""}" alt="" />
+        <div>
+          <strong>${item.title || item.id}</strong>
+          <span>${item.type === "movie" ? "Película" : "Serie"} · ${item.year || "Sin año"}</span>
+        </div>
+        <button class="add-mini" data-add-home="${sectionKey}" data-id="${item.id}" data-type="${item.type}" ${disabled ? "disabled" : ""}>+</button>
       </div>
-      <div class="toggles">
-        <label><input type="checkbox" data-field="showInNew" ${item.showInNew ? "checked" : ""}> Lo nuevo</label>
-        <label><input type="checkbox" data-field="showInHome" ${item.showInHome !== false ? "checked" : ""}> Sección principal</label>
-        <label><input type="checkbox" data-field="isFavorite" ${item.isFavorite ? "checked" : ""}> Favorita</label>
+    `;
+  }).join("") || `<p class="helper">No encontré resultados.</p>`;
+}
+
+function renderSelectedItems(sectionKey) {
+  const selectedEl = document.querySelector(`[data-selected="${sectionKey}"]`);
+  if (!selectedEl) return;
+
+  const config = getSectionConfig(sectionKey);
+  const previewItems = getPreviewItems(sectionKey);
+  const label = config.mode === "manual" ? "Selección manual" : config.mode === "popular" ? "Preview por popularidad" : "Preview por recientes";
+
+  selectedEl.innerHTML = `
+    <div class="selected-summary">${label} · ${previewItems.length}/10 elementos</div>
+    ${previewItems.length ? `<div class="selected-list">${previewItems.map(item => `
+      <div class="selected-item">
+        <img src="${item.posterUrl || ""}" alt="" />
+        <div>
+          <strong>${item.title || item.id}</strong>
+          <span>${item.type === "movie" ? "Película" : "Serie"} · ${item.year || "Sin año"}</span>
+        </div>
+        ${config.mode === "manual" ? `<button class="remove-mini" data-remove-home="${sectionKey}" data-id="${item.id}" data-type="${item.type}">×</button>` : ""}
       </div>
-    </div>
-  `).join("") || `<p class="helper">Aún no hay contenido.</p>`;
+    `).join("")}</div>` : `<div class="empty-selection">No hay contenido para esta sección.</div>`}
+  `;
 }
 
 function renderCards(containerId, items, type) {
@@ -100,9 +301,8 @@ function renderCards(containerId, items, type) {
       <h3>${item.title || item.id}</h3>
       <p>${item.year || "Sin año"}</p>
       <div class="badge-row">
-        ${item.showInNew ? '<span class="badge on">Lo nuevo</span>' : ''}
         ${item.isFavorite ? '<span class="badge on">Favorita</span>' : ''}
-        ${item.showInHome === false ? '<span class="badge">Oculta</span>' : ''}
+        ${Number(item.popularity ?? 0) ? `<span class="badge">Popularidad ${Number(item.popularity ?? 0)}</span>` : ''}
       </div>
     </article>
   `).join("") || `<p class="helper">No hay ${type === "movie" ? "películas" : "series"} todavía.</p>`;
@@ -123,8 +323,8 @@ function openEditor(type, item = null) {
   $("hlsUrl").value = item?.hlsUrl ?? "";
   $("synopsis").value = item?.synopsis ?? "";
   $("isFavorite").checked = Boolean(item?.isFavorite);
-  $("showInNew").checked = Boolean(item?.showInNew);
-  $("showInHome").checked = item?.showInHome !== false;
+  $("showInNew").checked = false;
+  $("showInHome").checked = true;
   $("deleteBtn").classList.toggle("hidden", !item);
   document.querySelectorAll(".movie-only").forEach(el => el.classList.toggle("hidden", type !== "movie"));
   $("durationField").classList.toggle("hidden", type !== "movie");
@@ -145,8 +345,6 @@ async function saveEditor(e) {
     posterUrl: $("posterUrl").value.trim(),
     type,
     isFavorite: $("isFavorite").checked,
-    showInNew: $("showInNew").checked,
-    showInHome: $("showInHome").checked,
     updatedAt: serverTimestamp(),
   };
   if (!state.editingId) baseData.createdAt = serverTimestamp();
@@ -170,14 +368,21 @@ async function deleteCurrent() {
 }
 
 async function saveHome() {
-  const rows = [...document.querySelectorAll(".admin-row")];
-  await Promise.all(rows.map((row, index) => {
-    const id = row.dataset.id;
-    const type = row.dataset.type;
-    const data = { homeOrder: index + 1 };
-    row.querySelectorAll("input[type='checkbox']").forEach(input => data[input.dataset.field] = input.checked);
-    return updateDoc(doc(db, type === "movie" ? "movies" : "series", id), data);
-  }));
+  const cleanSections = {};
+  ["new", "movies", "series"].forEach(sectionKey => {
+    const config = getSectionConfig(sectionKey);
+    cleanSections[sectionKey] = {
+      mode: config.mode,
+      limit: 10,
+      selectedItems: config.selectedItems.slice(0, 10)
+    };
+  });
+
+  await setDoc(doc(db, "homeConfig", "main"), {
+    sections: cleanSections,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+
   showStatus("Home actualizado");
   await loadAll();
 }
@@ -237,8 +442,30 @@ async function deleteEpisode() {
   await loadEpisodes(state.editingSeriesId);
 }
 
+function addHomeItem(sectionKey, id, type) {
+  const config = getSectionConfig(sectionKey);
+  if (config.selectedItems.length >= 10) {
+    showStatus("Máximo 10 elementos por sección");
+    return;
+  }
+  const exists = config.selectedItems.some(item => item.id === id && item.type === type);
+  if (!exists) config.selectedItems.push({ id, type });
+  renderHome();
+}
+
+function removeHomeItem(sectionKey, id, type) {
+  const config = getSectionConfig(sectionKey);
+  config.selectedItems = config.selectedItems.filter(item => !(item.id === id && item.type === type));
+  renderHome();
+}
+
 document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
 primaryAction.addEventListener("click", () => openEditor(state.view === "series" ? "series" : "movie"));
+$("importMovieBtn").addEventListener("click", () => $("importMovieInput").click());
+$("importMovieInput").addEventListener("change", (e) => {
+  const file = e.target.files?.[0];
+  if (file) importMoviesFromJson(file);
+});
 $("editorForm").addEventListener("submit", saveEditor);
 $("closeEditor").addEventListener("click", () => $("editorDialog").close());
 $("cancelBtn").addEventListener("click", () => $("editorDialog").close());
@@ -250,12 +477,38 @@ $("closeEpisodeEditor").addEventListener("click", () => $("episodeDialog").close
 $("cancelEpisodeBtn").addEventListener("click", () => $("episodeDialog").close());
 $("deleteEpisodeBtn").addEventListener("click", deleteEpisode);
 
+document.querySelectorAll("[data-home-mode]").forEach(select => {
+  select.addEventListener("change", () => {
+    const sectionKey = select.dataset.homeMode;
+    getSectionConfig(sectionKey).mode = select.value;
+    renderHome();
+  });
+});
+
+document.querySelectorAll("[data-home-search]").forEach(input => {
+  input.addEventListener("input", () => renderSearchResults(input.dataset.homeSearch));
+});
+
 document.addEventListener("click", async (e) => {
+  const addBtn = e.target.closest("[data-add-home]");
+  if (addBtn) {
+    addHomeItem(addBtn.dataset.addHome, addBtn.dataset.id, addBtn.dataset.type);
+    return;
+  }
+
+  const removeBtn = e.target.closest("[data-remove-home]");
+  if (removeBtn) {
+    removeHomeItem(removeBtn.dataset.removeHome, removeBtn.dataset.id, removeBtn.dataset.type);
+    return;
+  }
+
   const card = e.target.closest(".card");
   if (card) {
     const list = card.dataset.type === "movie" ? state.movies : state.series;
     openEditor(card.dataset.type, list.find(i => i.id === card.dataset.id));
+    return;
   }
+
   const epItem = e.target.closest(".episode-item");
   if (epItem) {
     const snap = await getDoc(doc(db, "series", state.editingSeriesId, "episodes", epItem.dataset.id));
