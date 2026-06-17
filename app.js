@@ -402,11 +402,6 @@ function renderCards(containerId, items, type) {
       <img class="poster" src="${item.posterUrl || ""}" alt="" />
       <h3>${item.title || item.id}</h3>
       <p>${item.year || "Sin año"}</p>
-      <div class="badge-row">
-        ${item.isFavorite ? '<span class="badge on">Favorita</span>' : ''}
-        ${Number(item.popularity ?? 0) ? `<span class="badge">Popularidad ${Number(item.popularity ?? 0)}</span>` : ''}
-      </div>
-      <button class="edit-card-btn" type="button" data-edit-content="true" data-id="${item.id}" data-type="${type}">Editar</button>
     </article>
   `).join("") || `<p class="helper">No hay ${type === "movie" ? "películas" : "series"} todavía.</p>`;
 }
@@ -428,7 +423,6 @@ function openEditor(type, item = null) {
   $("posterUrl").value = item?.posterUrl ?? "";
   $("hlsUrl").value = item?.hlsUrl ?? "";
   $("synopsis").value = item?.synopsis ?? "";
-  $("isFavorite").checked = Boolean(item?.isFavorite);
   $("showInNew").checked = false;
   $("showInHome").checked = true;
   $("deleteBtn").classList.toggle("hidden", !item);
@@ -454,7 +448,6 @@ async function saveEditor(e) {
     synopsis: $("synopsis").value.trim(),
     posterUrl: $("posterUrl").value.trim(),
     type,
-    isFavorite: $("isFavorite").checked,
     updatedAt: serverTimestamp(),
   };
   if (!state.editingId) baseData.createdAt = serverTimestamp();
