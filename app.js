@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   getFirestore, collection, getDocs, doc, getDoc, setDoc, deleteDoc,
-  serverTimestamp, updateDoc
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -34,6 +34,7 @@ const state = {
   editingId: null,
   editingSeriesId: null,
   editingEpisodeId: null,
+  drag: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -45,32 +46,32 @@ const statusBox = $("status");
 function showStatus(message) {
   statusBox.textContent = message;
   statusBox.classList.remove("hidden");
-  setTimeout(() => statusBox.classList.add("hidden"), 2500);
+  setTimeout(() => statusBox.classList.add("hidden"), 2600);
 }
 
 function slugify(text) {
-  return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 }
 
 function splitGenres(value) {
-  return value.split(",").map(g => g.trim()).filter(Boolean);
+  return String(value || "").split(",").map(g => g.trim()).filter(Boolean);
 }
 
 function getAllContent() {
   return [...state.movies, ...state.series];
 }
 
-function getContentForSection(sectionKey) {
-  if (sectionKey === "movies") return state.movies;
-  if (sectionKey === "series") return state.series;
-  return getAllContent();
+function refKey(ref) {
+  return `${ref.type}:${ref.id}`;
 }
 
 function normalizeSelectedItem(item) {
-  return {
-    id: item.id,
-    type: item.type === "series" ? "series" : "movie"
-  };
+  return { id: item.id, type: item.type === "series" ? "series" : "movie" };
 }
 
 function findContentItem(ref) {
@@ -85,7 +86,7 @@ function getSectionConfig(sectionKey) {
   }
   const config = state.homeConfig.sections[sectionKey];
   config.limit = 10;
-  config.selectedItems = Array.isArray(config.selectedItems) ? config.selectedItems : [];
+  config.selectedItems = Array.isArray(config.selectedItems) ? config.selectedItems.map(normalizeSelectedItem) : [];
   config.mode = config.mode || "recent";
   return config;
 }
@@ -107,11 +108,36 @@ function sortByPopularity(items) {
   });
 }
 
-function getPreviewItems(sectionKey) {
+function getRawContentForSection(sectionKey) {
+  if (sectionKey === "movies") return state.movies;
+  if (sectionKey === "series") return state.series;
+  return getAllContent();
+}
+
+function getNewSectionKeys() {
+  const items = getPreviewItems("new", { ignoreExclusion: true });
+  return new Set(items.map(item => `${item.type}:${item.id}`));
+}
+
+function getContentForSection(sectionKey, options = {}) {
+  let source = getRawContentForSection(sectionKey);
+  if (!options.ignoreExclusion && sectionKey !== "new") {
+    const newKeys = getNewSectionKeys();
+    source = source.filter(item => !newKeys.has(`${item.type}:${item.id}`));
+  }
+  return source;
+}
+
+function getPreviewItems(sectionKey, options = {}) {
   const config = getSectionConfig(sectionKey);
-  const source = getContentForSection(sectionKey);
+  const source = getContentForSection(sectionKey, options);
   if (config.mode === "manual") {
-    return config.selectedItems.map(findContentItem).filter(Boolean).slice(0, 10);
+    const allowedKeys = new Set(source.map(item => `${item.type}:${item.id}`));
+    return config.selectedItems
+      .filter(ref => allowedKeys.has(refKey(ref)))
+      .map(findContentItem)
+      .filter(Boolean)
+      .slice(0, 10);
   }
   if (config.mode === "popular") return sortByPopularity(source).slice(0, 10);
   return sortByRecent(source).slice(0, 10);
@@ -123,13 +149,9 @@ function normalizeMovieFromJson(rawMovie, index = 0) {
   const id = slugify(String(idSource));
 
   let genres = [];
-  if (Array.isArray(rawMovie.genres)) {
-    genres = rawMovie.genres.map(g => String(g).trim()).filter(Boolean);
-  } else if (typeof rawMovie.genres === "string") {
-    genres = splitGenres(rawMovie.genres);
-  } else if (typeof rawMovie.genre === "string") {
-    genres = splitGenres(rawMovie.genre);
-  }
+  if (Array.isArray(rawMovie.genres)) genres = rawMovie.genres.map(g => String(g).trim()).filter(Boolean);
+  else if (typeof rawMovie.genres === "string") genres = splitGenres(rawMovie.genres);
+  else if (typeof rawMovie.genre === "string") genres = splitGenres(rawMovie.genre);
 
   return {
     id,
@@ -150,28 +172,67 @@ function normalizeMovieFromJson(rawMovie, index = 0) {
   };
 }
 
+function normalizeSeriesFromJson(rawSeries, index = 0) {
+  const title = String(rawSeries.title || rawSeries.name || "").trim();
+  const idSource = rawSeries.id || rawSeries.docId || rawSeries.slug || title || `series-${Date.now()}-${index}`;
+  const id = slugify(String(idSource));
+
+  let genres = [];
+  if (Array.isArray(rawSeries.genres)) genres = rawSeries.genres.map(g => String(g).trim()).filter(Boolean);
+  else if (typeof rawSeries.genres === "string") genres = splitGenres(rawSeries.genres);
+  else if (typeof rawSeries.genre === "string") genres = splitGenres(rawSeries.genre);
+
+  const episodes = Array.isArray(rawSeries.episodes) ? rawSeries.episodes : [];
+
+  return {
+    id,
+    episodes,
+    data: {
+      title,
+      year: Number(rawSeries.year) || null,
+      genres,
+      synopsis: String(rawSeries.synopsis || rawSeries.overview || rawSeries.description || "").trim(),
+      posterUrl: String(rawSeries.posterUrl || rawSeries.posterURL || rawSeries.poster || "").trim(),
+      type: "series",
+      isFavorite: Boolean(rawSeries.isFavorite),
+      popularity: Number(rawSeries.popularity) || 0,
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    }
+  };
+}
+
+function normalizeEpisodeFromJson(rawEpisode, index = 0) {
+  const seasonNumber = Number(rawEpisode.seasonNumber || rawEpisode.season || 1);
+  const episodeNumber = Number(rawEpisode.episodeNumber || rawEpisode.episode || index + 1);
+  const id = slugify(rawEpisode.id || rawEpisode.docId || rawEpisode.slug || `s${String(seasonNumber).padStart(2, "0")}e${String(episodeNumber).padStart(2, "0")}`);
+  return {
+    id,
+    data: {
+      title: String(rawEpisode.title || rawEpisode.name || `Episodio ${episodeNumber}`).trim(),
+      seasonNumber,
+      episodeNumber,
+      duration: Number(rawEpisode.duration) || 0,
+      synopsis: String(rawEpisode.synopsis || rawEpisode.overview || rawEpisode.description || "").trim(),
+      hlsUrl: String(rawEpisode.hlsUrl || rawEpisode.videoUrl || rawEpisode.url || "").trim(),
+      updatedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    }
+  };
+}
+
 async function importMoviesFromJson(file) {
   try {
     const text = await file.text();
     const json = JSON.parse(text);
     const items = Array.isArray(json) ? json : Array.isArray(json.movies) ? json.movies : [json];
-
-    if (!items.length) {
-      showStatus("El JSON no contiene películas");
-      return;
-    }
+    if (!items.length) return showStatus("El JSON no contiene películas");
 
     const normalized = items.map(normalizeMovieFromJson);
     const invalid = normalized.find(item => !item.data.title || !item.data.posterUrl || !item.data.hlsUrl);
-    if (invalid) {
-      alert("El JSON debe incluir al menos title, posterUrl y hlsUrl en cada película.");
-      return;
-    }
+    if (invalid) return alert("El JSON debe incluir al menos title, posterUrl y hlsUrl en cada película.");
 
-    await Promise.all(normalized.map(item =>
-      setDoc(doc(db, "movies", item.id), item.data, { merge: true })
-    ));
-
+    await Promise.all(normalized.map(item => setDoc(doc(db, "movies", item.id), item.data, { merge: true })));
     showStatus(`${normalized.length} película${normalized.length === 1 ? "" : "s"} importada${normalized.length === 1 ? "" : "s"}`);
     await loadAll();
     setView("movies");
@@ -180,6 +241,36 @@ async function importMoviesFromJson(file) {
     alert("No se pudo importar el JSON. Revisa que el archivo sea válido.");
   } finally {
     $("importMovieInput").value = "";
+  }
+}
+
+async function importSeriesFromJson(file) {
+  try {
+    const text = await file.text();
+    const json = JSON.parse(text);
+    const items = Array.isArray(json) ? json : Array.isArray(json.series) ? json.series : [json];
+    if (!items.length) return showStatus("El JSON no contiene series");
+
+    const normalized = items.map(normalizeSeriesFromJson);
+    const invalid = normalized.find(item => !item.data.title || !item.data.posterUrl);
+    if (invalid) return alert("El JSON debe incluir al menos title y posterUrl en cada serie.");
+
+    await Promise.all(normalized.map(async item => {
+      await setDoc(doc(db, "series", item.id), item.data, { merge: true });
+      if (item.episodes.length) {
+        const episodes = item.episodes.map(normalizeEpisodeFromJson);
+        await Promise.all(episodes.map(ep => setDoc(doc(db, "series", item.id, "episodes", ep.id), ep.data, { merge: true })));
+      }
+    }));
+
+    showStatus(`${normalized.length} serie${normalized.length === 1 ? "" : "s"} importada${normalized.length === 1 ? "" : "s"}`);
+    await loadAll();
+    setView("series");
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo importar el JSON. Revisa que el archivo sea válido.");
+  } finally {
+    $("importSeriesInput").value = "";
   }
 }
 
@@ -205,7 +296,6 @@ async function loadAll() {
   } else {
     state.homeConfig = structuredClone(defaultHomeConfig);
   }
-
   render();
 }
 
@@ -217,6 +307,7 @@ function setView(view) {
   primaryAction.textContent = view === "series" ? "Agregar serie" : "Agregar película";
   primaryAction.style.visibility = view === "home" ? "hidden" : "visible";
   $("importMovieBtn").classList.toggle("hidden", view !== "movies");
+  $("importSeriesBtn").classList.toggle("hidden", view !== "series");
   render();
 }
 
@@ -250,22 +341,25 @@ function renderSearchResults(sectionKey) {
   }
 
   const config = getSectionConfig(sectionKey);
-  const selectedKeys = new Set(config.selectedItems.map(item => `${item.type}:${item.id}`));
+  const selectedKeys = new Set(config.selectedItems.map(refKey));
+  const newKeys = sectionKey !== "new" ? getNewSectionKeys() : new Set();
   const source = getContentForSection(sectionKey)
     .filter(item => (item.title || item.id).toLowerCase().includes(query))
     .slice(0, 8);
 
   resultsEl.innerHTML = source.map(item => {
     const key = `${item.type}:${item.id}`;
-    const disabled = selectedKeys.has(key) || config.selectedItems.length >= 10;
+    const inNew = newKeys.has(key);
+    const disabled = selectedKeys.has(key) || config.selectedItems.length >= 10 || inNew;
+    const reason = inNew ? "Ya está en Lo nuevo" : selectedKeys.has(key) ? "Ya agregado" : config.selectedItems.length >= 10 ? "Límite 10" : "+";
     return `
-      <div class="search-result">
+      <div class="search-result ${disabled ? "is-disabled" : ""}">
         <img src="${item.posterUrl || ""}" alt="" />
         <div>
           <strong>${item.title || item.id}</strong>
           <span>${item.type === "movie" ? "Película" : "Serie"} · ${item.year || "Sin año"}</span>
         </div>
-        <button class="add-mini" data-add-home="${sectionKey}" data-id="${item.id}" data-type="${item.type}" ${disabled ? "disabled" : ""}>+</button>
+        <button class="add-mini" data-add-home="${sectionKey}" data-id="${item.id}" data-type="${item.type}" ${disabled ? "disabled" : ""}>${reason}</button>
       </div>
     `;
   }).join("") || `<p class="helper">No encontré resultados.</p>`;
@@ -277,18 +371,20 @@ function renderSelectedItems(sectionKey) {
 
   const config = getSectionConfig(sectionKey);
   const previewItems = getPreviewItems(sectionKey);
-  const label = config.mode === "manual" ? "Selección manual" : config.mode === "popular" ? "Preview por popularidad" : "Preview por recientes";
+  const label = config.mode === "manual" ? "Manual" : config.mode === "popular" ? "Preview por popularidad" : "Preview por recientes";
+  const help = sectionKey !== "new" ? `<div class="selection-note">El contenido que ya está en Lo nuevo se excluye automáticamente para evitar repetidos.</div>` : "";
 
   selectedEl.innerHTML = `
     <div class="selected-summary">${label} · ${previewItems.length}/10 elementos</div>
-    ${previewItems.length ? `<div class="selected-list">${previewItems.map(item => `
-      <div class="selected-item">
+    ${help}
+    ${previewItems.length ? `<div class="selected-list" data-sort-list="${sectionKey}">${previewItems.map((item, index) => `
+      <div class="selected-item" ${config.mode === "manual" ? `draggable="true" data-drag-section="${sectionKey}" data-index="${index}" data-id="${item.id}" data-type="${item.type}"` : ""}>
         <img src="${item.posterUrl || ""}" alt="" />
         <div>
           <strong>${item.title || item.id}</strong>
           <span>${item.type === "movie" ? "Película" : "Serie"} · ${item.year || "Sin año"}</span>
         </div>
-        ${config.mode === "manual" ? `<button class="remove-mini" data-remove-home="${sectionKey}" data-id="${item.id}" data-type="${item.type}">×</button>` : ""}
+        ${config.mode === "manual" ? `<div class="selected-actions"><span class="drag-handle" title="Arrastrar">⋮⋮</span><button class="remove-mini" data-remove-home="${sectionKey}" data-id="${item.id}" data-type="${item.type}">×</button></div>` : ""}
       </div>
     `).join("")}</div>` : `<div class="empty-selection">No hay contenido para esta sección.</div>`}
   `;
@@ -296,7 +392,7 @@ function renderSelectedItems(sectionKey) {
 
 function renderCards(containerId, items, type) {
   $(containerId).innerHTML = items.map(item => `
-    <article class="card" data-id="${item.id}" data-type="${type}">
+    <article class="card" data-id="${item.id}" data-type="${type}" role="button" tabindex="0">
       <img class="poster" src="${item.posterUrl || ""}" alt="" />
       <h3>${item.title || item.id}</h3>
       <p>${item.year || "Sin año"}</p>
@@ -311,8 +407,11 @@ function renderCards(containerId, items, type) {
 function openEditor(type, item = null) {
   state.editingType = type;
   state.editingId = item?.id ?? null;
+  state.editingSeriesId = type === "series" && item ? item.id : null;
+  state.editingEpisodeId = null;
+
   $("editorType").textContent = type === "movie" ? "Película" : "Serie";
-  $("editorTitle").textContent = item ? `Editar ${item.title}` : `Agregar ${type === "movie" ? "película" : "serie"}`;
+  $("editorTitle").textContent = item ? `Editar ${item.title || item.id}` : `Agregar ${type === "movie" ? "película" : "serie"}`;
   $("docId").disabled = Boolean(item);
   $("docId").value = item?.id ?? "";
   $("title").value = item?.title ?? "";
@@ -328,8 +427,12 @@ function openEditor(type, item = null) {
   $("deleteBtn").classList.toggle("hidden", !item);
   document.querySelectorAll(".movie-only").forEach(el => el.classList.toggle("hidden", type !== "movie"));
   $("durationField").classList.toggle("hidden", type !== "movie");
-  $("episodesPanel").classList.toggle("hidden", type !== "series" || !item);
-  if (type === "series" && item) loadEpisodes(item.id);
+
+  const showEpisodes = type === "series" && Boolean(item);
+  $("episodesPanel").classList.toggle("hidden", !showEpisodes);
+  if (showEpisodes) loadEpisodes(item.id);
+  else $("episodesList").innerHTML = "";
+
   $("editorDialog").showModal();
 }
 
@@ -374,7 +477,7 @@ async function saveHome() {
     cleanSections[sectionKey] = {
       mode: config.mode,
       limit: 10,
-      selectedItems: config.selectedItems.slice(0, 10)
+      selectedItems: getPreviewItems(sectionKey).map(normalizeSelectedItem).slice(0, 10)
     };
   });
 
@@ -396,7 +499,7 @@ async function loadEpisodes(seriesId) {
       <div><strong>${ep.title}</strong><br><span>T${ep.seasonNumber} · E${ep.episodeNumber}</span></div>
       <span>${ep.duration || 0} min</span>
     </div>
-  `).join("") || `<p class="helper">Aún no hay episodios.</p>`;
+  `).join("") || `<p class="helper">Aún no hay episodios. Usa “Agregar episodio” para capítulos nuevos o nuevas temporadas.</p>`;
 }
 
 function openEpisodeEditor(ep = null) {
@@ -417,6 +520,7 @@ function openEpisodeEditor(ep = null) {
 async function saveEpisode(e) {
   e.preventDefault();
   const seriesId = state.editingSeriesId;
+  if (!seriesId) return alert("Primero guarda o abre una serie.");
   const id = state.editingEpisodeId || slugify($("episodeDocId").value || `s${$("seasonNumber").value}e${$("episodeNumber").value}`);
   const data = {
     title: $("episodeTitle").value.trim(),
@@ -444,10 +548,12 @@ async function deleteEpisode() {
 
 function addHomeItem(sectionKey, id, type) {
   const config = getSectionConfig(sectionKey);
-  if (config.selectedItems.length >= 10) {
-    showStatus("Máximo 10 elementos por sección");
+  const key = `${type}:${id}`;
+  if (sectionKey !== "new" && getNewSectionKeys().has(key)) {
+    showStatus("Ese contenido ya está en Lo nuevo");
     return;
   }
+  if (config.selectedItems.length >= 10) return showStatus("Máximo 10 elementos por sección");
   const exists = config.selectedItems.some(item => item.id === id && item.type === type);
   if (!exists) config.selectedItems.push({ id, type });
   renderHome();
@@ -459,13 +565,30 @@ function removeHomeItem(sectionKey, id, type) {
   renderHome();
 }
 
+function reorderHomeItem(sectionKey, fromIndex, toIndex) {
+  const config = getSectionConfig(sectionKey);
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+  const [item] = config.selectedItems.splice(fromIndex, 1);
+  config.selectedItems.splice(toIndex, 0, item);
+  renderHome();
+}
+
+function handleCardActivation(target) {
+  const card = target.closest(".card");
+  if (!card) return false;
+  const list = card.dataset.type === "movie" ? state.movies : state.series;
+  const item = list.find(i => i.id === card.dataset.id);
+  if (!item) return false;
+  openEditor(card.dataset.type, item);
+  return true;
+}
+
 document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
 primaryAction.addEventListener("click", () => openEditor(state.view === "series" ? "series" : "movie"));
 $("importMovieBtn").addEventListener("click", () => $("importMovieInput").click());
-$("importMovieInput").addEventListener("change", (e) => {
-  const file = e.target.files?.[0];
-  if (file) importMoviesFromJson(file);
-});
+$("importMovieInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importMoviesFromJson(file); });
+$("importSeriesBtn").addEventListener("click", () => $("importSeriesInput").click());
+$("importSeriesInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importSeriesFromJson(file); });
 $("editorForm").addEventListener("submit", saveEditor);
 $("closeEditor").addEventListener("click", () => $("editorDialog").close());
 $("cancelBtn").addEventListener("click", () => $("editorDialog").close());
@@ -491,29 +614,50 @@ document.querySelectorAll("[data-home-search]").forEach(input => {
 
 document.addEventListener("click", async (e) => {
   const addBtn = e.target.closest("[data-add-home]");
-  if (addBtn) {
-    addHomeItem(addBtn.dataset.addHome, addBtn.dataset.id, addBtn.dataset.type);
-    return;
-  }
+  if (addBtn) return addHomeItem(addBtn.dataset.addHome, addBtn.dataset.id, addBtn.dataset.type);
 
   const removeBtn = e.target.closest("[data-remove-home]");
-  if (removeBtn) {
-    removeHomeItem(removeBtn.dataset.removeHome, removeBtn.dataset.id, removeBtn.dataset.type);
-    return;
-  }
+  if (removeBtn) return removeHomeItem(removeBtn.dataset.removeHome, removeBtn.dataset.id, removeBtn.dataset.type);
 
-  const card = e.target.closest(".card");
-  if (card) {
-    const list = card.dataset.type === "movie" ? state.movies : state.series;
-    openEditor(card.dataset.type, list.find(i => i.id === card.dataset.id));
-    return;
-  }
+  if (handleCardActivation(e.target)) return;
 
   const epItem = e.target.closest(".episode-item");
   if (epItem) {
     const snap = await getDoc(doc(db, "series", state.editingSeriesId, "episodes", epItem.dataset.id));
-    openEpisodeEditor({ id: snap.id, ...snap.data() });
+    return openEpisodeEditor({ id: snap.id, ...snap.data() });
   }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  if (handleCardActivation(e.target)) e.preventDefault();
+});
+
+document.addEventListener("dragstart", (e) => {
+  const item = e.target.closest("[data-drag-section]");
+  if (!item) return;
+  state.drag = { section: item.dataset.dragSection, index: Number(item.dataset.index) };
+  item.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+});
+
+document.addEventListener("dragend", (e) => {
+  const item = e.target.closest("[data-drag-section]");
+  if (item) item.classList.remove("dragging");
+  state.drag = null;
+});
+
+document.addEventListener("dragover", (e) => {
+  const item = e.target.closest("[data-drag-section]");
+  if (!item || !state.drag || item.dataset.dragSection !== state.drag.section) return;
+  e.preventDefault();
+});
+
+document.addEventListener("drop", (e) => {
+  const item = e.target.closest("[data-drag-section]");
+  if (!item || !state.drag || item.dataset.dragSection !== state.drag.section) return;
+  e.preventDefault();
+  reorderHomeItem(state.drag.section, state.drag.index, Number(item.dataset.index));
 });
 
 $("title").addEventListener("blur", () => {
