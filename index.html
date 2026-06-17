@@ -22,7 +22,11 @@
         <p class="eyebrow">Wolffel Motion</p>
         <h1 id="pageTitle">Home</h1>
       </div>
-      <button id="primaryAction" class="primary-btn">Agregar película</button>
+      <div class="top-actions">
+        <button id="importMovieBtn" class="secondary-btn hidden" type="button">Importar película</button>
+        <input id="importMovieInput" type="file" accept="application/json,.json" class="hidden" />
+        <button id="primaryAction" class="primary-btn">Agregar película</button>
+      </div>
     </header>
 
     <section id="status" class="status hidden"></section>
@@ -36,8 +40,71 @@
           </div>
           <button id="saveHomeBtn" class="primary-btn small">Guardar Home</button>
         </div>
-        <p class="helper">Selecciona qué aparece en Lo nuevo y en las secciones principales.</p>
-        <div class="admin-list" id="homeContentList"></div>
+        <p class="helper">Selecciona qué aparece en Lo nuevo, Películas y Series. Cada sección está limitada a 10 elementos.</p>
+        <div class="home-sections">
+          <article class="home-config">
+            <div class="home-config-head">
+              <div>
+                <p class="eyebrow">Sección 01</p>
+                <h3>Lo nuevo</h3>
+              </div>
+              <select data-home-mode="new" aria-label="Modo Lo nuevo">
+                <option value="recent">Recientes</option>
+                <option value="popular">Popularidad</option>
+                <option value="manual">Seleccionar a mano</option>
+              </select>
+            </div>
+
+            <div class="manual-picker" data-picker="new">
+              <input data-home-search="new" placeholder="Buscar película o serie para Lo nuevo..." />
+              <div class="search-results" data-results="new"></div>
+            </div>
+
+            <div class="selected-strip" data-selected="new"></div>
+          </article>
+
+          <article class="home-config">
+            <div class="home-config-head">
+              <div>
+                <p class="eyebrow">Sección 02</p>
+                <h3>Películas</h3>
+              </div>
+              <select data-home-mode="movies" aria-label="Modo Películas">
+                <option value="recent">Recientes</option>
+                <option value="popular">Popularidad</option>
+                <option value="manual">Seleccionar a mano</option>
+              </select>
+            </div>
+
+            <div class="manual-picker" data-picker="movies">
+              <input data-home-search="movies" placeholder="Buscar película para la sección Películas..." />
+              <div class="search-results" data-results="movies"></div>
+            </div>
+
+            <div class="selected-strip" data-selected="movies"></div>
+          </article>
+
+          <article class="home-config">
+            <div class="home-config-head">
+              <div>
+                <p class="eyebrow">Sección 03</p>
+                <h3>Series</h3>
+              </div>
+              <select data-home-mode="series" aria-label="Modo Series">
+                <option value="recent">Recientes</option>
+                <option value="popular">Popularidad</option>
+                <option value="manual">Seleccionar a mano</option>
+              </select>
+            </div>
+
+            <div class="manual-picker" data-picker="series">
+              <input data-home-search="series" placeholder="Buscar serie para la sección Series..." />
+              <div class="search-results" data-results="series"></div>
+            </div>
+
+            <div class="selected-strip" data-selected="series"></div>
+          </article>
+        </div>
       </div>
     </section>
 
