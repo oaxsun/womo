@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Womo Web</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <img class="logo-mark" src="assets/logo.svg" alt="Womo" />
+
+    <nav class="nav">
+      <button class="nav-btn" data-page="search" aria-label="Buscar"><i data-lucide="search"></i></button>
+      <button class="nav-btn active" data-page="home" aria-label="Inicio"><i data-lucide="house"></i></button>
+      <button class="nav-btn" data-page="favorites" aria-label="Favoritas"><i data-lucide="heart"></i></button>
+    </nav>
+  </aside>
+
+  <main class="app-shell">
+    <section class="page active" id="homePage">
+      <section class="hero" id="hero"></section>
+
+      <section class="content-row">
+        <div class="row-header">
+          <h2>Continuar viendo</h2>
+        </div>
+        <div class="poster-row" id="continueRow"></div>
+      </section>
+
+      <section class="content-row">
+        <div class="row-header">
+          <h2>Películas</h2>
+          <button>Ver todo</button>
+        </div>
+        <div class="poster-row" id="moviesRow"></div>
+      </section>
+
+      <section class="content-row">
+        <div class="row-header">
+          <h2>Series</h2>
+          <button>Ver todo</button>
+        </div>
+        <div class="poster-row" id="seriesRow"></div>
+      </section>
+
+      <section class="content-row">
+        <div class="row-header">
+          <h2>Conciertos</h2>
+          <button>Ver todo</button>
+        </div>
+        <div class="poster-row" id="concertsRow"></div>
+      </section>
+    </section>
+
+    <section class="page" id="searchPage">
+      <div class="empty-page">
+        <h1>Buscar</h1>
+        <input type="search" placeholder="Buscar películas, series o conciertos" />
+      </div>
+    </section>
+
+    <section class="page" id="favoritesPage">
+      <div class="empty-page">
+        <h1>Favoritas</h1>
+        <p>Aquí aparecerán tus películas y series guardadas.</p>
+      </div>
+    </section>
+  </main>
+
+  
+<div id="previewModal" class="preview-modal">
+  <div class="preview-backdrop"></div>
+  <div class="preview-card">
+    <button class="preview-close">×</button>
+    <div class="preview-poster-wrap"><img id="previewPoster"></div>
+    <div class="preview-content">
+      <h2 id="previewTitle"></h2>
+      <div id="previewMeta" class="preview-meta"></div>
+      <p id="previewDesc"></p>
+      <div class="preview-actions" id="previewActions"></div>
+      <h3>Recomendaciones</h3>
+      <div id="previewRecs" class="preview-recs"></div>
+    </div>
+  </div>
+</div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="app.js"></script>
+</body>
+</html>
