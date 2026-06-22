@@ -557,6 +557,7 @@ function setupNavigation() {
       changePage(btn.dataset.page);
       if (btn.dataset.page === "search") renderSearchResults();
       if (btn.dataset.page === "favorites") renderFavorites();
+      if (btn.dataset.page === "settings") setupSettings();
     });
   });
 
@@ -609,8 +610,96 @@ document.addEventListener("click", event => {
   }
 }, true);
 
+
+async function deleteCollectionDocs(collectionRef) {
+  const snapshot = await collectionRef.get();
+  if (snapshot.empty) return;
+  const batch = db.batch();
+  snapshot.docs.forEach(doc => batch.delete(doc.ref));
+  await batch.commit();
+}
+
+async function clearUserMemory() {
+  const userRef = getUserDocRef();
+  if (!userRef) return;
+
+  const confirmed = confirm("¿Seguro que quieres borrar toda tu memoria de Womo? Se eliminarán favoritos, progreso y episodios vistos.");
+  if (!confirmed) return;
+
+  try {
+    await Promise.all([
+      deleteCollectionDocs(userRef.collection("favorites")),
+      deleteCollectionDocs(userRef.collection("continueWatching")),
+      deleteCollectionDocs(userRef.collection("episodeProgress"))
+    ]);
+  } catch (error) {
+    console.warn("No se pudo borrar toda la memoria en Firebase.", error);
+  }
+
+  localStorage.removeItem(FAVORITES_KEY);
+  localStorage.removeItem(CONTINUE_KEY);
+  localStorage.removeItem(EPISODE_PROGRESS_KEY);
+
+  getAllCatalogItems().forEach(item => {
+    item.isFavorite = false;
+    item.progress = 0;
+  });
+
+  syncFavoriteUI();
+  renderFavorites();
+  refreshContinueRow();
+
+  alert("Memoria borrada.");
+}
+
+async function logoutCurrentDevice() {
+  try {
+    await firebase.auth().signOut();
+  } catch (error) {
+    console.warn("No se pudo cerrar sesión.", error);
+  }
+}
+
+async function logoutEverywhere() {
+  const confirmed = confirm("¿Cerrar sesión en todos lados? Tendrás que iniciar sesión de nuevo en tus dispositivos.");
+  if (!confirmed) return;
+
+  try {
+    const user = firebase.auth().currentUser;
+    if (user) {
+      await user.getIdToken(true);
+    }
+    await firebase.auth().signOut();
+  } catch (error) {
+    console.warn("No se pudo cerrar en todos lados.", error);
+    await logoutCurrentDevice();
+  }
+}
+
+function setupSettings() {
+  const clearBtn = document.getElementById("clearMemoryBtn");
+  const logoutEverywhereBtn = document.getElementById("logoutEverywhereBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+
+  if (clearBtn && clearBtn.dataset.ready !== "true") {
+    clearBtn.dataset.ready = "true";
+    clearBtn.addEventListener("click", clearUserMemory);
+  }
+
+  if (logoutEverywhereBtn && logoutEverywhereBtn.dataset.ready !== "true") {
+    logoutEverywhereBtn.dataset.ready = "true";
+    logoutEverywhereBtn.addEventListener("click", logoutEverywhere);
+  }
+
+  if (logoutBtn && logoutBtn.dataset.ready !== "true") {
+    logoutBtn.dataset.ready = "true";
+    logoutBtn.addEventListener("click", logoutCurrentDevice);
+  }
+}
+
 async function init() {
   setupNavigation();
+  setupSettings();
 
   const [movies, series] = await Promise.all([
     readCollection("movies", normalizeMovie),
@@ -1107,6 +1196,9 @@ function setupLogin() {
     } else {
       screen.classList.remove("hidden");
       localStorage.removeItem("womoUser");
+      localStorage.removeItem(FAVORITES_KEY);
+      localStorage.removeItem(CONTINUE_KEY);
+      localStorage.removeItem(EPISODE_PROGRESS_KEY);
     }
   });
 

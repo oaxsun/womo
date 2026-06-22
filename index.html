@@ -27,8 +27,10 @@
     <nav class="nav">
       <button class="nav-btn" data-page="search" aria-label="Buscar"><i data-lucide="search"></i></button>
       <button class="nav-btn active" data-page="home" aria-label="Inicio"><i data-lucide="house"></i></button>
-      <button class="nav-btn" data-page="favorites" aria-label="Favoritas"><i data-lucide="heart"></i></button>
+      <button class="nav-btn" data-page="favorites" aria-label="Favoritos"><i data-lucide="heart"></i></button>
     </nav>
+
+    <button class="nav-btn settings-nav" data-page="settings" aria-label="Configuración"><i data-lucide="settings"></i></button>
   </aside>
 
   <main class="app-shell">
@@ -91,6 +93,39 @@
           </div>
           <div class="poster-grid" id="favoritesGrid"></div>
         </section>
+      </div>
+    </section>
+
+    <section class="page" id="settingsPage">
+      <div class="settings-page">
+        <div class="settings-header">
+          <h1>Configuración</h1>
+          <p>Administra tu sesión y los datos guardados de Womo.</p>
+        </div>
+
+        <div class="settings-card">
+          <div>
+            <h2>Borrar memoria</h2>
+            <p>Elimina tus favoritos, progreso, episodios vistos y continuar viendo.</p>
+          </div>
+          <button id="clearMemoryBtn" class="settings-action danger">Borrar memoria</button>
+        </div>
+
+        <div class="settings-card">
+          <div>
+            <h2>Cerrar en todos lados</h2>
+            <p>Cierra tu sesión en todos los dispositivos donde hayas iniciado sesión.</p>
+          </div>
+          <button id="logoutEverywhereBtn" class="settings-action secondary">Cerrar en todos lados</button>
+        </div>
+
+        <div class="settings-card">
+          <div>
+            <h2>Cerrar sesión</h2>
+            <p>Sal de Womo únicamente en este navegador.</p>
+          </div>
+          <button id="logoutBtn" class="settings-action">Cerrar sesión</button>
+        </div>
       </div>
     </section>
   </main>
