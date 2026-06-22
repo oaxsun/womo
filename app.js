@@ -53,11 +53,15 @@ function toggleFavoriteItem(item) {
   if (!item) return false;
   const current = loadFavoriteState();
   const exists = current.some(entry => entry.id === item.id && entry.type === item.type);
+  const entry = { id: item.id, type: item.type, addedAt: Date.now() };
   const next = exists
-    ? current.filter(entry => !(entry.id === item.id && entry.type === item.type))
-    : [{ id: item.id, type: item.type, addedAt: Date.now() }, ...current];
+    ? current.filter(value => !(value.id === item.id && value.type === item.type))
+    : [entry, ...current];
 
   saveFavoriteState(next);
+  if (exists) deleteFavoriteFromCloud(entry);
+  else saveFavoriteToCloud(entry);
+
   item.isFavorite = !exists;
   syncFavoriteUI();
   renderFavorites();
@@ -95,14 +99,16 @@ function saveContinueState(items) {
 
 function upsertContinueItem(item, progress = null) {
   if (!item) return;
-  const state = loadContinueState().filter(entry => !(entry.id === item.id && entry.type === item.type));
-  state.unshift({
+  const newEntry = {
     id: item.id,
     type: item.type,
     progress: progress ?? item.progress ?? 5,
     lastWatchedAt: Date.now()
-  });
+  };
+  const state = loadContinueState().filter(entry => !(entry.id === item.id && entry.type === item.type));
+  state.unshift(newEntry);
   saveContinueState(state);
+  saveContinueEntryToCloud(newEntry);
   refreshContinueRow();
 }
 
@@ -792,6 +798,7 @@ async function openPreview(item) {
         const map = loadEpisodeProgress();
         map[episodeKey(item.id, currentEpisode.season, currentEpisode.episodeNumber, currentEpisode.id)] = 0;
         localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
+        saveEpisodeProgressToCloud(item.id, currentEpisode, 0);
       }
       openPlayer(item, { episode: currentEpisode });
     };
@@ -862,8 +869,7 @@ function savePlayerProgress() {
   const { item, episode } = currentPlayerContext;
 
   if (item.type === 'series' && episode) {
-    const state = loadContinueState().filter(entry => !(entry.id === item.id && entry.type === item.type));
-    state.unshift({
+    const entry = {
       id: item.id,
       type: item.type,
       progress,
@@ -871,12 +877,16 @@ function savePlayerProgress() {
       episode: episode.episodeNumber,
       episodeId: episode.id,
       lastWatchedAt: Date.now()
-    });
+    };
+    const state = loadContinueState().filter(value => !(value.id === item.id && value.type === item.type));
+    state.unshift(entry);
     saveContinueState(state);
+    saveContinueEntryToCloud(entry);
 
     const map = loadEpisodeProgress();
     map[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] = progress;
     localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
+    saveEpisodeProgressToCloud(item.id, episode, progress);
   } else {
     upsertContinueItem(item, progress);
   }
@@ -996,6 +1006,7 @@ function setupPlayerControls() {
       const map = loadEpisodeProgress();
       map[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] = 100;
       localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
+      saveEpisodeProgressToCloud(item.id, episode, 100);
     } else {
       upsertContinueItem(item, 100);
     }
@@ -1052,6 +1063,7 @@ function setupLogin() {
     if (user) {
       screen.classList.add("hidden");
       localStorage.setItem("womoUser", user.email || user.uid);
+      Promise.all([loadFavoritesFromCloud(), loadContinueFromCloud(), loadEpisodeProgressFromCloud()]).then(()=>{ if(typeof renderFavorites==="function") renderFavorites(); if(typeof refreshContinueRow==="function") refreshContinueRow(); if(typeof syncFavoriteUI==="function") syncFavoriteUI(); });
     } else {
       screen.classList.remove("hidden");
       localStorage.removeItem("womoUser");
@@ -1085,3 +1097,111 @@ function setupLogin() {
 }
 
 setupLogin();
+
+
+
+function getUserDocRef() {
+  const user = firebase.auth().currentUser;
+  return user ? db.collection("users").doc(user.uid) : null;
+}
+
+function safeDocId(value) {
+  return String(value || "")
+    .replace(/[\/#?\[\]]/g, "_")
+    .slice(0, 140);
+}
+
+function userItemDocId(entry) {
+  return safeDocId(`${entry.type}_${entry.id}`);
+}
+
+function userEpisodeDocId(seriesId, season, episodeNumber, episodeId = "") {
+  return safeDocId(`${seriesId}_S${season}_E${episodeNumber}_${episodeId}`);
+}
+
+async function saveFavoriteToCloud(entry) {
+  const ref = getUserDocRef();
+  if (!ref || !entry) return;
+
+  await ref.set({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await ref.collection("favorites").doc(userItemDocId(entry)).set({
+    id: entry.id,
+    type: entry.type,
+    addedAt: entry.addedAt || Date.now(),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+}
+
+async function deleteFavoriteFromCloud(entry) {
+  const ref = getUserDocRef();
+  if (!ref || !entry) return;
+  await ref.collection("favorites").doc(userItemDocId(entry)).delete();
+}
+
+async function loadFavoritesFromCloud() {
+  const ref = getUserDocRef();
+  if (!ref) return;
+
+  const snapshot = await ref.collection("favorites").orderBy("addedAt", "desc").get();
+  const items = snapshot.docs.map(doc => {
+    const data = doc.data() || {};
+    return {
+      id: data.id,
+      type: data.type,
+      addedAt: data.addedAt || 0
+    };
+  }).filter(entry => entry.id && entry.type);
+
+  saveFavoriteState(items);
+}
+
+async function saveContinueEntryToCloud(entry) {
+  const ref = getUserDocRef();
+  if (!ref || !entry) return;
+
+  await ref.set({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await ref.collection("continueWatching").doc(userItemDocId(entry)).set({
+    ...entry,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+}
+
+async function loadContinueFromCloud() {
+  const ref = getUserDocRef();
+  if (!ref) return;
+
+  const snapshot = await ref.collection("continueWatching").orderBy("lastWatchedAt", "desc").get();
+  const items = snapshot.docs.map(doc => doc.data()).filter(entry => entry.id && entry.type);
+  saveContinueState(items);
+}
+
+async function saveEpisodeProgressToCloud(seriesId, episode, progress) {
+  const ref = getUserDocRef();
+  if (!ref || !seriesId || !episode) return;
+
+  await ref.collection("episodeProgress")
+    .doc(userEpisodeDocId(seriesId, episode.season, episode.episodeNumber, episode.id))
+    .set({
+      seriesId,
+      episodeId: episode.id,
+      season: episode.season,
+      episodeNumber: episode.episodeNumber,
+      progress,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+}
+
+async function loadEpisodeProgressFromCloud() {
+  const ref = getUserDocRef();
+  if (!ref) return;
+
+  const snapshot = await ref.collection("episodeProgress").get();
+  const map = {};
+  snapshot.docs.forEach(doc => {
+    const data = doc.data() || {};
+    if (!data.seriesId) return;
+    map[episodeKey(data.seriesId, data.season, data.episodeNumber, data.episodeId)] = Number(data.progress || 0);
+  });
+  localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
+}
+
