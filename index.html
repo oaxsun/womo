@@ -54,16 +54,29 @@
     </section>
 
     <section class="page" id="searchPage">
-      <div class="empty-page">
-        <h1>Buscar</h1>
-        <input type="search" placeholder="Buscar películas, series o conciertos" />
+      <div class="library-page">
+        <div class="search-shell">
+          <i data-lucide="search"></i>
+          <input id="searchInput" type="search" placeholder="Buscar películas, series o conciertos" autocomplete="off" />
+        </div>
+
+        <section class="content-row search-results-section">
+          <div class="row-header">
+            <h2 id="searchResultsTitle">Explorar catálogo</h2>
+          </div>
+          <div class="poster-grid" id="searchResults"></div>
+        </section>
       </div>
     </section>
 
     <section class="page" id="favoritesPage">
-      <div class="empty-page">
-        <h1>Favoritas</h1>
-        <p>Aquí aparecerán tus películas y series guardadas.</p>
+      <div class="library-page">
+        <section class="content-row">
+          <div class="row-header">
+            <h2>Favoritos</h2>
+          </div>
+          <div class="poster-grid" id="favoritesGrid"></div>
+        </section>
       </div>
     </section>
   </main>

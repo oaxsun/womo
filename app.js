@@ -26,6 +26,60 @@ const fallbackItems = [
 
 const CONTINUE_KEY = "womo_continue_watching";
 
+const FAVORITES_KEY = "womo_favorites";
+
+function loadFavoriteState() {
+  try {
+    const value = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveFavoriteState(items) {
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(items));
+}
+
+function favoriteKey(item) {
+  return `${item.type}:${item.id}`;
+}
+
+function isFavoriteItem(item) {
+  return loadFavoriteState().some(entry => entry.id === item.id && entry.type === item.type);
+}
+
+function toggleFavoriteItem(item) {
+  if (!item) return false;
+  const current = loadFavoriteState();
+  const exists = current.some(entry => entry.id === item.id && entry.type === item.type);
+  const next = exists
+    ? current.filter(entry => !(entry.id === item.id && entry.type === item.type))
+    : [{ id: item.id, type: item.type, addedAt: Date.now() }, ...current];
+
+  saveFavoriteState(next);
+  item.isFavorite = !exists;
+  syncFavoriteUI();
+  renderFavorites();
+  return !exists;
+}
+
+function getAllCatalogItems() {
+  return [...allItemsByContinueKey.values()];
+}
+
+function syncFavoriteUI() {
+  getAllCatalogItems().forEach(item => {
+    item.isFavorite = isFavoriteItem(item);
+  });
+
+  document.querySelectorAll('[data-fav-key]').forEach(button => {
+    const item = allItemsByContinueKey.get(button.dataset.favKey);
+    button.classList.toggle('active', Boolean(item && isFavoriteItem(item)));
+  });
+}
+
+
 function loadContinueState() {
   try {
     const value = JSON.parse(localStorage.getItem(CONTINUE_KEY) || "[]");
@@ -288,7 +342,7 @@ function renderHero(item) {
       <p>${item.description}</p>
       <div class="hero-actions">
         <button class="primary-btn" data-action="play" data-id="${item.id}" data-type="${item.type}">Ver película</button>
-        <button class="favorite-btn ${item.isFavorite ? "active" : ""}" data-action="favorite" aria-label="Agregar a favoritas"><i data-lucide="heart"></i></button>
+        <button class="favorite-btn ${isFavoriteItem(item) ? "active" : ""}" data-action="favorite" data-fav-key="${item.type}:${item.id}" aria-label="Agregar a favoritas"><i data-lucide="heart"></i></button>
       </div>
     </div>
   `;
@@ -296,6 +350,15 @@ function renderHero(item) {
   hero.querySelectorAll("[data-hero-dot]").forEach(dot => {
     dot.addEventListener("click", () => setHero(Number(dot.dataset.heroDot)));
   });
+
+  const heroFav = hero.querySelector('[data-action="favorite"]');
+  if (heroFav) {
+    heroFav.addEventListener("click", event => {
+      event.stopPropagation();
+      toggleFavoriteItem(item);
+      renderHero(item);
+    });
+  }
 
   setupHeroDrag();
   if (window.lucide) lucide.createIcons();
@@ -393,6 +456,69 @@ function setupRowEdgeScroll() {
   });
 }
 
+
+function fillGrid(id, data, emptyText = "Sin contenido por ahora.") {
+  const grid = document.getElementById(id);
+  if (!grid) return;
+
+  if (!data.length) {
+    grid.innerHTML = `<div class="grid-empty">${emptyText}</div>`;
+    return;
+  }
+
+  grid.innerHTML = data.map(item => posterCard(item, false)).join("");
+
+  grid.querySelectorAll(".poster-card").forEach(card => {
+    card.addEventListener("click", () => {
+      const item = allItemsByContinueKey.get(`${card.dataset.type}:${card.dataset.id}`);
+      if (item) openPreview(item);
+    });
+  });
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function searchMatches(item, query) {
+  if (!query) return true;
+  const haystack = [
+    item.title,
+    item.genre,
+    item.genres,
+    item.year,
+    item.type === "series" ? "series serie" : item.type === "concert" ? "concierto concert" : "pelicula movie"
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  return haystack.includes(query);
+}
+
+function renderSearchResults() {
+  const input = document.getElementById("searchInput");
+  const title = document.getElementById("searchResultsTitle");
+  const query = (input?.value || "").trim().toLowerCase();
+  const grid = document.getElementById("searchResults");
+
+  if (!query) {
+    if (title) title.textContent = "Buscar";
+    if (grid) grid.innerHTML = "";
+    return;
+  }
+
+  const items = getAllCatalogItems()
+    .filter(item => searchMatches(item, query))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  if (title) title.textContent = `Resultados para “${input.value.trim()}”`;
+  fillGrid("searchResults", items, "No encontramos resultados para tu búsqueda.");
+}
+
+function renderFavorites() {
+  const favs = loadFavoriteState()
+    .map(entry => allItemsByContinueKey.get(`${entry.type}:${entry.id}`))
+    .filter(Boolean);
+
+  fillGrid("favoritesGrid", favs, "Aún no tienes favoritas. Guarda una película, serie o concierto desde el preview.");
+}
+
 function changePage(page) {
   document.querySelectorAll(".nav-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.page === page);
@@ -407,10 +533,28 @@ function changePage(page) {
 
 function setupNavigation() {
   document.querySelectorAll(".nav-btn").forEach(btn => {
-    btn.addEventListener("click", () => changePage(btn.dataset.page));
+    btn.addEventListener("click", () => {
+      changePage(btn.dataset.page);
+      if (btn.dataset.page === "search") renderSearchResults();
+      if (btn.dataset.page === "favorites") renderFavorites();
+    });
   });
 
+  const searchInput = document.getElementById("searchInput");
+  if (searchInput && searchInput.dataset.ready !== "true") {
+    searchInput.dataset.ready = "true";
+    searchInput.addEventListener("input", renderSearchResults);
+  }
+
   document.addEventListener("click", event => {
+    const favoriteButton = event.target.closest('[data-action="favorite"]');
+    if (favoriteButton) {
+      const key = favoriteButton.dataset.favKey;
+      const item = allItemsByContinueKey.get(key);
+      if (item) toggleFavoriteItem(item);
+      return;
+    }
+
     const playButton = event.target.closest('[data-action="play"]');
     if (!playButton) return;
     const key = `${playButton.dataset.type}:${playButton.dataset.id}`;
@@ -430,6 +574,7 @@ async function init() {
   const allItems = [...movies, ...series].filter(item => item.poster);
   const sortedItems = allItems.sort((a, b) => b.createdAt - a.createdAt);
   allItemsByContinueKey = new Map(allItems.map(item => [`${item.type}:${item.id}`, item]));
+  syncFavoriteUI();
   const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : "movie"}:${item.id}`, item]));
   const configuredNewItems = await readHomeConfigNewItems(allByKey);
   heroItems = configuredNewItems.length ? configuredNewItems : sortedItems.slice(0, 5);
@@ -446,6 +591,9 @@ async function init() {
   fillRow("seriesRow", series, false, true);
   fillRow("concertsRow", concertItems, false, true);
   setupRowEdgeScroll();
+  renderSearchResults();
+  renderFavorites();
+  syncFavoriteUI();
 
   if (window.lucide) lucide.createIcons();
 }
@@ -610,10 +758,11 @@ async function openPreview(item) {
   document.getElementById('previewTitle').textContent = item.title;
   const previewFavorite = document.getElementById('previewFavorite');
   if (previewFavorite) {
-    previewFavorite.classList.toggle('active', Boolean(item.isFavorite));
+    previewFavorite.dataset.favKey = `${item.type}:${item.id}`;
+    previewFavorite.classList.toggle('active', isFavoriteItem(item));
     previewFavorite.onclick = () => {
-      item.isFavorite = !item.isFavorite;
-      previewFavorite.classList.toggle('active', Boolean(item.isFavorite));
+      const active = toggleFavoriteItem(item);
+      previewFavorite.classList.toggle('active', active);
     };
   }
   const meta = [item.duration, item.year, item.genre || item.genres].filter(Boolean).join(' • ');

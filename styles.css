@@ -717,3 +717,86 @@ body {
 .player-overlay.controls-visible .player-back {
   pointer-events: auto !important;
 }
+
+
+.library-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding-top: 18px;
+}
+
+.search-shell {
+  height: 58px;
+  width: min(760px, 100%);
+  border-radius: 999px;
+  background: #1A1A1A;
+  border: 1px solid rgba(255,255,255,.08);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 22px;
+  margin: 0 0 44px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.02);
+}
+
+.search-shell svg {
+  width: 21px;
+  height: 21px;
+  stroke-width: 2;
+  color: rgba(217,217,217,.52);
+  flex: 0 0 auto;
+}
+
+.search-shell input {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--hero-text);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.search-shell input::placeholder {
+  color: rgba(217,217,217,.42);
+}
+
+.search-shell:focus-within {
+  border-color: rgba(215,255,0,.55);
+}
+
+.poster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 180px));
+  gap: 28px 24px;
+  align-items: start;
+}
+
+.poster-grid .poster-card {
+  height: 270px;
+}
+
+.grid-empty {
+  color: rgba(217,217,217,.55);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 520px;
+}
+
+.preview-fav-btn.active svg,
+.favorite-btn.active svg {
+  fill: currentColor;
+}
+
+@media (max-width: 760px) {
+  .poster-grid {
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 20px 16px;
+  }
+
+  .poster-grid .poster-card {
+    height: auto;
+    aspect-ratio: 2 / 3;
+  }
+}
