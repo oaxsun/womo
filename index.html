@@ -7,6 +7,20 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
+<div id="loginScreen" class="login-screen">
+  <img class="login-logo" src="assets/logo.svg" alt="Womo">
+  <h1>Bienvenido a Womo</h1>
+  <p>Continúa viendo tus películas, series y conciertos favoritos.</p>
+
+  <form id="loginForm" class="login-form">
+    <input id="loginEmail" type="email" placeholder="Correo electrónico" required>
+    <input id="loginPassword" type="password" placeholder="Contraseña" required>
+    <button type="submit">Iniciar sesión</button>
+    <div id="loginError" class="login-error"></div>
+  </form>
+</div>
+
   <aside class="sidebar">
     <img class="logo-mark" src="assets/logo.svg" alt="Womo" />
 
@@ -117,6 +131,7 @@
 
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script src="https://unpkg.com/lucide@latest"></script>

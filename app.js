@@ -1024,3 +1024,64 @@ function setupPlayerControls() {
 }
 
 setupPlayerControls();
+
+
+
+const auth = firebase.auth();
+
+function getLoginErrorMessage(error) {
+  const code = error?.code || "";
+  if (code.includes("auth/invalid-email")) return "El correo no es válido.";
+  if (code.includes("auth/user-disabled")) return "Esta cuenta está deshabilitada.";
+  if (code.includes("auth/user-not-found")) return "No existe una cuenta con ese correo.";
+  if (code.includes("auth/wrong-password") || code.includes("auth/invalid-credential")) return "Correo o contraseña incorrectos.";
+  if (code.includes("auth/too-many-requests")) return "Demasiados intentos. Intenta más tarde.";
+  return "No se pudo iniciar sesión. Revisa tus datos.";
+}
+
+function setupLogin() {
+  const screen = document.getElementById("loginScreen");
+  const form = document.getElementById("loginForm");
+  const emailInput = document.getElementById("loginEmail");
+  const passwordInput = document.getElementById("loginPassword");
+  const errorBox = document.getElementById("loginError");
+
+  if (!screen || !form) return;
+
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      screen.classList.add("hidden");
+      localStorage.setItem("womoUser", user.email || user.uid);
+    } else {
+      screen.classList.remove("hidden");
+      localStorage.removeItem("womoUser");
+    }
+  });
+
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (errorBox) errorBox.textContent = "";
+
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+
+    const submitButton = form.querySelector("button");
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = "Iniciando...";
+    }
+
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch (error) {
+      if (errorBox) errorBox.textContent = getLoginErrorMessage(error);
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = "Iniciar sesión";
+      }
+    }
+  });
+}
+
+setupLogin();

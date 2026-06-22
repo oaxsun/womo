@@ -800,3 +800,65 @@ body {
     aspect-ratio: 2 / 3;
   }
 }
+
+.login-screen{
+ position:fixed; inset:0; z-index:5000;
+ background:#0F0F0F;
+ display:flex; flex-direction:column;
+ align-items:center; justify-content:center;
+}
+.login-screen.hidden{display:none;}
+.login-logo{width:80px;margin-bottom:28px;}
+.login-screen h1{margin:0 0 10px;font-size:34px;}
+.login-screen p{margin:0 0 32px;color:#a9a9a9;text-align:center;max-width:420px;}
+.login-form{width:min(420px,90vw);display:flex;flex-direction:column;gap:14px;}
+.login-form input{
+ height:58px;border-radius:999px;border:1px solid rgba(255,255,255,.08);
+ background:#1A1A1A;color:#D9D9D9;padding:0 24px;font-size:16px;
+}
+.login-form button{
+ height:58px;border:none;border-radius:999px;
+ background:#d7ff00;color:#111;font-weight:800;cursor:pointer;
+}
+
+
+/* Login refinements */
+.login-logo{
+  width:64px;
+  margin-bottom:22px;
+}
+
+.login-screen h1{
+  font-size:28px;
+  margin-bottom:8px;
+}
+
+.login-screen p{
+  font-size:14px;
+  max-width:360px;
+  margin-bottom:26px;
+}
+
+.login-form{
+  width:min(360px,88vw);
+  gap:12px;
+}
+
+.login-form input{
+  height:50px;
+  font-size:14px;
+  padding:0 20px;
+}
+
+.login-form button{
+  height:50px;
+  font-size:14px;
+}
+
+.login-error{
+  min-height:18px;
+  color:#ff6b6b;
+  font-size:12px;
+  text-align:center;
+  margin-top:2px;
+}
