@@ -1,38 +1,68 @@
-# Womo Admin Panel
+# Womo Panel v2
 
-Panel web para administrar Womo en `/Panel`.
+Sube esta carpeta `Panel` completa a la raiz del repositorio para entrar en:
 
-## Incluye
+`https://womo.oaxsun.tech/Panel/`
 
-- Login con Firebase Auth Email/Password
-- Home Config: Lo nuevo, Películas y Series
-- Películas
-- Series y episodios
-- Conciertos
-- Importación JSON
+Archivos incluidos:
 
-## Reglas Firestore recomendadas para panel con login
+- `index.html`
+- `panel-admin.js`
+- `panel-admin.css`
 
-Para pruebas con cualquier usuario autenticado:
+## Requisitos Firebase
+
+1. En Firebase Auth activa **Email/Password**.
+2. Crea tu usuario admin.
+3. En Authentication > Settings > Authorized domains agrega `womo.oaxsun.tech`.
+4. Reglas sugeridas para permitir escritura solo a usuarios autenticados:
 
 ```js
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /movies/{movieId} { allow read, write: if request.auth != null; }
-    match /concerts/{concertId} { allow read, write: if request.auth != null; }
-    match /series/{seriesId} {
-      allow read, write: if request.auth != null;
-      match /episodes/{episodeId} { allow read, write: if request.auth != null; }
+
+    match /movies/{movieId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
-    match /homeConfig/{docId} { allow read, write: if request.auth != null; }
+
+    match /concerts/{concertId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    match /series/{seriesId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+
+      match /episodes/{episodeId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
+    }
+
+    match /homeConfig/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
-      match /{document=**} { allow read, write: if request.auth != null && request.auth.uid == userId; }
+
+      match /favorites/{itemId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /continueWatching/{itemId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /episodeProgress/{episodeId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
   }
 }
 ```
-
-Después se puede limitar por correo/UID de admin.
