@@ -146,22 +146,56 @@ const HERO_TIMER_DURATION = 7000;
 let heroDragDeltaX = 0;
 let heroIsDragging = false;
 
-async function readHomeConfigNewItems(allByKey) {
+async function readHomeConfigSections(allByKey, sources = {}) {
+  const empty = { newItems: [], movieItems: [], seriesItems: [], concertItems: [] };
+
+  function sectionItems(section, source, fallbackLimit = 10) {
+    if (!section) return [];
+    const mode = String(section.mode || section.strategy || "recent").toLowerCase();
+    const limit = Number(section.limit || fallbackLimit);
+
+    if (mode === "manual") {
+      const selectedItems = Array.isArray(section.selectedItems) ? section.selectedItems : [];
+      return selectedItems
+        .map(ref => allByKey.get(`${ref.type}:${ref.id}`))
+        .filter(Boolean)
+        .slice(0, limit);
+    }
+
+    if (mode === "popular" || mode === "popularity" || mode === "popularidad") {
+      return [...source]
+        .sort((a, b) => Number(b.popularity || 0) - Number(a.popularity || 0))
+        .slice(0, limit);
+    }
+
+    return [...source]
+      .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+      .slice(0, limit);
+  }
+
   try {
     const doc = await db.collection("homeConfig").doc("main").get();
-    if (!doc.exists) return [];
+    if (!doc.exists) return empty;
 
     const sections = doc.data().sections || {};
-    const newSection = sections.new || sections.news || sections.hero || {};
-    const selectedItems = Array.isArray(newSection.selectedItems) ? newSection.selectedItems : [];
+    const all = sources.all || [];
+    const movies = sources.movies || [];
+    const series = sources.series || [];
+    const concerts = sources.concerts || [];
 
-    return selectedItems
-      .map(ref => allByKey.get(`${ref.type}:${ref.id}`))
-      .filter(Boolean)
-      .slice(0, Number(newSection.limit || 5));
+    const newSection = sections.new || sections.news || sections.hero || {};
+    const newItems = sectionItems(newSection, all, 10);
+    const newKeys = new Set(newItems.map(item => `${item.type}:${item.id}`));
+
+    return {
+      newItems,
+      movieItems: sectionItems(sections.movies, movies.filter(item => !newKeys.has(`${item.type}:${item.id}`)), 10),
+      seriesItems: sectionItems(sections.series, series.filter(item => !newKeys.has(`${item.type}:${item.id}`)), 10),
+      concertItems: sectionItems(sections.concerts, concerts.filter(item => !newKeys.has(`${item.type}:${item.id}`)), 10)
+    };
   } catch (error) {
     console.warn("No se pudo leer homeConfig/main.", error);
-    return [];
+    return empty;
   }
 }
 
@@ -282,8 +316,9 @@ function normalizeMovie(docSnap) {
     hlsUrl: data.hlsUrl || data.videoUrl || data.url || "",
     isFavorite: Boolean(data.isFavorite),
     createdAt: toMillis(data.createdAt),
+    popularity: Number(data.popularity || 0),
     progress: data.progress || 0,
-    type: genre.toLowerCase().includes("concierto") ? "concert" : "movie"
+    type: data.type || "movie"
   };
 }
 
@@ -302,8 +337,32 @@ function normalizeSeries(docSnap) {
     poster: data.posterUrl || data.poster || data.imageUrl || "",
     isFavorite: Boolean(data.isFavorite),
     createdAt: toMillis(data.createdAt),
+    popularity: Number(data.popularity || 0),
     progress: data.progress || 0,
     type: "series"
+  };
+}
+
+function normalizeConcert(docSnap) {
+  const data = docSnap.data();
+  const title = data.title || data.name || cleanTitleFromId(docSnap.id);
+  const genre = normalizeGenres(data.genres || data.genre);
+  const duration = data.duration ? `${data.duration} min` : (data.runtime ? `${data.runtime} min` : "");
+
+  return {
+    id: docSnap.id,
+    title,
+    duration,
+    year: data.year || "",
+    genre,
+    description: data.synopsis || data.description || "",
+    poster: data.posterUrl || data.poster || data.imageUrl || "",
+    hlsUrl: data.hlsUrl || data.videoUrl || data.url || "",
+    isFavorite: Boolean(data.isFavorite),
+    createdAt: toMillis(data.createdAt),
+    popularity: Number(data.popularity || 0),
+    progress: data.progress || 0,
+    type: "concert"
   };
 }
 
@@ -795,28 +854,47 @@ async function init() {
   setupNavigation();
   setupSettings();
 
-  const [movies, series] = await Promise.all([
+  const [movies, series, concerts] = await Promise.all([
     readCollection("movies", normalizeMovie),
-    readCollection("series", normalizeSeries)
+    readCollection("series", normalizeSeries),
+    readCollection("concerts", normalizeConcert)
   ]);
 
-  const allItems = [...movies, ...series].filter(item => item.poster);
-  const sortedItems = allItems.sort((a, b) => b.createdAt - a.createdAt);
+  const allItems = [...movies, ...series, ...concerts].filter(item => item.poster);
+  const sortedItems = [...allItems].sort((a, b) => b.createdAt - a.createdAt);
   allItemsByContinueKey = new Map(allItems.map(item => [`${item.type}:${item.id}`, item]));
   syncFavoriteUI();
-  const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : "movie"}:${item.id}`, item]));
-  const configuredNewItems = await readHomeConfigNewItems(allByKey);
-  heroItems = configuredNewItems.length ? configuredNewItems : sortedItems.slice(0, 5);
+
+  const allByKey = new Map(allItems.map(item => [`${item.type}:${item.id}`, item]));
+  const configured = await readHomeConfigSections(allByKey, {
+    all: allItems,
+    movies: movies.filter(item => item.type === "movie"),
+    series,
+    concerts
+  });
+
+  heroItems = configured.newItems.length ? configured.newItems : sortedItems.slice(0, 5);
   heroIndex = 0;
 
-  const movieItems = movies.filter(item => item.type === "movie");
-  const concertItems = movies.filter(item => item.type === "concert");
+  const newKeys = new Set(heroItems.map(item => `${item.type}:${item.id}`));
+  const movieItems = configured.movieItems.length
+    ? configured.movieItems
+    : movies.filter(item => item.type === "movie" && !newKeys.has(`${item.type}:${item.id}`)).slice(0, 10);
+
+  const seriesItems = configured.seriesItems.length
+    ? configured.seriesItems
+    : series.filter(item => !newKeys.has(`${item.type}:${item.id}`)).slice(0, 10);
+
+  const concertItems = configured.concertItems.length
+    ? configured.concertItems
+    : concerts.filter(item => !newKeys.has(`${item.type}:${item.id}`)).slice(0, 10);
+
   const continueItems = buildContinueItems(sortedItems);
 
   setHero(0);
   fillRow("continueRow", continueItems, true, true);
   fillRow("moviesRow", movieItems, false, true);
-  fillRow("seriesRow", series, false, true);
+  fillRow("seriesRow", seriesItems, false, true);
   fillRow("concertsRow", concertItems, false, true);
   setupRowEdgeScroll();
   renderSearchResults();
