@@ -26,6 +26,7 @@ const fallbackItems = [
 
 const CONTINUE_KEY = "womo_continue_watching";
 const MEMORY_CLEARED_KEY = "womo_memory_cleared";
+const MEMORY_CLEAR_SEEN_KEY = "womo_memory_clear_seen";
 
 const FAVORITES_KEY = "womo_favorites";
 
@@ -118,27 +119,19 @@ let allItemsByContinueKey = new Map();
 
 function buildContinueItems(fallbackList = []) {
   const state = loadContinueState();
-  if (state.length) {
-    return state
-      .sort((a, b) => (b.lastWatchedAt || 0) - (a.lastWatchedAt || 0))
-      .map(entry => {
-        const item = allItemsByContinueKey.get(`${entry.type}:${entry.id}`);
-        return item ? { ...item, progress: entry.progress || item.progress || 5 } : null;
-      })
-      .filter(Boolean);
-  }
+  if (!state.length) return [];
 
-  if (localStorage.getItem(MEMORY_CLEARED_KEY) === "true") return [];
-
-  return fallbackList.slice(0, 10).map((item, index) => ({
-    ...item,
-    progress: item.progress || [62, 18, 44, 75, 28, 53, 36, 81, 12, 67][index % 10]
-  }));
+  return state
+    .sort((a, b) => (b.lastWatchedAt || 0) - (a.lastWatchedAt || 0))
+    .map(entry => {
+      const item = allItemsByContinueKey.get(`${entry.type}:${entry.id}`);
+      return item ? { ...item, progress: entry.progress || item.progress || 5 } : null;
+    })
+    .filter(Boolean);
 }
 
 function refreshContinueRow() {
-  if (!allItemsByContinueKey.size) return;
-  const items = buildContinueItems([...allItemsByContinueKey.values()]);
+  const items = allItemsByContinueKey.size ? buildContinueItems([...allItemsByContinueKey.values()]) : [];
   fillRow("continueRow", items, true, true);
   setupRowEdgeScroll();
 }
@@ -315,6 +308,9 @@ function normalizeSeries(docSnap) {
 }
 
 async function readCollection(name, normalizer) {
+  const user = firebase.auth().currentUser;
+  if (user) await user.getIdToken();
+
   try {
     const snapshot = await db.collection(name).orderBy("createdAt", "desc").limit(60).get();
     return snapshot.docs.map(normalizer);
@@ -617,6 +613,7 @@ document.addEventListener("click", event => {
 
 
 const SESSION_KEY = "womo_session_id";
+const SESSION_STARTED_KEY = "womo_session_started_at";
 
 function getSessionId() {
   let id = localStorage.getItem(SESSION_KEY);
@@ -627,6 +624,20 @@ function getSessionId() {
   return id;
 }
 
+function getSessionStartedAt() {
+  let value = Number(localStorage.getItem(SESSION_STARTED_KEY) || 0);
+  if (!value) {
+    value = Date.now();
+    localStorage.setItem(SESSION_STARTED_KEY, String(value));
+  }
+  return value;
+}
+
+function resetLocalSession() {
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_STARTED_KEY);
+}
+
 let forceLogoutUnsubscribe = null;
 
 async function registerSessionWatch() {
@@ -634,16 +645,29 @@ async function registerSessionWatch() {
   if (!userRef) return;
 
   const sessionId = getSessionId();
+  const sessionStartedAt = getSessionStartedAt();
+
   await userRef.set({
     activeSessionId: sessionId,
     lastLoginAt: Date.now()
   }, { merge: true });
 
   if (forceLogoutUnsubscribe) forceLogoutUnsubscribe();
+
   forceLogoutUnsubscribe = userRef.onSnapshot(doc => {
     const data = doc.data() || {};
-    if (data.forceLogoutAt && data.forceLogoutSessionId !== sessionId) {
+
+    if (data.logoutAllAt && Number(data.logoutAllAt) > sessionStartedAt) {
       firebase.auth().signOut();
+      return;
+    }
+
+    const memoryClearedAt = Number(data.memoryClearedAt || 0);
+    const seenMemoryClear = Number(localStorage.getItem(MEMORY_CLEAR_SEEN_KEY) || 0);
+
+    if (memoryClearedAt && memoryClearedAt > seenMemoryClear) {
+      localStorage.setItem(MEMORY_CLEAR_SEEN_KEY, String(memoryClearedAt));
+      clearLocalMemoryState();
     }
   });
 }
@@ -669,24 +693,8 @@ async function clearUserMetaDocs(userRef) {
   }
 }
 
-async function clearUserMemory() {
-  const userRef = getUserDocRef();
-  if (!userRef) return;
 
-  const confirmed = confirm("¿Seguro que quieres borrar toda tu memoria de Womo? Se eliminarán favoritos, progreso y episodios vistos.");
-  if (!confirmed) return;
-
-  try {
-    await Promise.all([
-      deleteCollectionDocs(userRef.collection("favorites")),
-      deleteCollectionDocs(userRef.collection("continueWatching")),
-      deleteCollectionDocs(userRef.collection("episodeProgress")),
-      clearUserMetaDocs(userRef)
-    ]);
-  } catch (error) {
-    console.warn("No se pudo borrar toda la memoria en Firebase.", error);
-  }
-
+function clearLocalMemoryState() {
   localStorage.removeItem(FAVORITES_KEY);
   localStorage.removeItem(CONTINUE_KEY);
   localStorage.removeItem(EPISODE_PROGRESS_KEY);
@@ -699,12 +707,36 @@ async function clearUserMemory() {
 
   syncFavoriteUI();
   renderFavorites();
-
   fillRow("continueRow", [], true, true);
+
   document.querySelectorAll(".progress span, .episode-progress span").forEach(span => {
     span.style.setProperty("--value", "0%");
   });
+}
 
+async function clearUserMemory() {
+  const userRef = getUserDocRef();
+  if (!userRef) return;
+
+  const confirmed = confirm("¿Seguro que quieres borrar toda tu memoria de Womo? Se eliminarán favoritos, progreso y episodios vistos.");
+  if (!confirmed) return;
+
+  const clearedAt = Date.now();
+
+  try {
+    await Promise.all([
+      deleteCollectionDocs(userRef.collection("favorites")),
+      deleteCollectionDocs(userRef.collection("continueWatching")),
+      deleteCollectionDocs(userRef.collection("episodeProgress")),
+      clearUserMetaDocs(userRef),
+      userRef.set({ memoryClearedAt: clearedAt }, { merge: true })
+    ]);
+  } catch (error) {
+    console.warn("No se pudo borrar toda la memoria en Firebase.", error);
+  }
+
+  localStorage.setItem(MEMORY_CLEAR_SEEN_KEY, String(clearedAt));
+  clearLocalMemoryState();
   alert("Memoria borrada.");
 }
 
@@ -714,6 +746,7 @@ async function logoutCurrentDevice() {
       forceLogoutUnsubscribe();
       forceLogoutUnsubscribe = null;
     }
+    resetLocalSession();
     await firebase.auth().signOut();
   } catch (error) {
     console.warn("No se pudo cerrar sesión.", error);
@@ -727,11 +760,9 @@ async function logoutEverywhere() {
   try {
     const userRef = getUserDocRef();
     if (userRef) {
-      await userRef.set({
-        forceLogoutAt: Date.now(),
-        forceLogoutSessionId: getSessionId()
-      }, { merge: true });
+      await userRef.set({ logoutAllAt: Date.now() }, { merge: true });
     }
+    resetLocalSession();
     await firebase.auth().signOut();
   } catch (error) {
     console.warn("No se pudo cerrar en todos lados.", error);
@@ -776,7 +807,6 @@ async function init() {
   const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : "movie"}:${item.id}`, item]));
   const configuredNewItems = await readHomeConfigNewItems(allByKey);
   heroItems = configuredNewItems.length ? configuredNewItems : sortedItems.slice(0, 5);
-  if (!heroItems.length) heroItems = fallbackItems;
   heroIndex = 0;
 
   const movieItems = movies.filter(item => item.type === "movie");
@@ -1237,12 +1267,23 @@ let womoAppStarted = false;
 async function bootWomoAppAfterLogin() {
   if (womoAppStarted) return;
   womoAppStarted = true;
-  await init();
+
+  const user = firebase.auth().currentUser;
+  if (user) await user.getIdToken();
+
+  localStorage.removeItem(FAVORITES_KEY);
+  localStorage.removeItem(CONTINUE_KEY);
+  localStorage.removeItem(EPISODE_PROGRESS_KEY);
+  localStorage.setItem(MEMORY_CLEARED_KEY, "true");
+
   await Promise.all([
     loadFavoritesFromCloud(),
     loadContinueFromCloud(),
     loadEpisodeProgressFromCloud()
   ]);
+
+  await init();
+
   syncFavoriteUI();
   renderFavorites();
   refreshContinueRow();
@@ -1282,6 +1323,7 @@ function setupLogin() {
       localStorage.removeItem(FAVORITES_KEY);
       localStorage.removeItem(CONTINUE_KEY);
       localStorage.removeItem(EPISODE_PROGRESS_KEY);
+      resetLocalSession();
       womoAppStarted = false;
     }
   });
@@ -1389,6 +1431,7 @@ async function loadContinueFromCloud() {
   const snapshot = await ref.collection("continueWatching").orderBy("lastWatchedAt", "desc").get();
   const items = snapshot.docs.map(doc => doc.data()).filter(entry => entry.id && entry.type);
   saveContinueState(items);
+
   if (items.length) localStorage.removeItem(MEMORY_CLEARED_KEY);
   else localStorage.setItem(MEMORY_CLEARED_KEY, "true");
 }
