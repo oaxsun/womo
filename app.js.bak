@@ -146,54 +146,23 @@ const HERO_TIMER_DURATION = 7000;
 let heroDragDeltaX = 0;
 let heroIsDragging = false;
 
-async function readHomeConfigSections() {
+async function readHomeConfigNewItems(allByKey) {
   try {
     const doc = await db.collection("homeConfig").doc("main").get();
-    if (!doc.exists) return {};
-    return doc.data().sections || {};
-  } catch (error) {
-    console.warn("No se pudo leer homeConfig/main.", error);
-    return {};
-  }
-}
+    if (!doc.exists) return [];
 
-function sortByRecent(items) {
-  return [...items].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-}
+    const sections = doc.data().sections || {};
+    const newSection = sections.new || sections.news || sections.hero || {};
+    const selectedItems = Array.isArray(newSection.selectedItems) ? newSection.selectedItems : [];
 
-function sortByPopularity(items) {
-  return [...items].sort((a, b) => {
-    const aPop = Number(a.popularity || 0);
-    const bPop = Number(b.popularity || 0);
-    if (bPop !== aPop) return bPop - aPop;
-    return (b.createdAt || 0) - (a.createdAt || 0);
-  });
-}
-
-function normalizeSectionConfig(section) {
-  return {
-    mode: section?.mode || "recent",
-    limit: Number(section?.limit || 10),
-    selectedItems: Array.isArray(section?.selectedItems) ? section.selectedItems : []
-  };
-}
-
-function buildConfiguredSection(section, source, allByKey) {
-  const config = normalizeSectionConfig(section);
-
-  if (config.mode === "manual") {
-    return config.selectedItems
+    return selectedItems
       .map(ref => allByKey.get(`${ref.type}:${ref.id}`))
       .filter(Boolean)
-      .filter(item => source.some(sourceItem => sourceItem.type === item.type && sourceItem.id === item.id))
-      .slice(0, config.limit);
+      .slice(0, Number(newSection.limit || 5));
+  } catch (error) {
+    console.warn("No se pudo leer homeConfig/main.", error);
+    return [];
   }
-
-  if (config.mode === "popular") {
-    return sortByPopularity(source).slice(0, config.limit);
-  }
-
-  return sortByRecent(source).slice(0, config.limit);
 }
 
 function stopHeroTimer() {
@@ -313,15 +282,9 @@ function normalizeMovie(docSnap) {
     hlsUrl: data.hlsUrl || data.videoUrl || data.url || "",
     isFavorite: Boolean(data.isFavorite),
     createdAt: toMillis(data.createdAt),
-    popularity: Number(data.popularity || data.views || 0),
     progress: data.progress || 0,
-    type: data.type || (genre.toLowerCase().includes("concierto") ? "concert" : "movie")
+    type: genre.toLowerCase().includes("concierto") ? "concert" : "movie"
   };
-}
-
-function normalizeConcert(docSnap) {
-  const item = normalizeMovie(docSnap);
-  return { ...item, type: "concert" };
 }
 
 function normalizeSeries(docSnap) {
@@ -339,7 +302,6 @@ function normalizeSeries(docSnap) {
     poster: data.posterUrl || data.poster || data.imageUrl || "",
     isFavorite: Boolean(data.isFavorite),
     createdAt: toMillis(data.createdAt),
-    popularity: Number(data.popularity || data.views || 0),
     progress: data.progress || 0,
     type: "series"
   };
@@ -350,14 +312,17 @@ async function readCollection(name, normalizer) {
   if (user) await user.getIdToken();
 
   try {
-    // Leemos sin orderBy para no perder documentos que aún no tengan createdAt.
-    const snapshot = await db.collection(name).get();
-    return snapshot.docs
-      .map(normalizer)
-      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const snapshot = await db.collection(name).orderBy("createdAt", "desc").limit(60).get();
+    return snapshot.docs.map(normalizer);
   } catch (error) {
-    console.error(`No se pudo leer ${name}.`, error);
-    return [];
+    console.warn(`No se pudo leer ${name} con orden. Intentando sin orden.`, error);
+    try {
+      const snapshot = await db.collection(name).get();
+      return snapshot.docs.map(normalizer).sort((a, b) => b.createdAt - a.createdAt);
+    } catch (fallbackError) {
+      console.error(`No se pudo leer ${name}.`, fallbackError);
+      return [];
+    }
   }
 }
 
@@ -830,59 +795,28 @@ async function init() {
   setupNavigation();
   setupSettings();
 
-  const [movies, series, concerts, homeSections] = await Promise.all([
+  const [movies, series] = await Promise.all([
     readCollection("movies", normalizeMovie),
-    readCollection("series", normalizeSeries),
-    readCollection("concerts", normalizeConcert),
-    readHomeConfigSections()
+    readCollection("series", normalizeSeries)
   ]);
 
-  const cleanMovies = movies.filter(item => item.type === "movie" && item.poster);
-  const cleanSeries = series.filter(item => item.poster);
-  const cleanConcerts = concerts.filter(item => item.poster);
-  const allItems = [...cleanMovies, ...cleanSeries, ...cleanConcerts];
-  const sortedItems = sortByRecent(allItems);
-
+  const allItems = [...movies, ...series].filter(item => item.poster);
+  const sortedItems = allItems.sort((a, b) => b.createdAt - a.createdAt);
   allItemsByContinueKey = new Map(allItems.map(item => [`${item.type}:${item.id}`, item]));
   syncFavoriteUI();
-
-  const allByKey = new Map(allItems.map(item => [`${item.type}:${item.id}`, item]));
-
-  const configuredNewItems = buildConfiguredSection(
-    homeSections.new || homeSections.news || homeSections.hero,
-    allItems,
-    allByKey
-  );
-
-  heroItems = configuredNewItems.length ? configuredNewItems.slice(0, 5) : sortedItems.slice(0, 5);
+  const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : "movie"}:${item.id}`, item]));
+  const configuredNewItems = await readHomeConfigNewItems(allByKey);
+  heroItems = configuredNewItems.length ? configuredNewItems : sortedItems.slice(0, 5);
   heroIndex = 0;
 
-  const newKeys = new Set(configuredNewItems.map(item => `${item.type}:${item.id}`));
-
-  const movieItems = buildConfiguredSection(
-    homeSections.movies,
-    cleanMovies.filter(item => !newKeys.has(`${item.type}:${item.id}`)),
-    allByKey
-  );
-
-  const seriesItems = buildConfiguredSection(
-    homeSections.series,
-    cleanSeries.filter(item => !newKeys.has(`${item.type}:${item.id}`)),
-    allByKey
-  );
-
-  const concertItems = buildConfiguredSection(
-    homeSections.concerts,
-    cleanConcerts.filter(item => !newKeys.has(`${item.type}:${item.id}`)),
-    allByKey
-  );
-
+  const movieItems = movies.filter(item => item.type === "movie");
+  const concertItems = movies.filter(item => item.type === "concert");
   const continueItems = buildContinueItems(sortedItems);
 
   setHero(0);
   fillRow("continueRow", continueItems, true, true);
   fillRow("moviesRow", movieItems, false, true);
-  fillRow("seriesRow", seriesItems, false, true);
+  fillRow("seriesRow", series, false, true);
   fillRow("concertsRow", concertItems, false, true);
   setupRowEdgeScroll();
   renderSearchResults();
