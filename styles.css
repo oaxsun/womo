@@ -962,3 +962,16 @@ body {
     width: 100%;
   }
 }
+
+
+.preview-actions {
+  align-items: flex-start;
+}
+
+.preview-actions button {
+  width: min(360px, 100%);
+}
+
+.preview-actions .secondary {
+  border-width: 2px;
+}

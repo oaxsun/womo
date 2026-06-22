@@ -1007,23 +1007,21 @@ async function openPreview(item) {
 
   if (item.type === 'series') {
     const episodes = await readSeriesEpisodes(item.id);
-    actions.innerHTML = state
-      ? `<button class="primary" data-preview-play>${getSeriesContinueLabel(item, episodes)}</button><button class="secondary" data-preview-restart>Reiniciar Episodio</button>`
-      : `<button class="primary" data-preview-play>${getSeriesContinueLabel(item, episodes)}</button>`;
+    actions.innerHTML = `<button class="primary" data-preview-play>${getSeriesContinueLabel(item, episodes)}</button><button class="secondary" data-preview-shuffle>Shuffle</button>`;
     const currentSeason = state?.season || episodes[0]?.season || 1;
     const currentEpisodeNumber = state?.episode || episodes[0]?.episodeNumber || 1;
     const currentEpisode = episodes.find(ep => ep.season === Number(currentSeason) && ep.episodeNumber === Number(currentEpisodeNumber)) || episodes[0] || null;
     const playBtn = actions.querySelector('[data-preview-play]');
-    const restartBtn = actions.querySelector('[data-preview-restart]');
+    const shuffleBtn = actions.querySelector('[data-preview-shuffle]');
     if (playBtn) playBtn.onclick = () => openPlayer(item, { episode: currentEpisode });
-    if (restartBtn) restartBtn.onclick = () => {
-      if (currentEpisode) {
-        const map = loadEpisodeProgress();
-        map[episodeKey(item.id, currentEpisode.season, currentEpisode.episodeNumber, currentEpisode.id)] = 0;
-        localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
-        saveEpisodeProgressToCloud(item.id, currentEpisode, 0);
-      }
-      openPlayer(item, { episode: currentEpisode });
+    if (shuffleBtn) shuffleBtn.onclick = () => {
+      if (!episodes.length) return;
+      const randomEpisode = episodes[Math.floor(Math.random() * episodes.length)];
+      openPlayer(item, {
+        episode: randomEpisode,
+        shuffleMode: true,
+        saveProgress: false
+      });
     };
     renderEpisodes(item.id, episodes);
   } else {
@@ -1085,6 +1083,7 @@ function getItemProgress(item) {
 }
 
 function savePlayerProgress() {
+  if (currentPlayerContext?.saveProgress === false || currentPlayerContext?.shuffleMode) return;
   const video = document.getElementById('womoPlayer');
   if (!video || !currentPlayerContext || !video.duration || !isFinite(video.duration)) return;
 
@@ -1135,9 +1134,16 @@ function openPlayer(item, options = {}) {
   const title = document.getElementById('playerTitle');
   const subtitle = document.getElementById('playerSubtitle');
 
-  currentPlayerContext = { item, episode };
+  currentPlayerContext = {
+    item,
+    episode,
+    saveProgress: options.saveProgress !== false,
+    shuffleMode: Boolean(options.shuffleMode)
+  };
   title.textContent = item.title || "";
-  subtitle.textContent = episode ? `T${episode.season} E${episode.episodeNumber} · ${episode.title}` : "";
+  subtitle.textContent = episode
+    ? `${options.shuffleMode ? "Shuffle Mode · " : ""}T${episode.season} E${episode.episodeNumber} · ${episode.title}`
+    : "";
 
   if (currentHls) {
     currentHls.destroy();
@@ -1223,7 +1229,7 @@ function setupPlayerControls() {
   video.addEventListener('pause', savePlayerProgress);
 
   video.addEventListener('ended', () => {
-    if (!currentPlayerContext) return;
+    if (!currentPlayerContext || currentPlayerContext.saveProgress === false || currentPlayerContext.shuffleMode) return;
     const { item, episode } = currentPlayerContext;
     if (item.type === 'series' && episode) {
       const map = loadEpisodeProgress();
