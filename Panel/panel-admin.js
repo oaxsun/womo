@@ -42,11 +42,14 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+const HOME_SECTION_KEYS = ["new", "movies", "series", "concerts"];
+
 const defaultHomeConfig = {
   sections: {
     new: { mode: "recent", limit: 10, selectedItems: [] },
     movies: { mode: "recent", limit: 10, selectedItems: [] },
-    series: { mode: "recent", limit: 10, selectedItems: [] }
+    series: { mode: "recent", limit: 10, selectedItems: [] },
+    concerts: { mode: "recent", limit: 10, selectedItems: [] }
   }
 };
 
@@ -166,6 +169,7 @@ function sortByPopularity(items) {
 function getRawContentForSection(sectionKey) {
   if (sectionKey === "movies") return state.movies;
   if (sectionKey === "series") return state.series;
+  if (sectionKey === "concerts") return state.concerts;
   return getAllContent();
 }
 
@@ -416,7 +420,7 @@ function render() {
 }
 
 function renderHome() {
-  ["new", "movies", "series"].forEach(sectionKey => {
+  HOME_SECTION_KEYS.forEach(sectionKey => {
     const config = getSectionConfig(sectionKey);
     const modeSelect = document.querySelector(`[data-home-mode="${sectionKey}"]`);
     const picker = document.querySelector(`[data-picker="${sectionKey}"]`);
@@ -470,7 +474,7 @@ function renderSelectedItems(sectionKey) {
   const config = getSectionConfig(sectionKey);
   const previewItems = getPreviewItems(sectionKey);
   const label = config.mode === "manual" ? "Manual" : config.mode === "popular" ? "Preview por popularidad" : "Preview por recientes";
-  const help = sectionKey !== "new" ? `<div class="selection-note">El contenido que ya está en Lo nuevo se excluye automáticamente para evitar repetidos.</div>` : "";
+  const help = sectionKey !== "new" ? `<div class="selection-note">El contenido que ya está en Lo nuevo se excluye automáticamente de Películas, Series y Conciertos para evitar repetidos.</div>` : "";
 
   selectedEl.innerHTML = `
     <div class="selected-summary">${label} · ${previewItems.length}/10 elementos</div>
@@ -564,7 +568,7 @@ async function deleteCurrent() {
 
 async function saveHome() {
   const cleanSections = {};
-  ["new", "movies", "series"].forEach(sectionKey => {
+  HOME_SECTION_KEYS.forEach(sectionKey => {
     const config = getSectionConfig(sectionKey);
     cleanSections[sectionKey] = {
       mode: config.mode,

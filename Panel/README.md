@@ -43,6 +43,7 @@ service cloud.firestore {
       }
     }
 
+    // Home incluye Lo nuevo, Películas, Series y Conciertos
     match /homeConfig/{docId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null;

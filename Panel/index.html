@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Admin</title>
-  <link rel="stylesheet" href="/Panel/panel-admin.css?v=20" />
+  <link rel="stylesheet" href="/Panel/panel-admin.css?v=21" />
 </head>
 <body>
   <section id="loginScreen" class="login-screen">
@@ -63,7 +63,7 @@
           </div>
           <button id="saveHomeBtn" class="primary-btn small">Guardar Home</button>
         </div>
-        <p class="helper">Selecciona qué aparece en Lo nuevo, Películas y Series. Cada sección está limitada a 10 elementos.</p>
+        <p class="helper">Selecciona qué aparece en Lo nuevo, Películas, Series y Conciertos. Cada sección está limitada a 10 elementos.</p>
         <div class="home-sections">
           <article class="home-config">
             <div class="home-config-head">
@@ -79,7 +79,7 @@
             </div>
 
             <div class="manual-picker" data-picker="new">
-              <input data-home-search="new" placeholder="Buscar película o serie para Lo nuevo..." />
+              <input data-home-search="new" placeholder="Buscar película, serie o concierto para Lo nuevo..." />
               <div class="search-results" data-results="new"></div>
             </div>
 
@@ -126,6 +126,27 @@
             </div>
 
             <div class="selected-strip" data-selected="series"></div>
+          </article>
+
+          <article class="home-config">
+            <div class="home-config-head">
+              <div>
+                <p class="eyebrow">Sección 04</p>
+                <h3>Conciertos</h3>
+              </div>
+              <select data-home-mode="concerts" aria-label="Modo Conciertos">
+                <option value="recent">Recientes</option>
+                <option value="popular">Popularidad</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+
+            <div class="manual-picker" data-picker="concerts">
+              <input data-home-search="concerts" placeholder="Buscar concierto para la sección Conciertos..." />
+              <div class="search-results" data-results="concerts"></div>
+            </div>
+
+            <div class="selected-strip" data-selected="concerts"></div>
           </article>
         </div>
       </div>
@@ -266,6 +287,6 @@
     </form>
   </dialog>
 
-  <script type="module" src="/Panel/panel-admin.js?v=20"></script>
+  <script type="module" src="/Panel/panel-admin.js?v=21"></script>
 </body>
 </html>
