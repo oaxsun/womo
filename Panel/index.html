@@ -7,16 +7,33 @@
   <link rel="stylesheet" href="/Panel/panel-admin.css?v=10" />
 </head>
 <body>
-  <aside class="sidebar">
+  <section id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-card">
+      <div class="brand login-brand">WO<span>MO</span></div>
+      <p class="eyebrow">Panel Admin</p>
+      <h1>Iniciar sesión</h1>
+      <label>Correo
+        <input id="loginEmail" type="email" autocomplete="email" required placeholder="tu-correo@gmail.com" />
+      </label>
+      <label>Contraseña
+        <input id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••" />
+      </label>
+      <p id="loginError" class="login-error"></p>
+      <button class="primary-btn" type="submit">Entrar</button>
+    </form>
+  </section>
+
+  <aside class="sidebar hidden">
     <div class="brand">WO<span>MO</span></div>
     <nav>
       <button class="nav-btn active" data-view="home">Home</button>
       <button class="nav-btn" data-view="movies">Películas</button>
       <button class="nav-btn" data-view="series">Series</button>
+      <button class="nav-btn" data-view="concerts">Conciertos</button>
     </nav>
   </aside>
 
-  <main class="app">
+  <main class="app hidden">
     <header class="topbar">
       <div>
         <p class="eyebrow">Wolffel Motion</p>
@@ -27,6 +44,10 @@
         <input id="importMovieInput" type="file" accept="application/json,.json" class="hidden" />
         <button id="importSeriesBtn" class="secondary-btn hidden" type="button">Importar serie</button>
         <input id="importSeriesInput" type="file" accept="application/json,.json" class="hidden" />
+        <button id="importConcertBtn" class="secondary-btn hidden" type="button">Importar concierto</button>
+        <input id="importConcertInput" type="file" accept="application/json,.json" class="hidden" />
+        <span id="userEmail" class="user-email"></span>
+        <button id="logoutBtn" class="secondary-btn" type="button">Salir</button>
         <button id="primaryAction" class="primary-btn">Agregar película</button>
       </div>
     </header>
@@ -116,6 +137,10 @@
 
     <section id="seriesView" class="view">
       <div class="grid-list" id="seriesList"></div>
+    </section>
+
+    <section id="concertsView" class="view">
+      <div class="grid-list" id="concertsList"></div>
     </section>
   </main>
 

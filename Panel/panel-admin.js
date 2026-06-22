@@ -3,6 +3,9 @@ import {
   getFirestore, collection, getDocs, doc, getDoc, setDoc, deleteDoc,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import {
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 
 window.addEventListener("error", (event) => {
@@ -37,6 +40,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
 const defaultHomeConfig = {
   sections: {
@@ -52,6 +56,7 @@ const state = {
   view: "home",
   movies: [],
   series: [],
+  concerts: [],
   homeConfig: clone(defaultHomeConfig),
   editingType: "movie",
   editingId: null,
@@ -63,7 +68,7 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
-const views = { home: $("homeView"), movies: $("moviesView"), series: $("seriesView") };
+const views = { home: $("homeView"), movies: $("moviesView"), series: $("seriesView"), concerts: $("concertsView") };
 const pageTitle = $("pageTitle");
 const primaryAction = $("primaryAction");
 const statusBox = $("status");
@@ -94,7 +99,7 @@ function formatGenresForInput(value) {
 }
 
 function getAllContent() {
-  return [...state.movies, ...state.series];
+  return [...state.movies, ...state.series, ...state.concerts];
 }
 
 function refKey(ref) {
@@ -102,11 +107,30 @@ function refKey(ref) {
 }
 
 function normalizeSelectedItem(item) {
-  return { id: item.id, type: item.type === "series" ? "series" : "movie" };
+  const type = item.type === "series" ? "series" : item.type === "concert" ? "concert" : "movie";
+  return { id: item.id, type };
+}
+
+function typeLabel(type) {
+  if (type === "series") return "Serie";
+  if (type === "concert") return "Concierto";
+  return "Película";
+}
+
+function collectionForType(type) {
+  if (type === "series") return "series";
+  if (type === "concert") return "concerts";
+  return "movies";
+}
+
+function listForType(type) {
+  if (type === "series") return state.series;
+  if (type === "concert") return state.concerts;
+  return state.movies;
 }
 
 function findContentItem(ref) {
-  const list = ref.type === "series" ? state.series : state.movies;
+  const list = listForType(ref.type);
   return list.find(item => item.id === ref.id);
 }
 
@@ -252,6 +276,39 @@ function normalizeEpisodeFromJson(rawEpisode, index = 0) {
   };
 }
 
+
+function normalizeConcertFromJson(rawConcert, index = 0) {
+  const normalized = normalizeMovieFromJson(rawConcert, index);
+  const idSource = rawConcert.id || rawConcert.docId || rawConcert.slug || rawConcert.title || rawConcert.name || `concert-${Date.now()}-${index}`;
+  normalized.id = slugify(String(idSource));
+  normalized.data.type = "concert";
+  normalized.data.isFavorite = false;
+  return normalized;
+}
+
+async function importConcertsFromJson(file) {
+  try {
+    const text = await file.text();
+    const json = JSON.parse(text);
+    const items = Array.isArray(json) ? json : Array.isArray(json.concerts) ? json.concerts : [json];
+    if (!items.length) return showStatus("El JSON no contiene conciertos");
+
+    const normalized = items.map(normalizeConcertFromJson);
+    const invalid = normalized.find(item => !item.data.title);
+    if (invalid) return alert("El JSON debe incluir al menos title en cada concierto. Poster URL y HLS URL se pueden agregar después desde el editor.");
+
+    await Promise.all(normalized.map(item => setDoc(doc(db, "concerts", item.id), item.data, { merge: true })));
+    showStatus(`${normalized.length} concierto${normalized.length === 1 ? "" : "s"} importado${normalized.length === 1 ? "" : "s"}`);
+    await loadAll();
+    setView("concerts");
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo importar el JSON. Revisa que el archivo sea válido.");
+  } finally {
+    $("importConcertInput").value = "";
+  }
+}
+
 async function importMoviesFromJson(file) {
   try {
     const text = await file.text();
@@ -306,14 +363,16 @@ async function importSeriesFromJson(file) {
 }
 
 async function loadAll() {
-  const [moviesSnap, seriesSnap, homeSnap] = await Promise.all([
+  const [moviesSnap, seriesSnap, concertsSnap, homeSnap] = await Promise.all([
     getDocs(collection(db, "movies")),
     getDocs(collection(db, "series")),
+    getDocs(collection(db, "concerts")),
     getDoc(doc(db, "homeConfig", "main"))
   ]);
 
   state.movies = moviesSnap.docs.map(d => ({ id: d.id, ...d.data(), type: "movie" }));
   state.series = seriesSnap.docs.map(d => ({ id: d.id, ...d.data(), type: "series" }));
+  state.concerts = concertsSnap.docs.map(d => ({ id: d.id, ...d.data(), type: "concert" }));
 
   if (homeSnap.exists()) {
     state.homeConfig = {
@@ -334,11 +393,18 @@ function setView(view) {
   state.view = view;
   Object.entries(views).forEach(([key, el]) => el.classList.toggle("active", key === view));
   document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
-  pageTitle.textContent = view === "home" ? "Home" : view === "movies" ? "Películas" : "Series";
-  primaryAction.textContent = view === "series" ? "Agregar serie" : "Agregar película";
+
+  const titles = { home: "Home", movies: "Películas", series: "Series", concerts: "Conciertos" };
+  pageTitle.textContent = titles[view] || "Home";
+
+  if (view === "series") primaryAction.textContent = "Agregar serie";
+  else if (view === "concerts") primaryAction.textContent = "Agregar concierto";
+  else primaryAction.textContent = "Agregar película";
+
   primaryAction.style.visibility = view === "home" ? "hidden" : "visible";
   $("importMovieBtn").classList.toggle("hidden", view !== "movies");
   $("importSeriesBtn").classList.toggle("hidden", view !== "series");
+  $("importConcertBtn").classList.toggle("hidden", view !== "concerts");
   render();
 }
 
@@ -346,6 +412,7 @@ function render() {
   renderHome();
   renderCards("moviesList", state.movies, "movie");
   renderCards("seriesList", state.series, "series");
+  renderCards("concertsList", state.concerts, "concert");
 }
 
 function renderHome() {
@@ -388,7 +455,7 @@ function renderSearchResults(sectionKey) {
         <img src="${item.posterUrl || ""}" alt="" />
         <div>
           <strong>${item.title || item.id}</strong>
-          <span>${item.type === "movie" ? "Película" : "Serie"} · ${item.year || "Sin año"}</span>
+          <span>${typeLabel(item.type)} · ${item.year || "Sin año"}</span>
         </div>
         <button class="add-mini" data-add-home="${sectionKey}" data-id="${item.id}" data-type="${item.type}" ${disabled ? "disabled" : ""}>${reason}</button>
       </div>
@@ -413,7 +480,7 @@ function renderSelectedItems(sectionKey) {
         <img src="${item.posterUrl || ""}" alt="" />
         <div>
           <strong>${item.title || item.id}</strong>
-          <span>${item.type === "movie" ? "Película" : "Serie"} · ${item.year || "Sin año"}</span>
+          <span>${typeLabel(item.type)} · ${item.year || "Sin año"}</span>
         </div>
         ${config.mode === "manual" ? `<div class="selected-actions"><span class="drag-handle" title="Arrastrar">⋮⋮</span><button class="remove-mini" data-remove-home="${sectionKey}" data-id="${item.id}" data-type="${item.type}">×</button></div>` : ""}
       </div>
@@ -428,7 +495,7 @@ function renderCards(containerId, items, type) {
       <h3>${item.title || item.id}</h3>
       <p>${item.year || "Sin año"}</p>
     </article>
-  `).join("") || `<p class="helper">No hay ${type === "movie" ? "películas" : "series"} todavía.</p>`;
+  `).join("") || `<p class="helper">No hay ${type === "movie" ? "películas" : type === "series" ? "series" : "conciertos"} todavía.</p>`;
 }
 
 function openEditor(type, item = null) {
@@ -437,8 +504,8 @@ function openEditor(type, item = null) {
   state.editingSeriesId = type === "series" && item ? item.id : null;
   state.editingEpisodeId = null;
 
-  $("editorType").textContent = type === "movie" ? "Película" : "Serie";
-  $("editorTitle").textContent = item ? `Editar ${item.title || item.id}` : `Agregar ${type === "movie" ? "película" : "serie"}`;
+  $("editorType").textContent = typeLabel(type);
+  $("editorTitle").textContent = item ? `Editar ${item.title || item.id}` : `Agregar ${type === "movie" ? "película" : type === "series" ? "serie" : "concierto"}`;
   $("docId").disabled = Boolean(item);
   $("docId").value = item?.id ?? "";
   $("title").value = item?.title ?? "";
@@ -451,8 +518,8 @@ function openEditor(type, item = null) {
   $("showInNew").checked = false;
   $("showInHome").checked = true;
   $("deleteBtn").classList.toggle("hidden", !item);
-  document.querySelectorAll(".movie-only").forEach(el => el.classList.toggle("hidden", type !== "movie"));
-  $("durationField").classList.toggle("hidden", type !== "movie");
+  document.querySelectorAll(".movie-only").forEach(el => el.classList.toggle("hidden", !(type === "movie" || type === "concert")));
+  $("durationField").classList.toggle("hidden", !(type === "movie" || type === "concert"));
 
   const showEpisodes = type === "series" && Boolean(item);
   $("episodesPanel").classList.toggle("hidden", !showEpisodes);
@@ -476,11 +543,11 @@ async function saveEditor(e) {
     updatedAt: serverTimestamp(),
   };
   if (!state.editingId) baseData.createdAt = serverTimestamp();
-  if (type === "movie") {
+  if (type === "movie" || type === "concert") {
     baseData.duration = Number($("duration").value) || 0;
     baseData.hlsUrl = $("hlsUrl").value.trim();
   }
-  await setDoc(doc(db, type === "movie" ? "movies" : "series", id), baseData, { merge: true });
+  await setDoc(doc(db, collectionForType(type), id), baseData, { merge: true });
   $("editorDialog").close();
   showStatus("Guardado correctamente");
   await loadAll();
@@ -489,7 +556,7 @@ async function saveEditor(e) {
 async function deleteCurrent() {
   if (!state.editingId) return;
   if (!confirm("¿Eliminar este contenido?")) return;
-  await deleteDoc(doc(db, state.editingType === "movie" ? "movies" : "series", state.editingId));
+  await deleteDoc(doc(db, collectionForType(state.editingType), state.editingId));
   $("editorDialog").close();
   showStatus("Eliminado");
   await loadAll();
@@ -681,7 +748,7 @@ function handleCardActivation(target) {
   const contentId = trigger?.dataset.id || card.dataset.id;
   if (!contentType || !contentId) return false;
 
-  const list = contentType === "movie" ? state.movies : state.series;
+  const list = listForType(contentType);
   const item = list.find(i => i.id === contentId);
   if (!item) {
     showStatus("No encontré ese contenido en memoria. Refresca la página.");
@@ -698,16 +765,19 @@ function handleCardActivation(target) {
 }
 
 document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
-primaryAction.addEventListener("click", () => openEditor(state.view === "series" ? "series" : "movie"));
+primaryAction.addEventListener("click", () => openEditor(state.view === "series" ? "series" : state.view === "concerts" ? "concert" : "movie"));
 $("importMovieBtn").addEventListener("click", () => $("importMovieInput").click());
 $("importMovieInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importMoviesFromJson(file); });
 $("importSeriesBtn").addEventListener("click", () => $("importSeriesInput").click());
 $("importSeriesInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importSeriesFromJson(file); });
+$("importConcertBtn").addEventListener("click", () => $("importConcertInput").click());
+$("importConcertInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importConcertsFromJson(file); });
 
 // Extra direct listeners for the Películas and Series grids.
 // This makes the entire card open the same editor used by the manual add flow.
 $("moviesList").addEventListener("click", (e) => handleCardActivation(e.target));
 $("seriesList").addEventListener("click", (e) => handleCardActivation(e.target));
+$("concertsList").addEventListener("click", (e) => handleCardActivation(e.target));
 $("editorForm").addEventListener("submit", saveEditor);
 $("closeEditor").addEventListener("click", () => $("editorDialog").close());
 $("cancelBtn").addEventListener("click", () => $("editorDialog").close());
@@ -795,8 +865,33 @@ function updateEpisodeIdHint() {
   $("episodeDocId").value = episodeDocId(Number($("seasonNumber").value || 1), Number($("episodeNumber").value || 1));
 }
 
-setView("home");
-loadAll().catch(err => {
-  console.error(err);
-  showStatus(`Error Firebase: ${err.code || ""} ${err.message || err}`);
+$("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = $("loginEmail").value.trim();
+  const password = $("loginPassword").value;
+  $("loginError").textContent = "";
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    console.error(error);
+    $("loginError").textContent = error.message || "No se pudo iniciar sesión.";
+  }
+});
+
+$("logoutBtn").addEventListener("click", () => signOut(auth));
+
+onAuthStateChanged(auth, async (user) => {
+  const isLoggedIn = Boolean(user);
+  $("loginScreen").classList.toggle("hidden", isLoggedIn);
+  document.querySelector(".sidebar").classList.toggle("hidden", !isLoggedIn);
+  document.querySelector(".app").classList.toggle("hidden", !isLoggedIn);
+
+  if (!isLoggedIn) return;
+
+  $("userEmail").textContent = user.email || "Admin";
+  setView("home");
+  await loadAll().catch(err => {
+    console.error(err);
+    showStatus(`Error Firebase: ${err.code || ""} ${err.message || err}`);
+  });
 });

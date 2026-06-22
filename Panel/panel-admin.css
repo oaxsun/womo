@@ -41,3 +41,13 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
 .episode-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .episode-toolbar select{min-width:170px;padding:10px 14px;font-size:13px}
 .dialog-tools{display:flex;gap:10px;align-items:center}
+
+
+/* Login */
+.login-screen{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(circle at top,#3a3a3c 0,#282828 44%,#050505 100%);z-index:20;padding:24px}
+.login-card{width:min(420px,94vw);background:#0b0b0b;border:1px solid var(--border);border-radius:30px;padding:30px;display:grid;gap:16px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.login-brand{margin-bottom:4px}
+.login-card h1{font-size:30px;margin-bottom:4px}
+.login-card label{display:grid;gap:8px;color:var(--muted);font-weight:800;font-size:13px}
+.login-error{color:var(--danger);font-size:13px;min-height:18px}
+.user-email{color:var(--muted);font-size:13px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

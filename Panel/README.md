@@ -1,31 +1,38 @@
-# Womo Admin v1
+# Womo Admin Panel
 
-Panel web simple para administrar películas y series de Womo.
+Panel web para administrar Womo en `/Panel`.
 
-## Configuración
+## Incluye
 
-1. Abre `app.js`.
-2. Reemplaza `firebaseConfig` con la configuración web de Firebase:
-   Firebase Console > Project settings > General > Your apps > Web app.
-3. Abre `index.html` con Live Server o súbelo a GitHub Pages.
+- Login con Firebase Auth Email/Password
+- Home Config: Lo nuevo, Películas y Series
+- Películas
+- Series y episodios
+- Conciertos
+- Importación JSON
 
-## Colecciones usadas
+## Reglas Firestore recomendadas para panel con login
 
-- `movies`
-- `series`
-- `series/{seriesId}/episodes`
-
-## Reglas temporales para desarrollo
+Para pruebas con cualquier usuario autenticado:
 
 ```js
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+    match /movies/{movieId} { allow read, write: if request.auth != null; }
+    match /concerts/{concertId} { allow read, write: if request.auth != null; }
+    match /series/{seriesId} {
+      allow read, write: if request.auth != null;
+      match /episodes/{episodeId} { allow read, write: if request.auth != null; }
+    }
+    match /homeConfig/{docId} { allow read, write: if request.auth != null; }
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      match /{document=**} { allow read, write: if request.auth != null && request.auth.uid == userId; }
     }
   }
 }
 ```
 
-No uses esas reglas en producción.
+Después se puede limitar por correo/UID de admin.
