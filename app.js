@@ -619,6 +619,19 @@ async function deleteCollectionDocs(collectionRef) {
   await batch.commit();
 }
 
+
+
+async function clearUserMetaDocs(userRef) {
+  try {
+    await Promise.all([
+      userRef.collection("meta").doc("favorites").delete(),
+      userRef.collection("meta").doc("continueWatching").delete()
+    ]);
+  } catch (error) {
+    console.warn("No se pudieron borrar meta docs anteriores.", error);
+  }
+}
+
 async function clearUserMemory() {
   const userRef = getUserDocRef();
   if (!userRef) return;
@@ -630,7 +643,8 @@ async function clearUserMemory() {
     await Promise.all([
       deleteCollectionDocs(userRef.collection("favorites")),
       deleteCollectionDocs(userRef.collection("continueWatching")),
-      deleteCollectionDocs(userRef.collection("episodeProgress"))
+      deleteCollectionDocs(userRef.collection("episodeProgress")),
+      clearUserMetaDocs(userRef)
     ]);
   } catch (error) {
     console.warn("No se pudo borrar toda la memoria en Firebase.", error);
@@ -647,7 +661,11 @@ async function clearUserMemory() {
 
   syncFavoriteUI();
   renderFavorites();
-  refreshContinueRow();
+
+  const continueRow = document.getElementById("continueRow");
+  const continueSection = continueRow ? continueRow.closest(".content-row") : null;
+  if (continueRow) continueRow.innerHTML = "";
+  if (continueSection) continueSection.classList.add("hidden");
 
   alert("Memoria borrada.");
 }
