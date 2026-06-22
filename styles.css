@@ -862,3 +862,9 @@ body {
   text-align:center;
   margin-top:2px;
 }
+
+.favorite-btn.active svg { fill: currentColor; }
+
+.preview-fav-btn.active svg { fill: currentColor; }
+
+[data-hero-preview], [data-hero-favorite] { pointer-events: auto; cursor: pointer; }

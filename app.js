@@ -216,6 +216,7 @@ function setupHeroDrag() {
   hero.dataset.dragReady = "true";
 
   hero.addEventListener("pointerdown", event => {
+    if (event.target.closest("button, a, input, textarea, select")) return;
     if (heroItems.length < 2) return;
     heroIsDragging = true;
     stopHeroTimer();
@@ -347,8 +348,8 @@ function renderHero(item) {
       <div class="meta">${meta.map(text => `<span>${text}</span>`).join("")}</div>
       <p>${item.description}</p>
       <div class="hero-actions">
-        <button class="primary-btn" data-action="play" data-id="${item.id}" data-type="${item.type}">Ver película</button>
-        <button class="favorite-btn ${isFavoriteItem(item) ? "active" : ""}" data-action="favorite" data-fav-key="${item.type}:${item.id}" aria-label="Agregar a favoritas"><i data-lucide="heart"></i></button>
+        <button type="button" class="primary-btn" data-hero-preview="${item.type}:${item.id}">Reproducir</button>
+        <button type="button" class="favorite-btn ${isFavoriteItem(item) ? "active" : ""}" data-hero-favorite="${item.type}:${item.id}" data-fav-key="${item.type}:${item.id}" aria-label="Agregar a favoritas"><i data-lucide="heart"></i></button>
       </div>
     </div>
   `;
@@ -357,12 +358,25 @@ function renderHero(item) {
     dot.addEventListener("click", () => setHero(Number(dot.dataset.heroDot)));
   });
 
-  const heroFav = hero.querySelector('[data-action="favorite"]');
-  if (heroFav) {
-    heroFav.addEventListener("click", event => {
+
+  const heroPreviewButton = hero.querySelector("[data-hero-preview]");
+  if (heroPreviewButton) {
+    heroPreviewButton.addEventListener("pointerdown", event => event.stopPropagation());
+    heroPreviewButton.addEventListener("click", event => {
+      event.preventDefault();
       event.stopPropagation();
-      toggleFavoriteItem(item);
-      renderHero(item);
+      openPreview(item);
+    });
+  }
+
+  const heroFavoriteButton = hero.querySelector("[data-hero-favorite]");
+  if (heroFavoriteButton) {
+    heroFavoriteButton.addEventListener("pointerdown", event => event.stopPropagation());
+    heroFavoriteButton.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const active = toggleFavoriteItem(item);
+      heroFavoriteButton.classList.toggle("active", active);
     });
   }
 
@@ -557,7 +571,10 @@ function setupNavigation() {
     if (favoriteButton) {
       const key = favoriteButton.dataset.favKey;
       const item = allItemsByContinueKey.get(key);
-      if (item) toggleFavoriteItem(item);
+      if (item) {
+        const active = toggleFavoriteItem(item);
+        favoriteButton.classList.toggle("active", active);
+      }
       return;
     }
 
@@ -568,6 +585,29 @@ function setupNavigation() {
     if (item) openPlayer(item);
   });
 }
+
+
+document.addEventListener("click", event => {
+  const previewButton = event.target.closest("[data-hero-preview]");
+  if (previewButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const item = allItemsByContinueKey.get(previewButton.dataset.heroPreview);
+    if (item) openPreview(item);
+    return;
+  }
+
+  const favButton = event.target.closest("[data-hero-favorite]");
+  if (favButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const item = allItemsByContinueKey.get(favButton.dataset.heroFavorite || favButton.dataset.favKey);
+    if (item) {
+      const active = toggleFavoriteItem(item);
+      favButton.classList.toggle("active", active);
+    }
+  }
+}, true);
 
 async function init() {
   setupNavigation();
