@@ -75,18 +75,37 @@
     <button class="preview-close">×</button>
     <div class="preview-poster-wrap"><img id="previewPoster"></div>
     <div class="preview-content">
-      <h2 id="previewTitle"></h2>
+      <div class="preview-title-row">
+        <h2 id="previewTitle"></h2>
+        <button id="previewFavorite" class="preview-fav-btn" aria-label="Agregar a favoritas"><i data-lucide="heart"></i></button>
+      </div>
       <div id="previewMeta" class="preview-meta"></div>
       <p id="previewDesc"></p>
       <div class="preview-actions" id="previewActions"></div>
-      <h3>Recomendaciones</h3>
-      <div id="previewRecs" class="preview-recs"></div>
+      <div id="previewExtra" class="preview-extra">
+        <h3 id="previewExtraTitle">Recomendaciones</h3>
+        <div id="previewRecs" class="preview-recs"></div>
+      </div>
     </div>
   </div>
 </div>
 
+
+<div id="playerOverlay" class="player-overlay" aria-hidden="true">
+  <div class="player-topbar">
+    <button id="playerBack" class="player-back" aria-label="Volver"><i data-lucide="chevron-left"></i></button>
+    <div>
+      <div id="playerTitle" class="player-title"></div>
+      <div id="playerSubtitle" class="player-subtitle"></div>
+    </div>
+  </div>
+  <video id="womoPlayer" class="womo-player" controls playsinline controlsList="nodownload noplaybackrate" disablePictureInPicture></video>
+</div>
+
+
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="app.js"></script>
 </body>

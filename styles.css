@@ -402,20 +402,318 @@ body {
 
 .content-row.hidden { display: none; }
 
-.preview-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:999}
-.preview-modal.open{display:flex}
-.preview-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(12px)}
-.preview-card{position:relative;width:min(980px,88vw);height:520px;background:#141414;border-radius:24px;display:flex;overflow:hidden;z-index:1}
-.preview-poster-wrap{width:42%;height:100%}
-.preview-poster-wrap img{width:100%;height:100%;object-fit:cover}
-.preview-content{padding:48px 36px;display:flex;flex-direction:column;flex:1}
-.preview-content h2{margin:0 0 12px}
-.preview-meta{color:#d7ff00;margin-bottom:16px}
-.preview-content p{color:#d9d9d9;font-size:14px;line-height:1.5}
-.preview-actions{display:flex;gap:12px;margin:24px 0}
-.preview-actions button{padding:14px 28px;border-radius:999px;border:none}
-.preview-actions .primary{background:#d7ff00}
-.preview-actions .secondary{background:transparent;border:1px solid #d7ff00;color:#d7ff00}
-.preview-recs{display:flex;gap:16px;margin-top:auto}
-.preview-recs img{width:92px;height:138px;object-fit:cover;border-radius:12px}
-.preview-close{position:absolute;right:16px;top:16px;background:none;border:none;color:#fff;font-size:28px;z-index:2}
+
+.preview-modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  padding: 32px;
+}
+
+.preview-modal.open { display: flex; }
+
+.preview-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.64);
+  backdrop-filter: blur(16px);
+}
+
+.preview-card {
+  position: relative;
+  width: min(780px, 90vw);
+  height: min(520px, 82vh);
+  max-height: min(520px, 82vh);
+  background: #141414;
+  border-radius: 24px;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  z-index: 1;
+  box-shadow: 0 24px 90px rgba(0,0,0,.55);
+}
+
+.preview-poster-wrap {
+  flex: 0 0 auto;
+  align-self: stretch;
+  background: transparent;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: hidden;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  line-height: 0;
+}
+
+.preview-poster-wrap img {
+  height: 100%;
+  max-height: none;
+  width: auto;
+  max-width: none;
+  object-fit: contain;
+  object-position: left center;
+  display: block;
+  background: transparent;
+  flex: 0 0 auto;
+}
+
+.preview-content {
+  padding: 42px 36px 34px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.preview-content::-webkit-scrollbar { display: none; }
+
+.preview-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.preview-content h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.05;
+  color: #f2f2f2;
+  text-transform: uppercase;
+  letter-spacing: -.04em;
+  flex: 1;
+}
+
+.preview-fav-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid rgba(215,255,0,.9);
+  background: transparent;
+  color: #d7ff00;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: transform .18s ease, background .18s ease;
+}
+
+.preview-fav-btn:hover { transform: scale(1.05); background: rgba(215,255,0,.08); }
+.preview-fav-btn.active { background: #d7ff00; color: #111; }
+.preview-fav-btn svg { width: 13px; height: 13px; stroke-width: 2.2; }
+
+.preview-meta {
+  color: #d7ff00;
+  margin-bottom: 18px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.preview-content p {
+  color: #d9d9d9;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+  max-width: 520px;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 14px;
+  margin: 30px 0 42px;
+  flex-wrap: wrap;
+}
+
+.preview-actions button {
+  min-width: 260px;
+  padding: 15px 38px;
+  border-radius: 999px;
+  border: none;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.preview-actions .primary { background: #d7ff00; color: #0c0c0c; }
+.preview-actions .secondary { background: transparent; border: 1px solid #d7ff00; color: #d7ff00; }
+
+.preview-extra { margin-top: auto; padding-bottom: 2px; }
+.preview-extra.hidden { display: none; }
+.preview-extra h3 { margin: 0 0 16px; font-size: 16px; color: #fff; }
+.preview-recs { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.preview-recs::-webkit-scrollbar { display: none; }
+.preview-recs img { flex: 0 0 auto; width: 112px; height: 168px; object-fit: cover; border-radius: 10px; background: #d9d9d9; cursor: pointer; transition: transform .2s ease, filter .2s ease; }
+.preview-recs img:hover { transform: translateY(-3px); filter: brightness(1.06); }
+
+.season-block { margin-top: 6px; width: min(620px, 100%); }
+.season-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.season-tab {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.055);
+  color: #d9d9d9;
+  font-weight: 900;
+  cursor: pointer;
+}
+.season-tab.active {
+  background: #d7ff00;
+  color: #101010;
+  border-color: #d7ff00;
+}
+
+.episode-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 6px; width: 100%; }
+.episode-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.035);
+  border: 1px solid rgba(255,255,255,.045);
+}
+.episode-title { color: #f2f2f2; font-size: 14px; font-weight: 800; margin-bottom: 4px; }
+.episode-duration { color: rgba(217,217,217,.65); font-size: 12px; }
+.episode-progress { height: 5px; border-radius: 999px; background: rgba(255,255,255,.25); overflow: hidden; margin-top: 10px; max-width: none; width: 100%; }
+.episode-progress span { display: block; height: 100%; width: var(--value); border-radius: inherit; background: #d7ff00; }
+.episode-check { color: #d7ff00; font-weight: 900; font-size: 18px; }
+
+.preview-close {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.35);
+  border: 1px solid rgba(255,255,255,.08);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  z-index: 2;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .preview-card { flex-direction: column; overflow-y: auto; }
+  .preview-poster-wrap { width: 100%; flex-basis: auto; justify-content: center; background: #0f0f0f; }
+  .preview-poster-wrap img { width: 100%; height: auto; max-width: none; max-height: 60vh; object-fit: contain; }
+}
+
+
+.player-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: #000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.player-overlay.open {
+  display: flex;
+}
+
+.womo-player {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  object-fit: contain;
+}
+
+.player-topbar {
+  position: absolute;
+  top: 22px;
+  left: 22px;
+  right: 22px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #fff;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity .25s ease, transform .25s ease;
+}
+
+.player-overlay:hover .player-topbar,
+.player-overlay.show-controls .player-topbar {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.player-back {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(0,0,0,.46);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  pointer-events: auto;
+  backdrop-filter: blur(12px);
+}
+
+.player-back svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.1;
+}
+
+.player-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  text-shadow: 0 1px 12px rgba(0,0,0,.65);
+}
+
+.player-subtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(255,255,255,.68);
+  font-weight: 700;
+}
+
+
+/* Womo player UI visibility + native download hiding */
+#womoPlayer::-webkit-media-controls-download-button {
+  display: none !important;
+}
+#womoPlayer::-internal-media-controls-download-button {
+  display: none !important;
+}
+#womoPlayer::-webkit-media-controls-enclosure {
+  overflow: hidden;
+}
+
+.player-topbar {
+  opacity: 0 !important;
+  transform: translateY(-10px) !important;
+  pointer-events: none !important;
+  transition: opacity .18s ease, transform .18s ease !important;
+}
+
+.player-overlay.controls-visible .player-topbar {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+}
+
+.player-overlay.controls-visible .player-back {
+  pointer-events: auto !important;
+}
