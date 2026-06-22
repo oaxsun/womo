@@ -4,6 +4,27 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
+
+window.addEventListener("error", (event) => {
+  const box = document.getElementById("status");
+  if (box) {
+    box.textContent = `Error JS: ${event.message}`;
+    box.classList.remove("hidden");
+  }
+  console.error("Womo Admin JS error:", event.error || event.message);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const box = document.getElementById("status");
+  const reason = event.reason;
+  const message = reason?.message || String(reason);
+  if (box) {
+    box.textContent = `Error promesa: ${message}`;
+    box.classList.remove("hidden");
+  }
+  console.error("Womo Admin promise error:", reason);
+});
+
 const firebaseConfig = {
   apiKey: "AIzaSyBGUUoYmYNcQk_T7QvDUKwZmNh-nHOwENY",
   authDomain: "womo-5d922.firebaseapp.com",
@@ -25,11 +46,13 @@ const defaultHomeConfig = {
   }
 };
 
+const clone = (value) => JSON.parse(JSON.stringify(value));
+
 const state = {
   view: "home",
   movies: [],
   series: [],
-  homeConfig: structuredClone(defaultHomeConfig),
+  homeConfig: clone(defaultHomeConfig),
   editingType: "movie",
   editingId: null,
   editingSeriesId: null,
@@ -90,7 +113,7 @@ function findContentItem(ref) {
 function getSectionConfig(sectionKey) {
   if (!state.homeConfig.sections) state.homeConfig.sections = {};
   if (!state.homeConfig.sections[sectionKey]) {
-    state.homeConfig.sections[sectionKey] = structuredClone(defaultHomeConfig.sections[sectionKey]);
+    state.homeConfig.sections[sectionKey] = clone(defaultHomeConfig.sections[sectionKey]);
   }
   const config = state.homeConfig.sections[sectionKey];
   config.limit = 10;
@@ -294,15 +317,15 @@ async function loadAll() {
 
   if (homeSnap.exists()) {
     state.homeConfig = {
-      ...structuredClone(defaultHomeConfig),
+      ...clone(defaultHomeConfig),
       ...homeSnap.data(),
       sections: {
-        ...structuredClone(defaultHomeConfig.sections),
+        ...clone(defaultHomeConfig.sections),
         ...(homeSnap.data().sections || {})
       }
     };
   } else {
-    state.homeConfig = structuredClone(defaultHomeConfig);
+    state.homeConfig = clone(defaultHomeConfig);
   }
   render();
 }
@@ -775,5 +798,5 @@ function updateEpisodeIdHint() {
 setView("home");
 loadAll().catch(err => {
   console.error(err);
-  showStatus("Error conectando Firebase. Revisa app.js");
+  showStatus(`Error Firebase: ${err.code || ""} ${err.message || err}`);
 });
