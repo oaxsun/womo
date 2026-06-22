@@ -25,6 +25,7 @@ const fallbackItems = [
 ];
 
 const CONTINUE_KEY = "womo_continue_watching";
+const MEMORY_CLEARED_KEY = "womo_memory_cleared";
 
 const FAVORITES_KEY = "womo_favorites";
 
@@ -99,6 +100,7 @@ function saveContinueState(items) {
 
 function upsertContinueItem(item, progress = null) {
   if (!item) return;
+  localStorage.removeItem(MEMORY_CLEARED_KEY);
   const newEntry = {
     id: item.id,
     type: item.type,
@@ -125,6 +127,8 @@ function buildContinueItems(fallbackList = []) {
       })
       .filter(Boolean);
   }
+
+  if (localStorage.getItem(MEMORY_CLEARED_KEY) === "true") return [];
 
   return fallbackList.slice(0, 10).map((item, index) => ({
     ...item,
@@ -611,6 +615,39 @@ document.addEventListener("click", event => {
 }, true);
 
 
+
+const SESSION_KEY = "womo_session_id";
+
+function getSessionId() {
+  let id = localStorage.getItem(SESSION_KEY);
+  if (!id) {
+    id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(SESSION_KEY, id);
+  }
+  return id;
+}
+
+let forceLogoutUnsubscribe = null;
+
+async function registerSessionWatch() {
+  const userRef = getUserDocRef();
+  if (!userRef) return;
+
+  const sessionId = getSessionId();
+  await userRef.set({
+    activeSessionId: sessionId,
+    lastLoginAt: Date.now()
+  }, { merge: true });
+
+  if (forceLogoutUnsubscribe) forceLogoutUnsubscribe();
+  forceLogoutUnsubscribe = userRef.onSnapshot(doc => {
+    const data = doc.data() || {};
+    if (data.forceLogoutAt && data.forceLogoutSessionId !== sessionId) {
+      firebase.auth().signOut();
+    }
+  });
+}
+
 async function deleteCollectionDocs(collectionRef) {
   const snapshot = await collectionRef.get();
   if (snapshot.empty) return;
@@ -653,6 +690,7 @@ async function clearUserMemory() {
   localStorage.removeItem(FAVORITES_KEY);
   localStorage.removeItem(CONTINUE_KEY);
   localStorage.removeItem(EPISODE_PROGRESS_KEY);
+  localStorage.setItem(MEMORY_CLEARED_KEY, "true");
 
   getAllCatalogItems().forEach(item => {
     item.isFavorite = false;
@@ -662,16 +700,20 @@ async function clearUserMemory() {
   syncFavoriteUI();
   renderFavorites();
 
-  const continueRow = document.getElementById("continueRow");
-  const continueSection = continueRow ? continueRow.closest(".content-row") : null;
-  if (continueRow) continueRow.innerHTML = "";
-  if (continueSection) continueSection.classList.add("hidden");
+  fillRow("continueRow", [], true, true);
+  document.querySelectorAll(".progress span, .episode-progress span").forEach(span => {
+    span.style.setProperty("--value", "0%");
+  });
 
   alert("Memoria borrada.");
 }
 
 async function logoutCurrentDevice() {
   try {
+    if (forceLogoutUnsubscribe) {
+      forceLogoutUnsubscribe();
+      forceLogoutUnsubscribe = null;
+    }
     await firebase.auth().signOut();
   } catch (error) {
     console.warn("No se pudo cerrar sesión.", error);
@@ -683,9 +725,12 @@ async function logoutEverywhere() {
   if (!confirmed) return;
 
   try {
-    const user = firebase.auth().currentUser;
-    if (user) {
-      await user.getIdToken(true);
+    const userRef = getUserDocRef();
+    if (userRef) {
+      await userRef.set({
+        forceLogoutAt: Date.now(),
+        forceLogoutSessionId: getSessionId()
+      }, { merge: true });
     }
     await firebase.auth().signOut();
   } catch (error) {
@@ -751,7 +796,8 @@ async function init() {
   if (window.lucide) lucide.createIcons();
 }
 
-init();
+// init is started after Firebase Auth resolves.
+
 
 function genreTokens(item) {
   const source = Array.isArray(item.genres) ? item.genres.join(',') : (item.genre || item.genres || '');
@@ -1185,6 +1231,25 @@ setupPlayerControls();
 
 
 
+
+let womoAppStarted = false;
+
+async function bootWomoAppAfterLogin() {
+  if (womoAppStarted) return;
+  womoAppStarted = true;
+  await init();
+  await Promise.all([
+    loadFavoritesFromCloud(),
+    loadContinueFromCloud(),
+    loadEpisodeProgressFromCloud()
+  ]);
+  syncFavoriteUI();
+  renderFavorites();
+  refreshContinueRow();
+  renderSearchResults();
+  await registerSessionWatch();
+}
+
 const auth = firebase.auth();
 
 function getLoginErrorMessage(error) {
@@ -1206,17 +1271,18 @@ function setupLogin() {
 
   if (!screen || !form) return;
 
-  auth.onAuthStateChanged(user => {
+  auth.onAuthStateChanged(async user => {
     if (user) {
       screen.classList.add("hidden");
       localStorage.setItem("womoUser", user.email || user.uid);
-      Promise.all([loadFavoritesFromCloud(), loadContinueFromCloud(), loadEpisodeProgressFromCloud()]).then(()=>{ if(typeof renderFavorites==="function") renderFavorites(); if(typeof refreshContinueRow==="function") refreshContinueRow(); if(typeof syncFavoriteUI==="function") syncFavoriteUI(); });
+      await bootWomoAppAfterLogin();
     } else {
       screen.classList.remove("hidden");
       localStorage.removeItem("womoUser");
       localStorage.removeItem(FAVORITES_KEY);
       localStorage.removeItem(CONTINUE_KEY);
       localStorage.removeItem(EPISODE_PROGRESS_KEY);
+      womoAppStarted = false;
     }
   });
 
@@ -1323,6 +1389,8 @@ async function loadContinueFromCloud() {
   const snapshot = await ref.collection("continueWatching").orderBy("lastWatchedAt", "desc").get();
   const items = snapshot.docs.map(doc => doc.data()).filter(entry => entry.id && entry.type);
   saveContinueState(items);
+  if (items.length) localStorage.removeItem(MEMORY_CLEARED_KEY);
+  else localStorage.setItem(MEMORY_CLEARED_KEY, "true");
 }
 
 async function saveEpisodeProgressToCloud(seriesId, episode, progress) {
