@@ -287,6 +287,13 @@ function normalizeMovie(docSnap) {
   };
 }
 
+function normalizeConcert(docSnap) {
+  return {
+    ...normalizeMovie(docSnap),
+    type: "concert"
+  };
+}
+
 function normalizeSeries(docSnap) {
   const data = docSnap.data();
   const title = data.title || data.name || cleanTitleFromId(docSnap.id);
@@ -795,22 +802,25 @@ async function init() {
   setupNavigation();
   setupSettings();
 
-  const [movies, series] = await Promise.all([
+  const [moviesRaw, series, concertsRaw] = await Promise.all([
     readCollection("movies", normalizeMovie),
-    readCollection("series", normalizeSeries)
+    readCollection("series", normalizeSeries),
+    readCollection("concerts", normalizeConcert)
   ]);
 
-  const allItems = [...movies, ...series].filter(item => item.poster);
+  const movies = moviesRaw.filter(item => item.type !== "concert");
+  const concerts = [...moviesRaw.filter(item => item.type === "concert"), ...concertsRaw];
+  const allItems = [...movies, ...series, ...concerts].filter(item => item.poster);
   const sortedItems = allItems.sort((a, b) => b.createdAt - a.createdAt);
   allItemsByContinueKey = new Map(allItems.map(item => [`${item.type}:${item.id}`, item]));
   syncFavoriteUI();
-  const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : "movie"}:${item.id}`, item]));
+  const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : item.type === "concert" ? "concert" : "movie"}:${item.id}`, item]));
   const configuredNewItems = await readHomeConfigNewItems(allByKey);
   heroItems = configuredNewItems.length ? configuredNewItems : sortedItems.slice(0, 5);
   heroIndex = 0;
 
   const movieItems = movies.filter(item => item.type === "movie");
-  const concertItems = movies.filter(item => item.type === "concert");
+  const concertItems = concerts;
   const continueItems = buildContinueItems(sortedItems);
 
   setHero(0);
@@ -981,8 +991,15 @@ function renderEpisodes(seriesId, episodes) {
 async function openPreview(item) {
   const modal = document.getElementById('previewModal');
   const poster = document.getElementById('previewPoster');
-  poster.src = item.poster || item.posterUrl || '';
+  const posterUrl = item.poster || item.posterUrl || '';
+  poster.src = posterUrl;
   poster.alt = item.title || 'Poster';
+
+  const previewCard = modal?.querySelector('.preview-card');
+  if (previewCard) {
+    previewCard.style.setProperty('--preview-bg', posterUrl ? `url("${String(posterUrl).replace(/"/g, '\\"')}")` : 'none');
+    previewCard.scrollTop = 0;
+  }
 
   document.getElementById('previewTitle').textContent = item.title;
   const previewFavorite = document.getElementById('previewFavorite');
