@@ -1248,3 +1248,1951 @@ body {
   .poster-row { grid-auto-columns: 112px; }
   .poster-card { height: 168px; }
 }
+
+
+/* Mobile layout refinement: hero/news + bottom navbar */
+@media (max-width: 760px) {
+  body {
+    background: #181818;
+  }
+
+  .sidebar {
+    left: 20px !important;
+    right: 20px !important;
+    bottom: 18px !important;
+    top: auto !important;
+    width: auto !important;
+    height: 74px !important;
+    padding: 0 !important;
+    border-radius: 28px !important;
+    background: rgba(28,28,28,.86) !important;
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 18px 60px rgba(0,0,0,.42);
+    flex-direction: row !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+
+  .logo-mark {
+    position: fixed !important;
+    top: 50px !important;
+    left: 20px !important;
+    width: 58px !important;
+    height: auto !important;
+    z-index: 101 !important;
+  }
+
+  .nav {
+    height: 100% !important;
+    flex: 1 !important;
+    width: 100% !important;
+    padding: 0 16px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-around !important;
+    align-items: center !important;
+    gap: 0 !important;
+  }
+
+  .settings-nav {
+    display: none !important;
+  }
+
+  .nav-btn {
+    width: 96px !important;
+    height: 58px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    border-radius: 18px !important;
+    background: transparent !important;
+  }
+
+  .nav-btn.active {
+    background: rgba(255,255,255,.045) !important;
+    color: var(--accent) !important;
+  }
+
+  .nav-btn::after {
+    content: attr(data-label);
+    font-size: 12px;
+    line-height: 1;
+    font-weight: 600;
+    color: currentColor;
+    opacity: .82;
+  }
+
+  .app-shell {
+    margin-left: 0 !important;
+    height: 100dvh !important;
+  }
+
+  .page {
+    padding: 0 20px 122px !important;
+    overflow-y: auto !important;
+  }
+
+  #homePage {
+    padding-top: 0 !important;
+  }
+
+  #homePage .hero {
+    width: calc(100% + 40px) !important;
+    max-width: none !important;
+    height: 470px !important;
+    min-height: 470px !important;
+    max-height: 470px !important;
+    margin: 0 -20px 46px !important;
+    border-radius: 0 !important;
+    display: block !important;
+    position: relative !important;
+    overflow: hidden !important;
+    background: #111 !important;
+  }
+
+  #homePage .hero-poster-wrap {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: #111 !important;
+  }
+
+  #homePage .hero-poster {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center top !important;
+    display: block !important;
+  }
+
+  #homePage .hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(180deg, rgba(24,24,24,0) 28%, rgba(24,24,24,.78) 62%, #181818 100%),
+      linear-gradient(90deg, rgba(24,24,24,.44) 0%, rgba(24,24,24,0) 48%);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  #homePage .hero-info {
+    position: absolute !important;
+    left: 20px !important;
+    right: 20px !important;
+    bottom: 28px !important;
+    height: auto !important;
+    padding: 0 !important;
+    z-index: 2 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-end !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  #homePage .hero-dots {
+    order: 0;
+    display: flex !important;
+    gap: 8px !important;
+    margin: 0 0 2px !important;
+  }
+
+  #homePage .hero-info h1 {
+    order: 1;
+    margin: 0 !important;
+    font-size: 23px !important;
+    line-height: 1 !important;
+    letter-spacing: -.055em !important;
+    max-width: 92% !important;
+    color: #fff !important;
+  }
+
+  #homePage .meta {
+    order: 2;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+  }
+
+  #homePage .hero-info p {
+    order: 3;
+    max-width: 100% !important;
+    max-height: 64px !important;
+    height: auto !important;
+    margin: 4px 0 0 !important;
+    font-size: 10px !important;
+    line-height: 1.28 !important;
+    -webkit-line-clamp: 5 !important;
+  }
+
+  #homePage .hero-actions {
+    order: 4;
+    width: 100% !important;
+    justify-content: center !important;
+    margin-top: 22px !important;
+    display: flex !important;
+  }
+
+  #homePage .primary-btn {
+    min-width: 252px !important;
+    height: 43px !important;
+    padding: 0 34px !important;
+    font-size: 18px !important;
+    font-weight: 500 !important;
+  }
+
+  #homePage .favorite-btn {
+    display: none !important;
+  }
+
+  #homePage .content-row {
+    max-width: none !important;
+    margin: 0 0 44px !important;
+  }
+
+  #homePage .row-header {
+    margin-bottom: 14px !important;
+  }
+
+  #homePage .row-header h2 {
+    font-size: 18px !important;
+  }
+
+  #homePage .poster-row {
+    grid-auto-columns: 120px !important;
+    gap: 20px !important;
+    padding-bottom: 8px !important;
+  }
+
+  #homePage .poster-card {
+    height: 180px !important;
+    border-radius: 8px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .nav-btn {
+    width: 82px !important;
+  }
+
+  #homePage .primary-btn {
+    min-width: 230px !important;
+  }
+
+  #homePage .hero {
+    height: 450px !important;
+    min-height: 450px !important;
+    max-height: 450px !important;
+  }
+
+  #homePage .poster-row {
+    grid-auto-columns: 112px !important;
+  }
+
+  #homePage .poster-card {
+    height: 168px !important;
+  }
+}
+
+
+/* Mobile cleanup: only 3 nav buttons, no logo/settings, centered hero poster */
+@media (max-width: 760px) {
+  .logo-mark {
+    display: none !important;
+  }
+
+  .settings-nav {
+    display: none !important;
+  }
+
+  .nav {
+    justify-content: space-between !important;
+    padding: 0 18px !important;
+  }
+
+  .nav-btn {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    max-width: 112px !important;
+  }
+
+  #homePage .hero-poster {
+    object-position: center center !important;
+  }
+}
+
+
+/* Mobile preview modal layout */
+@media (max-width: 760px) {
+  #homePage .primary-btn {
+    font-size: 16px !important;
+  }
+
+  .preview-modal {
+    padding: 0 !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    z-index: 1100 !important;
+  }
+
+  .preview-backdrop {
+    background: #181818 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .preview-card {
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    background: #181818 !important;
+    display: block !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    box-shadow: none !important;
+    padding-bottom: 112px !important;
+    scrollbar-width: none !important;
+  }
+
+  .preview-card::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .preview-close {
+    width: 34px !important;
+    height: 34px !important;
+    top: 36px !important;
+    right: 20px !important;
+    font-size: 21px !important;
+    background: rgba(18,18,18,.88) !important;
+    border: 0 !important;
+    z-index: 5 !important;
+  }
+
+  .preview-poster-wrap {
+    position: relative !important;
+    width: 100% !important;
+    height: 620px !important;
+    display: block !important;
+    overflow: hidden !important;
+    background: #111 !important;
+  }
+
+  .preview-poster-wrap::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(180deg, rgba(24,24,24,0) 34%, rgba(24,24,24,.74) 68%, #181818 100%),
+      linear-gradient(90deg, rgba(24,24,24,.25) 0%, rgba(24,24,24,0) 46%);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .preview-poster-wrap img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center center !important;
+    display: block !important;
+  }
+
+  .preview-content {
+    position: relative !important;
+    z-index: 2 !important;
+    margin-top: -270px !important;
+    padding: 0 20px 0 !important;
+    overflow: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: auto !important;
+  }
+
+  .preview-title-row {
+    align-items: center !important;
+    gap: 12px !important;
+    margin: 0 0 8px !important;
+  }
+
+  .preview-content h2 {
+    font-size: 23px !important;
+    line-height: 1 !important;
+    letter-spacing: -.055em !important;
+    max-width: calc(100% - 56px) !important;
+  }
+
+  .preview-fav-btn {
+    position: fixed !important;
+    top: 36px !important;
+    right: 20px !important;
+    width: 42px !important;
+    height: 42px !important;
+    background: rgba(18,18,18,.88) !important;
+    border: 0 !important;
+    z-index: 6 !important;
+  }
+
+  .preview-fav-btn svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .preview-meta {
+    font-size: 10px !important;
+    margin-bottom: 22px !important;
+  }
+
+  .preview-content p {
+    font-size: 10px !important;
+    line-height: 1.28 !important;
+    max-width: 100% !important;
+    color: #f0f0f0 !important;
+    margin-bottom: 28px !important;
+  }
+
+  .preview-actions {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+    margin: 0 0 38px !important;
+    align-items: center !important;
+  }
+
+  .preview-actions button {
+    width: min(326px, 100%) !important;
+    min-width: 0 !important;
+    height: 54px !important;
+    padding: 0 24px !important;
+    font-size: 20px !important;
+    font-weight: 400 !important;
+    border-radius: 999px !important;
+  }
+
+  .preview-actions .secondary {
+    border-width: 1.5px !important;
+  }
+
+  .preview-extra {
+    margin-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  .preview-extra h3 {
+    font-size: 18px !important;
+    margin: 0 0 14px !important;
+  }
+
+  .preview-recs {
+    display: grid !important;
+    grid-auto-flow: column !important;
+    grid-auto-columns: 120px !important;
+    gap: 20px !important;
+    overflow-x: auto !important;
+    padding-bottom: 8px !important;
+  }
+
+  .preview-recs img {
+    width: 120px !important;
+    height: 180px !important;
+    border-radius: 8px !important;
+    object-fit: cover !important;
+  }
+
+  .season-block {
+    width: 100% !important;
+    margin-top: 0 !important;
+  }
+
+  .season-tabs {
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+    overflow-x: auto !important;
+    padding-bottom: 2px !important;
+  }
+
+  .season-tab {
+    width: 38px !important;
+    height: 38px !important;
+    flex: 0 0 auto !important;
+  }
+
+  .episode-list {
+    gap: 10px !important;
+  }
+
+  .episode-item {
+    padding: 15px 16px !important;
+    border-radius: 14px !important;
+  }
+
+  .episode-title {
+    font-size: 14px !important;
+  }
+
+  .episode-duration {
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .preview-poster-wrap {
+    height: 590px !important;
+  }
+
+  .preview-content {
+    margin-top: -250px !important;
+  }
+
+  .preview-actions button {
+    width: min(326px, 100%) !important;
+    height: 52px !important;
+    font-size: 19px !important;
+  }
+}
+
+
+/* Mobile preview refinements */
+@media (max-width: 760px) {
+  .preview-poster-wrap {
+    height: 620px !important;
+    position: relative !important;
+    overflow: hidden !important;
+  }
+
+  .preview-poster-wrap::after {
+    content: "" !important;
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 2 !important;
+    pointer-events: none !important;
+    background:
+      linear-gradient(180deg, rgba(24,24,24,0) 22%, rgba(24,24,24,.36) 48%, rgba(24,24,24,.90) 76%, #181818 100%),
+      linear-gradient(0deg, #181818 0%, rgba(24,24,24,0) 32%) !important;
+  }
+
+  .preview-poster-wrap img {
+    object-position: center center !important;
+  }
+
+  .preview-fav-btn {
+    top: 36px !important;
+    left: 20px !important;
+    right: auto !important;
+    width: 42px !important;
+    height: 42px !important;
+    z-index: 7 !important;
+  }
+
+  .preview-close {
+    top: 36px !important;
+    right: 20px !important;
+    left: auto !important;
+    z-index: 7 !important;
+  }
+
+  .preview-actions button {
+    width: min(260px, 100%) !important;
+    height: 43px !important;
+    font-size: 16px !important;
+    padding: 0 20px !important;
+  }
+
+  .season-block {
+    width: 100% !important;
+  }
+
+  .season-tabs {
+    width: min(260px, 100%) !important;
+  }
+
+  .season-tab {
+    width: 43px !important;
+    height: 43px !important;
+  }
+
+  .episode-list {
+    width: min(326px, 100%) !important;
+  }
+
+  .episode-item {
+    width: 100% !important;
+    min-height: 64px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .preview-poster-wrap {
+    height: 590px !important;
+  }
+
+  .preview-actions button {
+    width: min(260px, 100%) !important;
+    height: 42px !important;
+    font-size: 15px !important;
+  }
+
+  .episode-list {
+    width: 100% !important;
+  }
+}
+
+
+/* Mobile preview overlay + clean nav icons */
+@media (max-width: 760px) {
+  .nav-btn::after {
+    content: none !important;
+    display: none !important;
+  }
+
+  .nav-btn {
+    height: 54px !important;
+    gap: 0 !important;
+  }
+
+  .nav-btn svg {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  .preview-poster-wrap {
+    position: relative !important;
+    isolation: isolate !important;
+  }
+
+  .preview-poster-wrap::after {
+    content: "" !important;
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 2 !important;
+    pointer-events: none !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 18%,
+        rgba(24,24,24,.34) 42%,
+        rgba(24,24,24,.82) 68%,
+        #181818 100%
+      ) !important;
+  }
+
+  .preview-content {
+    z-index: 4 !important;
+  }
+
+  .preview-content::before {
+    content: "" !important;
+    position: absolute !important;
+    left: -20px !important;
+    right: -20px !important;
+    top: -86px !important;
+    height: 250px !important;
+    z-index: -1 !important;
+    pointer-events: none !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 0%,
+        rgba(24,24,24,.78) 38%,
+        #181818 100%
+      ) !important;
+  }
+
+  .season-tabs,
+  .episode-list {
+    width: min(406px, 100%) !important;
+  }
+
+  .episode-item {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .season-tabs,
+  .episode-list {
+    width: 100% !important;
+  }
+}
+
+
+/* Mobile preview: move content/overlay higher over poster */
+@media (max-width: 760px) {
+  .preview-poster-wrap {
+    height: 620px !important;
+  }
+
+  .preview-poster-wrap::after {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 12%,
+        rgba(24,24,24,.18) 34%,
+        rgba(24,24,24,.70) 58%,
+        rgba(24,24,24,.94) 78%,
+        #181818 100%
+      ) !important;
+  }
+
+  .preview-content {
+    margin-top: -360px !important;
+    padding: 0 20px 0 !important;
+  }
+
+  .preview-content::before {
+    top: -130px !important;
+    height: 360px !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 0%,
+        rgba(24,24,24,.54) 28%,
+        rgba(24,24,24,.92) 66%,
+        #181818 100%
+      ) !important;
+  }
+
+  .preview-title-row {
+    margin-bottom: 8px !important;
+  }
+
+  .preview-meta {
+    margin-bottom: 18px !important;
+  }
+
+  .preview-content p {
+    margin-bottom: 26px !important;
+  }
+
+  .preview-actions {
+    margin: 0 0 34px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .preview-content {
+    margin-top: -340px !important;
+  }
+
+  .preview-content::before {
+    top: -120px !important;
+    height: 340px !important;
+  }
+}
+
+
+/* Mobile preview: apply same overlay/content position to movies, series and concerts */
+@media (max-width: 760px) {
+  .preview-content {
+    margin-top: -360px !important;
+    padding-left: 25px !important;
+    padding-right: 25px !important;
+  }
+
+  .preview-content::before {
+    left: -25px !important;
+    right: -25px !important;
+    top: -135px !important;
+    height: 365px !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 0%,
+        rgba(24,24,24,.54) 28%,
+        rgba(24,24,24,.92) 66%,
+        #181818 100%
+      ) !important;
+  }
+
+  .preview-poster-wrap::after {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 12%,
+        rgba(24,24,24,.18) 34%,
+        rgba(24,24,24,.70) 58%,
+        rgba(24,24,24,.94) 78%,
+        #181818 100%
+      ) !important;
+  }
+
+  .preview-content h2 {
+    font-size: 21px !important;
+    line-height: 1.02 !important;
+    font-weight: 800 !important;
+    letter-spacing: -.045em !important;
+  }
+
+  .preview-meta {
+    font-size: 9px !important;
+    margin-bottom: 16px !important;
+    font-weight: 800 !important;
+  }
+
+  .preview-content p {
+    font-size: 9.5px !important;
+    line-height: 1.26 !important;
+    font-weight: 500 !important;
+    margin-bottom: 24px !important;
+  }
+
+  .preview-actions {
+    margin-bottom: 32px !important;
+  }
+
+  .preview-actions button {
+    font-weight: 400 !important;
+  }
+
+  .preview-extra h3 {
+    font-size: 17px !important;
+    font-weight: 800 !important;
+  }
+
+  .preview-recs {
+    padding-left: 0 !important;
+  }
+
+  .season-block,
+  .season-tabs,
+  .episode-list {
+    width: 100% !important;
+  }
+
+  .episode-item {
+    width: 100% !important;
+    min-height: 64px !important;
+  }
+
+  .preview-fav-btn.active {
+    background: var(--accent) !important;
+    color: #111 !important;
+  }
+
+  .preview-fav-btn.active svg {
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+
+  .favorite-btn.active {
+    color: var(--accent) !important;
+  }
+
+  .favorite-btn.active svg {
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .preview-content {
+    margin-top: -340px !important;
+    padding-left: 25px !important;
+    padding-right: 25px !important;
+  }
+
+  .preview-content::before {
+    top: -125px !important;
+    height: 345px !important;
+  }
+}
+
+
+/* Mobile preview final tuning */
+@media (max-width: 760px) {
+
+  /* Same infinite overlay feeling as home hero */
+  .preview-content {
+    margin-top: -430px !important;
+  }
+
+  .preview-content::before {
+    top: -220px !important;
+    height: 520px !important;
+    left: -25px !important;
+    right: -25px !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 0%,
+        rgba(24,24,24,.20) 18%,
+        rgba(24,24,24,.55) 42%,
+        rgba(24,24,24,.88) 70%,
+        #181818 100%
+      ) !important;
+  }
+
+  .preview-poster-wrap::after {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 0%,
+        rgba(24,24,24,.10) 20%,
+        rgba(24,24,24,.38) 46%,
+        rgba(24,24,24,.78) 68%,
+        #181818 100%
+      ) !important;
+  }
+
+  /* Equal size close/fav buttons */
+  .preview-close,
+  .preview-fav-btn {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    border-radius: 999px !important;
+  }
+
+  .preview-close svg,
+  .preview-fav-btn svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  /* Much wider episode cards */
+  .episode-list {
+    width: 100% !important;
+  }
+
+  .episode-item {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 72px !important;
+    padding: 16px 18px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+  }
+
+  .episode-title {
+    font-size: 15px !important;
+  }
+
+  .episode-duration {
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .preview-content {
+    margin-top: -410px !important;
+  }
+
+  .preview-content::before {
+    top: -205px !important;
+    height: 500px !important;
+  }
+}
+
+
+/* Mobile preview: match Home hero overlay behavior exactly */
+@media (max-width: 760px) {
+  .preview-card {
+    background: #181818 !important;
+  }
+
+  .preview-poster-wrap {
+    height: 620px !important;
+    position: relative !important;
+    overflow: hidden !important;
+    background: #111 !important;
+  }
+
+  .preview-poster-wrap img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center center !important;
+    display: block !important;
+  }
+
+  .preview-poster-wrap::after {
+    content: "" !important;
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 2 !important;
+    pointer-events: none !important;
+    background:
+      linear-gradient(180deg, rgba(24,24,24,0) 28%, rgba(24,24,24,.78) 62%, #181818 100%),
+      linear-gradient(90deg, rgba(24,24,24,.44) 0%, rgba(24,24,24,0) 48%) !important;
+  }
+
+  .preview-content {
+    position: relative !important;
+    z-index: 4 !important;
+    margin-top: -300px !important;
+    padding-left: 25px !important;
+    padding-right: 25px !important;
+    padding-bottom: 0 !important;
+    background: transparent !important;
+  }
+
+  .preview-content::before {
+    content: none !important;
+    display: none !important;
+  }
+
+  .preview-title-row,
+  .preview-meta,
+  .preview-content p,
+  .preview-actions,
+  .preview-extra {
+    position: relative !important;
+    z-index: 5 !important;
+  }
+
+  .preview-actions {
+    margin-top: 30px !important;
+  }
+
+  .preview-fav-btn {
+    position: absolute !important;
+    top: 36px !important;
+    left: 20px !important;
+    right: auto !important;
+    z-index: 8 !important;
+  }
+
+  .preview-close {
+    position: absolute !important;
+    top: 36px !important;
+    right: 20px !important;
+    left: auto !important;
+    z-index: 8 !important;
+  }
+
+  .preview-fav-btn,
+  .preview-close {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    border-radius: 999px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .preview-poster-wrap {
+    height: 590px !important;
+  }
+
+  .preview-content {
+    margin-top: -285px !important;
+  }
+}
+
+
+/* Restore overlay and move content up */
+@media (max-width:760px){
+
+  .preview-poster-wrap::after{
+    content:"" !important;
+    position:absolute !important;
+    inset:0 !important;
+    z-index:2 !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 10%,
+        rgba(24,24,24,.18) 32%,
+        rgba(24,24,24,.55) 52%,
+        rgba(24,24,24,.88) 72%,
+        #181818 100%
+      ) !important;
+  }
+
+  .preview-content{
+    margin-top:-350px !important; /* +50px higher */
+    z-index:5 !important;
+  }
+
+  .preview-title-row,
+  .preview-meta,
+  .preview-content p,
+  .preview-actions,
+  .preview-extra{
+    position:relative !important;
+    z-index:6 !important;
+  }
+}
+
+@media (max-width:380px){
+  .preview-content{
+    margin-top:-335px !important;
+  }
+}
+
+
+/* Mobile preview overlay hard fix */
+@media (max-width:760px){
+  .preview-poster-wrap{
+    position:relative !important;
+    overflow:hidden !important;
+  }
+
+  .preview-poster-wrap::before{
+    content:"" !important;
+    position:absolute !important;
+    inset:0 !important;
+    z-index:3 !important;
+    pointer-events:none !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 8%,
+        rgba(24,24,24,.28) 28%,
+        rgba(24,24,24,.74) 52%,
+        #181818 78%,
+        #181818 100%
+      ) !important;
+  }
+
+  .preview-poster-wrap::after{
+    content:"" !important;
+    position:absolute !important;
+    inset:0 !important;
+    z-index:4 !important;
+    pointer-events:none !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 0%,
+        rgba(24,24,24,0) 18%,
+        rgba(24,24,24,.52) 46%,
+        #181818 82%,
+        #181818 100%
+      ) !important;
+  }
+
+  .preview-content{
+    margin-top:-400px !important; /* 50px higher */
+    z-index:6 !important;
+  }
+
+  .preview-content::before{
+    content:"" !important;
+    display:block !important;
+    position:absolute !important;
+    left:-25px !important;
+    right:-25px !important;
+    top:-170px !important;
+    height:440px !important;
+    z-index:-1 !important;
+    pointer-events:none !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(24,24,24,0) 0%,
+        rgba(24,24,24,.62) 34%,
+        rgba(24,24,24,.96) 68%,
+        #181818 100%
+      ) !important;
+  }
+
+  .preview-title-row,
+  .preview-meta,
+  .preview-content p,
+  .preview-actions,
+  .preview-extra{
+    position:relative !important;
+    z-index:7 !important;
+  }
+
+  .preview-fav-btn{
+    position:absolute !important;
+    top:36px !important;
+    left:20px !important;
+    right:auto !important;
+    width:42px !important;
+    height:42px !important;
+    z-index:9 !important;
+  }
+
+  .preview-close{
+    position:absolute !important;
+    top:36px !important;
+    right:20px !important;
+    left:auto !important;
+    width:42px !important;
+    height:42px !important;
+    z-index:9 !important;
+  }
+}
+
+@media (max-width:380px){
+  .preview-content{
+    margin-top:-380px !important;
+  }
+}
+
+
+/* Move favorite button back to top-left and raise content */
+@media (max-width:760px){
+
+  .preview-fav-btn{
+    position:fixed !important;
+    top:36px !important;
+    left:20px !important;
+    right:auto !important;
+    bottom:auto !important;
+    z-index:9999 !important;
+    width:42px !important;
+    height:42px !important;
+  }
+
+  .preview-close{
+    position:fixed !important;
+    top:36px !important;
+    right:20px !important;
+    left:auto !important;
+    z-index:9999 !important;
+  }
+
+  .preview-content{
+    margin-top:-450px !important; /* +50px */
+  }
+
+  .preview-content::before{
+    top:-220px !important;
+    height:500px !important;
+  }
+}
+
+@media (max-width:380px){
+  .preview-content{
+    margin-top:-430px !important;
+  }
+}
+
+
+/* Mobile preview: fav/close scroll with modal content */
+@media (max-width:760px){
+  .preview-fav-btn{
+    position:absolute !important;
+    top:36px !important;
+    left:20px !important;
+    right:auto !important;
+    bottom:auto !important;
+    z-index:9 !important;
+  }
+
+  .preview-close{
+    position:absolute !important;
+    top:36px !important;
+    right:20px !important;
+    left:auto !important;
+    bottom:auto !important;
+    z-index:9 !important;
+  }
+}
+
+
+/* Rebuilt Preview Modal: mobile preview hero uses the exact same visual logic as Home News hero */
+@media (max-width: 760px) {
+  .preview-modal {
+    padding: 0 !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    z-index: 1100 !important;
+  }
+
+  .preview-backdrop {
+    background: #181818 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .preview-card {
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    background: #181818 !important;
+    display: block !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    box-shadow: none !important;
+    padding-bottom: 112px !important;
+    scrollbar-width: none !important;
+  }
+
+  .preview-card::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .preview-hero {
+    width: 100% !important;
+    height: 470px !important;
+    min-height: 470px !important;
+    max-height: 470px !important;
+    position: relative !important;
+    overflow: hidden !important;
+    background: #111 !important;
+  }
+
+  .preview-hero-poster,
+  #previewPoster {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center center !important;
+    display: block !important;
+  }
+
+  .preview-hero::after {
+    content: "" !important;
+    position: absolute !important;
+    inset: 0 !important;
+    pointer-events: none !important;
+    z-index: 1 !important;
+    background:
+      linear-gradient(180deg, rgba(24,24,24,0) 28%, rgba(24,24,24,.78) 62%, #181818 100%),
+      linear-gradient(90deg, rgba(24,24,24,.44) 0%, rgba(24,24,24,0) 48%) !important;
+  }
+
+  .preview-hero-content {
+    position: absolute !important;
+    left: 25px !important;
+    right: 25px !important;
+    bottom: 28px !important;
+    z-index: 2 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    background: transparent !important;
+  }
+
+  .preview-poster-wrap,
+  .preview-content {
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+
+  .preview-poster-wrap::before,
+  .preview-poster-wrap::after,
+  .preview-content::before,
+  .preview-content::after {
+    content: none !important;
+    display: none !important;
+  }
+
+  .preview-title-row {
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  .preview-content h2,
+  .preview-hero-content h2 {
+    margin: 0 !important;
+    color: #fff !important;
+    font-size: 23px !important;
+    line-height: 1 !important;
+    letter-spacing: -.055em !important;
+    text-transform: uppercase !important;
+    font-weight: 800 !important;
+    max-width: 92% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .preview-meta {
+    color: var(--accent) !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+    font-weight: 800 !important;
+    margin: 0 !important;
+  }
+
+  .preview-hero-content p,
+  #previewDesc {
+    margin: 4px 0 0 !important;
+    color: #f0f0f0 !important;
+    max-width: 100% !important;
+    max-height: 64px !important;
+    font-size: 10px !important;
+    line-height: 1.28 !important;
+    font-weight: 500 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 5 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  .preview-actions {
+    width: 100% !important;
+    margin: 22px 0 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 14px !important;
+  }
+
+  .preview-actions button {
+    width: min(252px, 100%) !important;
+    min-width: 0 !important;
+    height: 43px !important;
+    padding: 0 24px !important;
+    border-radius: 999px !important;
+    font-size: 16px !important;
+    font-weight: 400 !important;
+  }
+
+  .preview-actions .secondary {
+    border-width: 1.5px !important;
+  }
+
+  .preview-fav-btn,
+  .preview-close {
+    position: absolute !important;
+    top: 36px !important;
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    border-radius: 999px !important;
+    z-index: 3 !important;
+    background: rgba(18,18,18,.88) !important;
+    border: 0 !important;
+    color: #fff !important;
+  }
+
+  .preview-fav-btn {
+    left: 20px !important;
+    right: auto !important;
+  }
+
+  .preview-close {
+    right: 20px !important;
+    left: auto !important;
+    font-size: 21px !important;
+    line-height: 1 !important;
+  }
+
+  .preview-fav-btn svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .preview-fav-btn.active {
+    background: var(--accent) !important;
+    color: #111 !important;
+  }
+
+  .preview-fav-btn.active svg {
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+
+  .preview-body {
+    position: relative !important;
+    z-index: 2 !important;
+    padding: 24px 25px 0 !important;
+    background: #181818 !important;
+  }
+
+  .preview-extra {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .preview-extra h3 {
+    margin: 0 0 14px !important;
+    color: #fff !important;
+    font-size: 17px !important;
+    font-weight: 800 !important;
+  }
+
+  .preview-recs {
+    display: grid !important;
+    grid-auto-flow: column !important;
+    grid-auto-columns: 120px !important;
+    gap: 20px !important;
+    overflow-x: auto !important;
+    padding-bottom: 8px !important;
+    scrollbar-width: none !important;
+  }
+
+  .preview-recs::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .preview-recs img {
+    width: 120px !important;
+    height: 180px !important;
+    border-radius: 8px !important;
+    object-fit: cover !important;
+  }
+
+  .season-block,
+  .season-tabs,
+  .episode-list {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .season-tabs {
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+    overflow-x: auto !important;
+    padding-bottom: 2px !important;
+  }
+
+  .season-tab {
+    width: 38px !important;
+    height: 38px !important;
+    flex: 0 0 auto !important;
+  }
+
+  .episode-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .episode-item {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 72px !important;
+    padding: 16px 18px !important;
+    border-radius: 14px !important;
+  }
+
+  .episode-title {
+    font-size: 15px !important;
+  }
+
+  .episode-duration {
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .preview-hero {
+    height: 450px !important;
+    min-height: 450px !important;
+    max-height: 450px !important;
+  }
+
+  .preview-hero-content {
+    bottom: 26px !important;
+  }
+
+  .preview-actions button {
+    width: min(230px, 100%) !important;
+  }
+}
+
+/* Desktop preview modal: same visual logic as the approved mobile modal */
+@media (min-width: 761px) {
+  .preview-modal {
+    padding: 32px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 1100 !important;
+  }
+
+  .preview-backdrop {
+    background: rgba(0,0,0,.72) !important;
+    backdrop-filter: blur(18px) !important;
+    -webkit-backdrop-filter: blur(18px) !important;
+  }
+
+  .preview-card {
+    width: min(920px, calc(100vw - 88px)) !important;
+    height: min(86vh, 760px) !important;
+    max-height: min(86vh, 760px) !important;
+    border-radius: 26px !important;
+    background: #181818 !important;
+    display: block !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    box-shadow: 0 28px 110px rgba(0,0,0,.68) !important;
+    scrollbar-width: none !important;
+  }
+
+  .preview-card::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .preview-hero {
+    position: relative !important;
+    width: 100% !important;
+    height: min(560px, 68vh) !important;
+    min-height: 470px !important;
+    overflow: hidden !important;
+    background: #111 !important;
+  }
+
+  .preview-hero-poster,
+  #previewPoster {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    object-fit: cover !important;
+    object-position: center center !important;
+    background: #111 !important;
+  }
+
+  .preview-hero::after {
+    content: "" !important;
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 1 !important;
+    pointer-events: none !important;
+    background:
+      linear-gradient(180deg, rgba(24,24,24,0) 20%, rgba(24,24,24,.46) 52%, rgba(24,24,24,.94) 82%, #181818 100%),
+      linear-gradient(90deg, rgba(24,24,24,.72) 0%, rgba(24,24,24,.35) 42%, rgba(24,24,24,0) 100%) !important;
+  }
+
+  .preview-hero-content {
+    position: absolute !important;
+    left: clamp(34px, 5vw, 58px) !important;
+    right: clamp(34px, 5vw, 58px) !important;
+    bottom: 42px !important;
+    z-index: 2 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    background: transparent !important;
+  }
+
+  .preview-title-row {
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  .preview-hero-content h2,
+  .preview-content h2 {
+    margin: 0 !important;
+    color: #fff !important;
+    font-size: clamp(34px, 5vw, 58px) !important;
+    line-height: .95 !important;
+    letter-spacing: -.06em !important;
+    text-transform: uppercase !important;
+    font-weight: 900 !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .preview-meta {
+    color: var(--accent) !important;
+    margin: 0 !important;
+    font-size: 12px !important;
+    line-height: 1.2 !important;
+    font-weight: 900 !important;
+  }
+
+  .preview-hero-content p,
+  #previewDesc {
+    margin: 2px 0 0 !important;
+    color: #f2f2f2 !important;
+    max-width: 620px !important;
+    max-height: 70px !important;
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+    font-weight: 500 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 4 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  .preview-actions {
+    width: auto !important;
+    margin: 24px 0 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 14px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .preview-actions button {
+    width: auto !important;
+    min-width: 190px !important;
+    height: 46px !important;
+    padding: 0 30px !important;
+    border-radius: 999px !important;
+    font-size: 15px !important;
+    font-weight: 800 !important;
+  }
+
+  .preview-actions .secondary {
+    border-width: 1.5px !important;
+  }
+
+  .preview-fav-btn,
+  .preview-close {
+    position: absolute !important;
+    top: 24px !important;
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    border-radius: 999px !important;
+    z-index: 3 !important;
+    background: rgba(18,18,18,.82) !important;
+    border: 0 !important;
+    color: #fff !important;
+  }
+
+  .preview-fav-btn {
+    left: 24px !important;
+    right: auto !important;
+  }
+
+  .preview-close {
+    right: 24px !important;
+    left: auto !important;
+    font-size: 23px !important;
+    line-height: 1 !important;
+  }
+
+  .preview-fav-btn svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .preview-fav-btn.active {
+    background: var(--accent) !important;
+    color: #111 !important;
+  }
+
+  .preview-fav-btn.active svg {
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+
+  .preview-body {
+    position: relative !important;
+    z-index: 2 !important;
+    background: #181818 !important;
+    padding: 26px clamp(34px, 5vw, 58px) 42px !important;
+  }
+
+  .preview-extra {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .preview-extra h3 {
+    margin: 0 0 18px !important;
+    color: #fff !important;
+    font-size: 19px !important;
+    font-weight: 900 !important;
+  }
+
+  .preview-recs {
+    display: grid !important;
+    grid-auto-flow: column !important;
+    grid-auto-columns: 132px !important;
+    gap: 18px !important;
+    overflow-x: auto !important;
+    padding-bottom: 8px !important;
+    scrollbar-width: none !important;
+  }
+
+  .preview-recs::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .preview-recs img {
+    width: 132px !important;
+    height: 198px !important;
+    border-radius: 10px !important;
+    object-fit: cover !important;
+    background: #d9d9d9 !important;
+  }
+
+  .season-block,
+  .season-tabs,
+  .episode-list {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .season-tabs {
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+    overflow-x: auto !important;
+    padding-bottom: 2px !important;
+  }
+
+  .episode-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .episode-item {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 74px !important;
+    padding: 17px 20px !important;
+    border-radius: 15px !important;
+    background: rgba(255,255,255,.045) !important;
+    border: 1px solid rgba(255,255,255,.06) !important;
+    cursor: pointer !important;
+  }
+}
+
+/* Desktop preview modal: vertical poster-style frame */
+@media (min-width: 761px) {
+  .preview-card {
+    width: min(460px, calc(100vw - 64px)) !important;
+    height: min(92vh, 820px) !important;
+    max-height: min(92vh, 820px) !important;
+    border-radius: 28px !important;
+  }
+
+  .preview-hero {
+    height: 590px !important;
+    min-height: 590px !important;
+    max-height: 590px !important;
+  }
+
+  .preview-hero-poster,
+  #previewPoster {
+    object-fit: cover !important;
+    object-position: center center !important;
+  }
+
+  .preview-hero::after {
+    background:
+      linear-gradient(180deg, rgba(24,24,24,0) 26%, rgba(24,24,24,.72) 63%, #181818 100%),
+      linear-gradient(90deg, rgba(24,24,24,.42) 0%, rgba(24,24,24,0) 56%) !important;
+  }
+
+  .preview-hero-content {
+    left: 28px !important;
+    right: 28px !important;
+    bottom: 30px !important;
+    gap: 8px !important;
+  }
+
+  .preview-hero-content h2,
+  .preview-content h2 {
+    font-size: 28px !important;
+    line-height: .98 !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .preview-meta {
+    font-size: 10px !important;
+  }
+
+  .preview-hero-content p,
+  #previewDesc {
+    max-width: 100% !important;
+    max-height: 64px !important;
+    font-size: 10.5px !important;
+    line-height: 1.3 !important;
+    -webkit-line-clamp: 5 !important;
+  }
+
+  .preview-actions {
+    width: 100% !important;
+    margin-top: 22px !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 13px !important;
+  }
+
+  .preview-actions button {
+    width: min(270px, 100%) !important;
+    min-width: 0 !important;
+    height: 44px !important;
+    font-size: 15px !important;
+    font-weight: 500 !important;
+  }
+
+  .preview-fav-btn,
+  .preview-close {
+    top: 24px !important;
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .preview-fav-btn {
+    left: 24px !important;
+  }
+
+  .preview-close {
+    right: 24px !important;
+  }
+
+  .preview-body {
+    padding: 24px 28px 42px !important;
+  }
+
+  .preview-extra h3 {
+    font-size: 17px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .preview-recs {
+    grid-auto-columns: 120px !important;
+    gap: 16px !important;
+  }
+
+  .preview-recs img {
+    width: 120px !important;
+    height: 180px !important;
+  }
+}
+
+@media (min-width: 761px) and (max-height: 760px) {
+  .preview-hero {
+    height: 520px !important;
+    min-height: 520px !important;
+    max-height: 520px !important;
+  }
+}
+
+
+/* Stable fix: keep preview title on one line */
+.preview-title-row,
+.preview-hero-content {
+  min-width: 0 !important;
+}
+
+.preview-hero-content h2,
+.preview-content h2 {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+@media (min-width: 761px) {
+  .preview-hero-content h2,
+  .preview-content h2 {
+    max-width: 100% !important;
+    font-size: clamp(22px, 3.3vw, 28px) !important;
+  }
+}

@@ -134,16 +134,22 @@
 <div id="previewModal" class="preview-modal">
   <div class="preview-backdrop"></div>
   <div class="preview-card">
-    <button class="preview-close">×</button>
-    <div class="preview-poster-wrap"><img id="previewPoster"></div>
-    <div class="preview-content">
-      <div class="preview-title-row">
-        <h2 id="previewTitle"></h2>
-        <button id="previewFavorite" class="preview-fav-btn" aria-label="Agregar a favoritas"><i data-lucide="heart"></i></button>
+    <div class="preview-hero">
+      <img id="previewPoster" class="preview-hero-poster" alt="">
+      <button id="previewFavorite" class="preview-fav-btn" aria-label="Agregar a favoritos"><i data-lucide="heart"></i></button>
+      <button class="preview-close" aria-label="Cerrar">×</button>
+
+      <div class="preview-hero-content">
+        <div class="preview-title-row">
+          <h2 id="previewTitle"></h2>
+        </div>
+        <div id="previewMeta" class="preview-meta"></div>
+        <p id="previewDesc"></p>
+        <div class="preview-actions" id="previewActions"></div>
       </div>
-      <div id="previewMeta" class="preview-meta"></div>
-      <p id="previewDesc"></p>
-      <div class="preview-actions" id="previewActions"></div>
+    </div>
+
+    <div class="preview-body">
       <div id="previewExtra" class="preview-extra">
         <h3 id="previewExtraTitle">Recomendaciones</h3>
         <div id="previewRecs" class="preview-recs"></div>
