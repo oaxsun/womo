@@ -40,6 +40,7 @@
       <section class="content-row">
         <div class="row-header">
           <h2>Continuar viendo</h2>
+          <button type="button" data-view-all="continue" class="hidden">Ver todo</button>
         </div>
         <div class="poster-row" id="continueRow"></div>
       </section>
@@ -47,7 +48,7 @@
       <section class="content-row">
         <div class="row-header">
           <h2>Películas</h2>
-          <button>Ver todo</button>
+          <button type="button" data-view-all="movies">Ver todo</button>
         </div>
         <div class="poster-row" id="moviesRow"></div>
       </section>
@@ -55,7 +56,7 @@
       <section class="content-row">
         <div class="row-header">
           <h2>Series</h2>
-          <button>Ver todo</button>
+          <button type="button" data-view-all="series">Ver todo</button>
         </div>
         <div class="poster-row" id="seriesRow"></div>
       </section>
@@ -63,7 +64,7 @@
       <section class="content-row">
         <div class="row-header">
           <h2>Conciertos</h2>
-          <button>Ver todo</button>
+          <button type="button" data-view-all="concerts">Ver todo</button>
         </div>
         <div class="poster-row" id="concertsRow"></div>
       </section>
@@ -93,6 +94,35 @@
           </div>
           <div class="poster-grid" id="favoritesGrid"></div>
         </section>
+      </div>
+    </section>
+
+    <section class="page" id="viewAllPage">
+      <div class="library-page view-all-page">
+        <div class="view-all-topbar">
+          <button id="viewAllBack" class="view-all-back" type="button" aria-label="Volver">
+            <i data-lucide="chevron-left"></i>
+            <span>Volver</span>
+          </button>
+        </div>
+
+        <header class="view-all-header">
+          
+          <h1 id="viewAllTitle">Ver todo</h1>
+          <span id="viewAllCount">0 títulos</span>
+        </header>
+
+        <div class="view-all-controls">
+          
+          <div id="viewAllCategories" class="view-all-categories"></div>
+<div class="view-all-sort-wrap"><select id="viewAllSort" aria-label="Ordenar contenido">
+            <option value="recent">Más recientes</option>
+            <option value="title">A-Z</option>
+            <option value="year">Año</option>
+          </select></div>
+        </div>
+
+        <div class="poster-grid view-all-grid" id="viewAllGrid"></div>
       </div>
     </section>
 
@@ -137,7 +167,7 @@
     <div class="preview-hero">
       <img id="previewPoster" class="preview-hero-poster" alt="">
       <button id="previewFavorite" class="preview-fav-btn" aria-label="Agregar a favoritos"><i data-lucide="heart"></i></button>
-      <button class="preview-close" aria-label="Cerrar">×</button>
+      <button class="preview-close" aria-label="Cerrar">‹</button>
 
       <div class="preview-hero-content">
         <div class="preview-title-row">

@@ -120,6 +120,8 @@ function upsertContinueItem(item, progress = null) {
 }
 
 let allItemsByContinueKey = new Map();
+let viewAllCollections = { continue: [], movies: [], series: [], concerts: [], all: [] };
+let currentViewAllKey = "movies";
 
 function buildContinueItems(fallbackList = []) {
   const state = loadContinueState();
@@ -136,7 +138,9 @@ function buildContinueItems(fallbackList = []) {
 
 function refreshContinueRow() {
   const items = allItemsByContinueKey.size ? buildContinueItems([...allItemsByContinueKey.values()]) : [];
+  viewAllCollections.continue = items;
   fillRow("continueRow", items, true, true);
+  if (currentViewAllKey === "continue") renderViewAll();
   setupRowEdgeScroll();
 }
 
@@ -407,7 +411,41 @@ function posterCard(item, showProgress = false) {
   `;
 }
 
+
+function updateViewAllButtonsVisibility(sectionId, count) {
+  const selectors = [
+    `[data-view-all="${sectionId}"]`,
+    `[data-section="${sectionId}"][data-action="view-all"]`,
+    `button[data-view="${sectionId}"]`,
+    `#${sectionId}ViewAll`,
+    `#viewAll${sectionId.charAt(0).toUpperCase() + sectionId.slice(1)}`
+  ];
+
+  selectors.forEach(selector => {
+    document.querySelectorAll(selector).forEach(button => {
+      if (sectionId === "continue" || sectionId === "continueRow") {
+        button.classList.add("hidden");
+        button.style.display = "none";
+        return;
+      }
+
+      const show = Number(count || 0) > 5;
+      button.classList.toggle("hidden", !show);
+      button.style.display = show ? "" : "none";
+    });
+  });
+}
+
+function hideContinueViewAllButtons() {
+  document.querySelectorAll('[data-view-all="continue"], [data-view-all="continueRow"], #continueViewAll, #continueRowViewAll').forEach(button => {
+    button.classList.add("hidden");
+    button.style.display = "none";
+  });
+}
+
 function fillRow(id, data, progress = false, hideWhenEmpty = false) {
+  const rowLimit = id === "continueRow" ? 20 : 5;
+  updateViewAllButtonsVisibility(id, Array.isArray(data) ? data.length : 0);
   const row = document.getElementById(id);
   if (!row) return;
 
@@ -509,6 +547,71 @@ function fillGrid(id, data, emptyText = "Sin contenido por ahora.") {
   if (window.lucide) lucide.createIcons();
 }
 
+
+function normalizeViewAllItems(key) {
+  if (key === "continue") return buildContinueItems([...allItemsByContinueKey.values()]);
+  return viewAllCollections[key] || [];
+}
+
+function viewAllMeta(key) {
+  const meta = {
+    continue: { title: "Continuar viendo", eyebrow: "Tu actividad", empty: "No tienes contenido en progreso." },
+    movies: { title: "Películas", eyebrow: "Catálogo", empty: "No hay películas disponibles por ahora." },
+    series: { title: "Series", eyebrow: "Catálogo", empty: "No hay series disponibles por ahora." },
+    concerts: { title: "Conciertos", eyebrow: "Catálogo", empty: "No hay conciertos disponibles por ahora." },
+    all: { title: "Todo el catálogo", eyebrow: "Womo", empty: "No hay contenido disponible por ahora." }
+  };
+  return meta[key] || meta.all;
+}
+
+function getViewAllFilteredItems() {
+  const input = document.getElementById("viewAllSearch");
+  const sort = document.getElementById("viewAllSort");
+  const query = (input?.value || "").trim().toLowerCase();
+  const sortMode = sort?.value || "recent";
+
+  let items = normalizeViewAllItems(currentViewAllKey)
+    .filter(item => searchMatches(item, query));
+
+  if (sortMode === "title") {
+    items = items.sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "es"));
+  } else if (sortMode === "year") {
+    items = items.sort((a, b) => Number(b.year || 0) - Number(a.year || 0));
+  } else {
+    items = items.sort((a, b) => Number(b.createdAt || b.lastWatchedAt || 0) - Number(a.createdAt || a.lastWatchedAt || 0));
+  }
+
+  return items;
+}
+
+function renderViewAll() {
+  const meta = viewAllMeta(currentViewAllKey);
+  const title = document.getElementById("viewAllTitle");
+  const eyebrow = document.getElementById("viewAllEyebrow");
+  const count = document.getElementById("viewAllCount");
+  const input = document.getElementById("viewAllSearch");
+  const items = getViewAllFilteredItems();
+
+  if (title) title.textContent = meta.title;
+  if (eyebrow) eyebrow.textContent = meta.eyebrow;
+  if (count) count.textContent = `${items.length} ${items.length === 1 ? "título" : "títulos"}`;
+  if (input) input.placeholder = `Buscar en ${meta.title.toLowerCase()}`;
+
+  fillGrid("viewAllGrid", items, meta.empty);
+}
+
+function openViewAll(key) {
+  setTimeout(() => womoPrepareViewAllMockupFixed(items), 0);
+  currentViewAllKey = key || "all";
+  const input = document.getElementById("viewAllSearch");
+  const sort = document.getElementById("viewAllSort");
+  if (input) input.value = "";
+  if (sort) sort.value = "recent";
+  changePage("viewAll");
+  renderViewAll();
+  if (window.lucide) lucide.createIcons();
+}
+
 function searchMatches(item, query) {
   if (!query) return true;
   const haystack = [
@@ -577,6 +680,30 @@ function setupNavigation() {
     searchInput.dataset.ready = "true";
     searchInput.addEventListener("input", renderSearchResults);
   }
+
+  const viewAllSearch = document.getElementById("viewAllSearch");
+  if (viewAllSearch && viewAllSearch.dataset.ready !== "true") {
+    viewAllSearch.dataset.ready = "true";
+    viewAllSearch.addEventListener("input", renderViewAll);
+  }
+
+  const viewAllSort = document.getElementById("viewAllSort");
+  if (viewAllSort && viewAllSort.dataset.ready !== "true") {
+    viewAllSort.dataset.ready = "true";
+    viewAllSort.addEventListener("change", renderViewAll);
+  }
+
+  const viewAllBack = document.getElementById("viewAllBack");
+  if (viewAllBack && viewAllBack.dataset.ready !== "true") {
+    viewAllBack.dataset.ready = "true";
+    viewAllBack.addEventListener("click", () => changePage("home"));
+  }
+
+  document.querySelectorAll("[data-view-all]").forEach(button => {
+    if (button.dataset.ready === "true") return;
+    button.dataset.ready = "true";
+    button.addEventListener("click", () => openViewAll(button.dataset.viewAll));
+  });
 
   document.addEventListener("click", event => {
     const favoriteButton = event.target.closest('[data-action="favorite"]');
@@ -826,6 +953,14 @@ async function init() {
   const movieItems = movies.filter(item => item.type === "movie");
   const concertItems = concerts;
   const continueItems = buildContinueItems(sortedItems);
+
+  viewAllCollections = {
+    continue: continueItems,
+    movies: movieItems,
+    series,
+    concerts: concertItems,
+    all: sortedItems
+  };
 
   setHero(0);
   fillRow("continueRow", continueItems, true, true);
@@ -2174,3 +2309,272 @@ document.addEventListener("click", () => {
 document.addEventListener("DOMContentLoaded", () => {
   document.body.dataset.womoStartedPreviewRefreshBound = "true";
 });
+
+
+document.addEventListener("DOMContentLoaded", () => {
+  hideContinueViewAllButtons();
+});
+
+
+function applyPreviewTopButtonsLayout() {
+  const closeBtn = document.getElementById("previewClose") || document.querySelector(".preview-close");
+  if (closeBtn) {
+    closeBtn.textContent = "‹";
+    closeBtn.setAttribute("aria-label", "Volver");
+    closeBtn.style.left = "16px";
+    closeBtn.style.right = "auto";
+  }
+
+  const favBtn = document.getElementById("previewFavorite")
+    || document.getElementById("previewFav")
+    || document.querySelector(".preview-favorite")
+    || document.querySelector(".preview-fav")
+    || document.querySelector(".preview-card .favorite-btn")
+    || document.querySelector(".preview-modal .favorite-btn");
+
+  if (favBtn) {
+    favBtn.style.right = "16px";
+    favBtn.style.left = "auto";
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  applyPreviewTopButtonsLayout();
+  document.body.dataset.womoPreviewTopButtonsSwapped = "true";
+});
+
+document.addEventListener("click", () => {
+  setTimeout(applyPreviewTopButtonsLayout, 30);
+}, true);
+
+
+
+/* Safe View All mockup behavior - no global click hijack */
+let womoViewAllCategory = "All";
+let womoViewAllItems = [];
+
+function womoGenreTokens(item) {
+  const raw = item?.genre || item?.genres || item?.category || item?.categories || "";
+  const values = Array.isArray(raw) ? raw : String(raw).split(/[,/|·]+/);
+  return values
+    .map(value => String(value).trim())
+    .filter(Boolean)
+    .map(value => value.charAt(0).toUpperCase() + value.slice(1));
+}
+
+function womoGetViewAllCategories(items) {
+  const set = new Set();
+  (items || []).forEach(item => womoGenreTokens(item).forEach(genre => set.add(genre)));
+  return ["All", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
+}
+
+function womoRenderViewAllCategories(items) {
+  const wrap = document.getElementById("viewAllCategories");
+  if (!wrap) return;
+
+  const categories = womoGetViewAllCategories(items);
+  if (!categories.includes(womoViewAllCategory)) womoViewAllCategory = "All";
+
+  wrap.innerHTML = categories.map(category => `
+    <button type="button" class="view-all-category ${category === womoViewAllCategory ? "active" : ""}" data-category="${category}">
+      ${category}
+    </button>
+  `).join("");
+}
+
+function womoFilterViewAllItems(items) {
+  let output = [...(items || [])];
+
+  if (womoViewAllCategory && womoViewAllCategory !== "All") {
+    output = output.filter(item => womoGenreTokens(item).includes(womoViewAllCategory));
+  }
+
+  const sort = document.getElementById("viewAllSort")?.value || "new";
+  if (sort === "az") output.sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+  else if (sort === "year") output.sort((a, b) => Number(b.year || 0) - Number(a.year || 0));
+  else output.sort((a, b) => Number(b.createdAt || b.year || 0) - Number(a.createdAt || a.year || 0));
+
+  return output;
+}
+
+function womoRenderViewAllFilteredGrid() {
+  const grid = document.getElementById("viewAllGrid");
+  const count = document.getElementById("viewAllCount");
+  if (!grid) return;
+
+  const items = womoFilterViewAllItems(womoViewAllItems);
+  if (count) count.textContent = `${items.length} ${items.length === 1 ? "título" : "títulos"}`;
+
+  grid.innerHTML = items.map(item => posterCard(item, false)).join("");
+  grid.querySelectorAll(".poster-card").forEach(card => {
+    card.addEventListener("click", () => {
+      const item = allItemsByContinueKey.get(`${card.dataset.type}:${card.dataset.id}`);
+      if (item) openPreview(item);
+    });
+  });
+}
+
+function womoPrepareViewAllMockupFixed(items) {
+  womoViewAllItems = Array.isArray(items) ? items : [];
+  womoViewAllCategory = "All";
+  
+  womoViewAllCleanModeRender();
+}
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest(".view-all-category");
+  if (!btn) return;
+  event.preventDefault();
+  womoViewAllCategory = btn.dataset.category || "All";
+  
+  womoViewAllCleanModeRender();
+});
+
+document.addEventListener("change", (event) => {
+  if (event.target?.id !== "viewAllSort") return;
+  womoViewAllCleanModeRender();
+});
+
+
+
+
+/* View All dynamic category repair */
+function womoGenreTokensFixed(item) {
+  const rawValues = [
+    item?.genre,
+    item?.genres,
+    item?.category,
+    item?.categories,
+    item?.genero,
+    item?.género,
+    item?.typeGenre
+  ].flatMap(value => Array.isArray(value) ? value : String(value || "").split(/[,/|·]+/));
+
+  return rawValues
+    .map(value => String(value).trim())
+    .filter(Boolean)
+    .filter(value => !["movie", "series", "concert", "concierto", "pelicula", "película"].includes(value.toLowerCase()))
+    .map(value => value.charAt(0).toUpperCase() + value.slice(1));
+}
+
+function womoRenderCategoriesNow() {
+  const wrap = document.getElementById("viewAllCategories");
+  if (!wrap) return;
+
+  const items = Array.isArray(womoViewAllItems) ? womoViewAllItems : [];
+  const genres = new Set();
+
+  items.forEach(item => {
+    womoGenreTokensFixed(item).forEach(genre => genres.add(genre));
+  });
+
+  const categories = ["All", ...Array.from(genres).sort((a, b) => a.localeCompare(b))];
+
+  wrap.innerHTML = categories.map(category => `
+    <button type="button" class="view-all-category ${category === womoViewAllCategory ? "active" : ""}" data-category="${category}">
+      ${category}
+    </button>
+  `).join("");
+}
+
+function womoFilterViewAllItemsFixed(items) {
+  let output = [...(items || [])];
+
+  if (womoViewAllCategory && womoViewAllCategory !== "All") {
+    output = output.filter(item => womoGenreTokensFixed(item).includes(womoViewAllCategory));
+  }
+
+  const sort = document.getElementById("viewAllSort")?.value || "new";
+  if (sort === "az") output.sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+  else if (sort === "year") output.sort((a, b) => Number(b.year || 0) - Number(a.year || 0));
+  else output.sort((a, b) => Number(b.createdAt || b.year || 0) - Number(a.createdAt || a.year || 0));
+
+  return output;
+}
+
+function womoRenderViewAllFilteredGridFixed() {
+  const grid = document.getElementById("viewAllGrid");
+  const count = document.getElementById("viewAllCount");
+  if (!grid) return;
+
+  const items = womoFilterViewAllItemsFixed(womoViewAllItems);
+  if (count) count.textContent = `${items.length} ${items.length === 1 ? "título" : "títulos"}`;
+
+  grid.innerHTML = items.map(item => posterCard(item, false)).join("");
+  grid.querySelectorAll(".poster-card").forEach(card => {
+    card.addEventListener("click", () => {
+      const item = allItemsByContinueKey.get(`${card.dataset.type}:${card.dataset.id}`);
+      if (item) openPreview(item);
+    });
+  });
+}
+
+function womoPrepareViewAllMockupFixed(items) {
+  womoViewAllItems = Array.isArray(items) ? items : [];
+  womoViewAllCategory = "All";
+  
+  womoViewAllCleanModeRender();
+}
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest(".view-all-category");
+  if (!btn) return;
+  event.preventDefault();
+  womoViewAllCategory = btn.dataset.category || "All";
+  
+  womoViewAllCleanModeRender();
+}, true);
+
+document.addEventListener("change", (event) => {
+  if (event.target?.id !== "viewAllSort") return;
+  womoViewAllCleanModeRender();
+}, true);
+
+
+function womoEnsureViewAllCategoriesContainer() {
+  if (document.getElementById("viewAllCategories")) return;
+  const grid = document.getElementById("viewAllGrid");
+  if (!grid) return;
+  const controls = document.createElement("div");
+  controls.className = "view-all-controls";
+  controls.innerHTML = `<div id="viewAllCategories" class="view-all-categories"></div>`;
+  const sort = document.getElementById("viewAllSort");
+  if (sort) {
+    const wrap = document.createElement("div");
+    wrap.className = "view-all-sort-wrap";
+    sort.parentNode.insertBefore(controls, sort);
+    wrap.appendChild(sort);
+    controls.appendChild(wrap);
+  } else {
+    grid.parentNode.insertBefore(controls, grid);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  womoEnsureViewAllCategoriesContainer();
+});
+
+
+
+
+/* View All clean mode: always show all items */
+function womoViewAllCleanModeRender() {
+  try {
+    womoViewAllCategory = "All";
+    const grid = document.getElementById("viewAllGrid");
+    const count = document.getElementById("viewAllCount");
+    if (!grid || !Array.isArray(womoViewAllItems)) return;
+
+    const items = [...womoViewAllItems];
+    if (count) count.textContent = `${items.length} ${items.length === 1 ? "título" : "títulos"}`;
+
+    grid.innerHTML = items.map(item => posterCard(item, false)).join("");
+    grid.querySelectorAll(".poster-card").forEach(card => {
+      card.addEventListener("click", () => {
+        const item = allItemsByContinueKey.get(`${card.dataset.type}:${card.dataset.id}`);
+        if (item) openPreview(item);
+      });
+    });
+  } catch (_) {}
+}
+
