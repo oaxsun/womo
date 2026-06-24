@@ -3196,3 +3196,372 @@ body {
     font-size: clamp(22px, 3.3vw, 28px) !important;
   }
 }
+
+
+/* Desktop preview scroll effect: keep poster static, scroll overlay/content only */
+@media (min-width: 761px) {
+  .preview-card {
+    background-color: #181818 !important;
+    background-image: var(--preview-bg) !important;
+    background-size: cover !important;
+    background-position: center top !important;
+    background-repeat: no-repeat !important;
+  }
+
+  .preview-hero {
+    background: transparent !important;
+  }
+
+  .preview-hero-poster,
+  #previewPoster {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+}
+
+/* Final fix: long preview titles wrap inside the modal */
+.preview-title-row,
+.preview-hero-content {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.preview-hero-content h2,
+.preview-content h2,
+#previewTitle {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+  line-height: .95 !important;
+}
+
+/* Episode cards width real fix - do not change height */
+#previewExtra,
+#previewExtra .season-block,
+#previewExtra .episode-list{
+  width:100% !important;
+  max-width:none !important;
+  box-sizing:border-box !important;
+}
+
+#previewExtra .episode-list{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+}
+
+#previewExtra .episode-item{
+  width:100% !important;
+  max-width:none !important;
+  align-self:stretch !important;
+  box-sizing:border-box !important;
+}
+
+#previewExtra .episode-item > div:first-child{
+  width:100% !important;
+  min-width:0 !important;
+}
+
+/* Rebuilt episode section: force Netflix-style long rows from the real preview block */
+#previewExtra{
+  display:block !important;
+  align-self:stretch !important;
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  box-sizing:border-box !important;
+}
+
+#previewExtra.hidden{display:none !important;}
+
+#previewExtra .season-block{
+  display:block !important;
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  box-sizing:border-box !important;
+}
+
+#previewExtra .season-tabs{
+  width:100% !important;
+  max-width:none !important;
+  box-sizing:border-box !important;
+}
+
+#previewExtra .episode-list{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  gap:12px !important;
+  width:100% !important;
+  min-width:min(390px, calc(100vw - 96px)) !important;
+  max-width:min(390px, calc(100vw - 96px)) !important;
+  box-sizing:border-box !important;
+  padding-bottom:6px !important;
+}
+
+#previewExtra .episode-item{
+  display:grid !important;
+  grid-template-columns:1fr auto !important;
+  align-items:center !important;
+  width:100% !important;
+  min-width:0 !important;
+  max-width:none !important;
+  box-sizing:border-box !important;
+  min-height:84px !important;
+  padding:16px 18px !important;
+  border-radius:14px !important;
+  background:rgba(255,255,255,.055) !important;
+  border:1px solid rgba(255,255,255,.075) !important;
+}
+
+#previewExtra .episode-title,
+#previewExtra .episode-duration,
+#previewExtra .episode-progress{
+  max-width:100% !important;
+}
+
+
+
+@media (max-width: 430px){
+  #previewExtra .episode-list{
+    min-width:100% !important;
+    max-width:100% !important;
+  }
+}
+
+
+
+/* Final fix: proportional progress bar in rebuilt episode cards */
+#previewExtra .episode-item > div{
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+}
+
+#previewExtra .episode-progress{
+  width:100% !important;
+  max-width:220px !important;
+  min-width:160px !important;
+  height:5px !important;
+  border-radius:999px !important;
+  overflow:hidden !important;
+  margin-top:10px !important;
+  background:rgba(255,255,255,.25) !important;
+}
+
+#previewExtra .episode-progress span{
+  display:block !important;
+  height:100% !important;
+  border-radius:999px !important;
+  background:#d7ff00 !important;
+}
+
+
+
+/* Episode cards refined states */
+#previewExtra .episode-item{
+  padding:9px 18px !important;
+  min-height:52px !important;
+}
+
+#previewExtra .episode-main{
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  display:grid !important;
+  grid-template-columns:1fr auto !important;
+  grid-template-rows:auto auto auto !important;
+  column-gap:14px !important;
+  align-items:center !important;
+}
+
+#previewExtra .episode-title{
+  grid-column:1 !important;
+  grid-row:1 !important;
+  min-width:0 !important;
+  overflow-wrap:anywhere !important;
+  color:#f2f2f2 !important;
+}
+
+#previewExtra .episode-meta{
+  grid-column:1 !important;
+  grid-row:2 !important;
+  color:rgba(217,217,217,.68) !important;
+  font-size:12px !important;
+  font-weight:700 !important;
+  margin-top:4px !important;
+}
+
+#previewExtra .episode-side{
+  grid-column:2 !important;
+  grid-row:1 / span 2 !important;
+  align-self:center !important;
+  justify-self:end !important;
+  color:rgba(217,217,217,.76) !important;
+  font-size:12px !important;
+  font-weight:900 !important;
+  white-space:nowrap !important;
+}
+
+#previewExtra .episode-progress-row{
+  grid-column:1 / -1 !important;
+  grid-row:3 !important;
+  display:flex !important;
+  align-items:center !important;
+  width:100% !important;
+  margin-top:8px !important;
+}
+
+#previewExtra .episode-progress{
+  width:100% !important;
+  max-width:300px !important;
+  min-width:180px !important;
+  height:5px !important;
+  border-radius:999px !important;
+  overflow:hidden !important;
+  margin-top:0 !important;
+  background:rgba(255,255,255,.25) !important;
+}
+
+#previewExtra .episode-progress span{
+  display:block !important;
+  height:100% !important;
+  width:var(--value) !important;
+  border-radius:999px !important;
+  background:#d7ff00 !important;
+}
+
+#previewExtra .episode-item.not-started,
+#previewExtra .episode-item.completed{
+  min-height:52px !important;
+}
+
+#previewExtra .episode-item.started{
+  min-height:64px !important;
+}
+
+#previewExtra .episode-item.completed{
+  background:#d7ff00 !important;
+  border-color:#d7ff00 !important;
+  color:#000 !important;
+}
+
+#previewExtra .episode-item.completed .episode-title,
+#previewExtra .episode-item.completed .episode-meta,
+#previewExtra .episode-item.completed .episode-side{
+  color:#000 !important;
+}
+
+#previewExtra .episode-item.completed .episode-side{
+  font-size:19px !important;
+  line-height:1 !important;
+  align-self:center !important;
+}
+
+
+
+/* Episode side alignment by state */
+#previewExtra .episode-item.not-started .episode-side,
+#previewExtra .episode-item.completed .episode-side{
+  grid-row:1 / span 2 !important;
+  align-self:center !important;
+  justify-self:end !important;
+}
+
+#previewExtra .episode-item.started .episode-side{
+  grid-row:2 !important;
+  align-self:center !important;
+  justify-self:end !important;
+}
+
+
+
+/* Episode progress reaches the time label */
+#previewExtra .episode-progress-row{
+  display:grid !important;
+  grid-template-columns:minmax(0, 1fr) auto !important;
+  align-items:center !important;
+  column-gap:12px !important;
+  width:100% !important;
+}
+
+#previewExtra .episode-progress{
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  flex:none !important;
+}
+
+#previewExtra .episode-side{
+  line-height:1 !important;
+}
+
+#previewExtra .episode-item.started .episode-side{
+  grid-row:2 !important;
+}
+
+#previewExtra .episode-item.not-started .episode-side,
+#previewExtra .episode-item.completed .episode-side{
+  grid-row:1 / span 2 !important;
+  align-self:center !important;
+}
+
+
+
+/* Episode time UX refinement */
+#previewExtra .episode-main{
+  padding-right:0 !important;
+}
+
+#previewExtra .episode-side{
+  font-weight:400 !important;
+  padding-right:0 !important;
+  justify-self:end !important;
+}
+
+#previewExtra .episode-progress-row{
+  display:grid !important;
+  grid-template-columns:minmax(0, 1fr) auto !important;
+  column-gap:12px !important;
+  width:100% !important;
+  padding-right:0 !important;
+  box-sizing:border-box !important;
+}
+
+#previewExtra .episode-progress{
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+}
+
+#previewExtra .episode-item.completed .episode-side{
+  font-weight:950 !important;
+}
+
+
+
+/* Final episode time padding refinement */
+#previewExtra .episode-main{
+  padding-right:0 !important;
+}
+
+
+
+/* Final episode right edge alignment */
+#previewExtra .episode-main{
+  padding-right:0 !important;
+}
+
+#previewExtra .episode-side{
+  padding-right:0 !important;
+  margin-right:0 !important;
+  justify-self:end !important;
+}
+

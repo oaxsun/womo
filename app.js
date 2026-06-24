@@ -100,6 +100,10 @@ function saveContinueState(items) {
 }
 
 function upsertContinueItem(item, progress = null) {
+  if (item && (isItemCompleted(item) || Number(progress || item.progress || 0) >= 98)) {
+    markPlayableCompleted(item);
+    return;
+  }
   if (!item) return;
   localStorage.removeItem(MEMORY_CLEARED_KEY);
   const newEntry = {
@@ -284,6 +288,13 @@ function normalizeMovie(docSnap) {
     createdAt: toMillis(data.createdAt),
     progress: data.progress || 0,
     type: genre.toLowerCase().includes("concierto") ? "concert" : "movie"
+  };
+}
+
+function normalizeConcert(docSnap) {
+  return {
+    ...normalizeMovie(docSnap),
+    type: "concert"
   };
 }
 
@@ -795,22 +806,25 @@ async function init() {
   setupNavigation();
   setupSettings();
 
-  const [movies, series] = await Promise.all([
+  const [moviesRaw, series, concertsRaw] = await Promise.all([
     readCollection("movies", normalizeMovie),
-    readCollection("series", normalizeSeries)
+    readCollection("series", normalizeSeries),
+    readCollection("concerts", normalizeConcert)
   ]);
 
-  const allItems = [...movies, ...series].filter(item => item.poster);
+  const movies = moviesRaw.filter(item => item.type !== "concert");
+  const concerts = [...moviesRaw.filter(item => item.type === "concert"), ...concertsRaw];
+  const allItems = [...movies, ...series, ...concerts].filter(item => item.poster);
   const sortedItems = allItems.sort((a, b) => b.createdAt - a.createdAt);
   allItemsByContinueKey = new Map(allItems.map(item => [`${item.type}:${item.id}`, item]));
   syncFavoriteUI();
-  const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : "movie"}:${item.id}`, item]));
+  const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : item.type === "concert" ? "concert" : "movie"}:${item.id}`, item]));
   const configuredNewItems = await readHomeConfigNewItems(allByKey);
   heroItems = configuredNewItems.length ? configuredNewItems : sortedItems.slice(0, 5);
   heroIndex = 0;
 
   const movieItems = movies.filter(item => item.type === "movie");
-  const concertItems = movies.filter(item => item.type === "concert");
+  const concertItems = concerts;
   const continueItems = buildContinueItems(sortedItems);
 
   setHero(0);
@@ -857,7 +871,30 @@ function getPreviewRecommendations(item) {
 }
 
 
+const COMPLETED_KEY = "womo_completed_items";
 const EPISODE_PROGRESS_KEY = "womo_episode_progress";
+let currentPreviewSeriesIdForEpisodes = null;
+let currentPreviewEpisodesCache = [];
+let currentPlayerItem = null;
+let currentPlayerEpisode = null;
+
+let currentPreviewItem = null;
+
+function setCurrentPreviewItem(item) {
+  currentPreviewItem = item || null;
+
+  // Critical: if the preview is not a series, clear the series state so the
+  // series click handler cannot hijack movie/concert buttons.
+  if (!item || item.type !== "series") {
+    currentPreviewSeriesIdForEpisodes = null;
+    currentPreviewEpisodesCache = [];
+  }
+}
+
+function isCurrentPreviewSeries() {
+  return currentPreviewItem && currentPreviewItem.type === "series";
+}
+
 
 function loadEpisodeProgress() {
   try {
@@ -904,8 +941,223 @@ function getSeriesContinueLabel(item, episodes) {
   return `${started ? "Continuar" : "Reproducir"} T${season} E${episode}`;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+function getPreviewPrimaryButton() {
+  return document.getElementById("previewPlay")
+    || document.querySelector("[data-preview-play]")
+    || document.querySelector(".preview-play")
+    || document.querySelector(".preview-actions .primary-btn");
+}
+
+function getPreviewRestartButton() {
+  return document.getElementById("previewRestart")
+    || document.querySelector("[data-preview-restart]")
+    || document.querySelector(".preview-restart")
+    || document.querySelector(".preview-actions .secondary-btn");
+}
+
+
+function getContinueProgressForItem(item) {
+  if (!item) return 0;
+  const entry = getContinueStorageList().find(x => x.id === item.id && x.type === item.type);
+  return Math.max(Number(entry?.progress || 0), Number(item.progress || 0), 0);
+}
+
+function setPreviewButtonModeForItem(item) {
+  if (!item) return;
+
+  const primary = getPreviewPrimaryButton();
+  const restart = getPreviewRestartButton();
+  if (!primary) return;
+
+  if (item.type === "series") {
+    syncSeriesPreviewPrimaryButton();
+    return;
+  }
+
+  const completed = isItemCompleted(item);
+  const progress = getContinueProgressForItem(item);
+
+  primary.dataset.previewType = item.type;
+  primary.dataset.previewId = item.id;
+  primary.dataset.seriesMode = "";
+
+  if (completed || progress >= 98) {
+    primary.textContent = "Volver a ver";
+    primary.dataset.completed = "true";
+    if (restart) {
+      restart.classList.add("hidden");
+      restart.style.display = "none";
+    }
+    return;
+  }
+
+  if (progress > 0 && progress < 98) {
+    primary.textContent = "Continuar";
+    primary.dataset.completed = "false";
+    if (restart) {
+      restart.classList.remove("hidden");
+      restart.style.display = "";
+    }
+    return;
+  }
+
+  primary.textContent = "Reproducir";
+  primary.dataset.completed = "false";
+  if (restart) {
+    restart.classList.add("hidden");
+    restart.style.display = "none";
+  }
+}
+
+function setMovieConcertPreviewCompletedState(item) {
+  if (!item || item.type === "series") return;
+  setItemCompleted(item, true);
+  item.progress = 0;
+  setPreviewButtonModeForItem(item);
+}
+
+function setMovieConcertPreviewPlayableState(item) {
+  if (!item || item.type === "series") return;
+  setPreviewButtonModeForItem(item);
+}
+
+function syncPreviewButtonsForCompletion(item) {
+  try {
+    if (!item || item.type === "series") return;
+    setMovieConcertPreviewCompletedState(item);
+  } catch (_) {}
+}
+
+function applyCompletedPreviewState(item) {
+  try {
+    if (!item) return;
+    setPreviewButtonModeForItem(item);
+  } catch (_) {}
+}
+
+function forcePreviewButtonRefresh(item) {
+  try {
+    setPreviewButtonModeForItem(item || currentPreviewItem);
+  } catch (_) {}
+}
+
+function getSortedPreviewEpisodes() {
+  return [...(currentPreviewEpisodesCache || [])].sort((a, b) =>
+    (Number(a.season || a.seasonNumber || 1) - Number(b.season || b.seasonNumber || 1)) ||
+    (Number(a.episodeNumber || a.episode || 1) - Number(b.episodeNumber || b.episode || 1))
+  );
+}
+
+function getEpisodeStoredProgress(seriesId, ep) {
+  const progressMap = loadEpisodeProgress();
+  const season = Number(ep.season || ep.seasonNumber || 1);
+  const episodeNumber = Number(ep.episodeNumber || ep.episode || 1);
+  const id = ep.id || "";
+
+  const keys = [
+    episodeKey(seriesId, season, episodeNumber, id),
+    `${seriesId}:S${season}:E${episodeNumber}:${id}`,
+    `${seriesId}:S${season}:E${episodeNumber}:`
+  ];
+
+  const storedValues = keys
+    .map(key => Number(progressMap[key]))
+    .filter(value => Number.isFinite(value));
+
+  return Math.max(Number(ep.progress || 0), ...storedValues, 0);
+}
+
+function getEpisodeAfter(seriesId, episode) {
+  const sorted = getSortedPreviewEpisodes();
+  if (!episode || !sorted.length) return null;
+
+  const currentSeason = Number(episode.season || episode.seasonNumber || 1);
+  const currentEpisode = Number(episode.episodeNumber || episode.episode || 1);
+
+  const index = sorted.findIndex(ep =>
+    Number(ep.season || ep.seasonNumber || 1) === currentSeason &&
+    Number(ep.episodeNumber || ep.episode || 1) === currentEpisode
+  );
+
+  return index >= 0 ? (sorted[index + 1] || null) : null;
+}
+
+function getFirstUnfinishedEpisode() {
+  if (!currentPreviewSeriesIdForEpisodes || !Array.isArray(currentPreviewEpisodesCache)) return null;
+
+  return getSortedPreviewEpisodes().find(ep =>
+    getEpisodeStoredProgress(currentPreviewSeriesIdForEpisodes, ep) < 98
+  ) || null;
+}
+
+
+
+
+function setSeriesPreviewButtonForEpisode(episode) {
+  const primary = getPreviewPrimaryButton();
+  const restart = getPreviewRestartButton();
+  if (!primary) return;
+
+  primary.dataset.previewType = "series";
+  primary.dataset.previewId = currentPreviewSeriesIdForEpisodes || "";
+
+  if (episode) {
+    const season = Number(episode.season || episode.seasonNumber || 1);
+    const episodeNumber = Number(episode.episodeNumber || episode.episode || 1);
+    primary.textContent = `Reproducir T${season} E${episodeNumber}`;
+    primary.dataset.seriesMode = "episode";
+    primary.dataset.nextSeason = String(season);
+    primary.dataset.nextEpisode = String(episodeNumber);
+    primary.dataset.nextEpisodeId = String(episode.id || "");
+    if (restart) {
+      restart.classList.remove("hidden");
+      restart.style.display = "";
+    }
+  } else {
+    const replay = getSortedPreviewEpisodes()[0] || null;
+    primary.textContent = "Volver a ver";
+    primary.dataset.seriesMode = "replay";
+    if (replay) {
+      primary.dataset.nextSeason = String(Number(replay.season || replay.seasonNumber || 1));
+      primary.dataset.nextEpisode = String(Number(replay.episodeNumber || replay.episode || 1));
+      primary.dataset.nextEpisodeId = String(replay.id || "");
+    } else {
+      delete primary.dataset.nextSeason;
+      delete primary.dataset.nextEpisode;
+      delete primary.dataset.nextEpisodeId;
+    }
+    if (restart) {
+      restart.classList.add("hidden");
+      restart.style.display = "none";
+    }
+  }
+}
+
+function syncSeriesPreviewPrimaryButton(preferredEpisode = null) {
+  try {
+    if (!currentPreviewSeriesIdForEpisodes || !currentPreviewEpisodesCache.length) return;
+    const nextEpisode = preferredEpisode || getFirstUnfinishedEpisode();
+    setSeriesPreviewButtonForEpisode(nextEpisode);
+  } catch (error) {
+    console.warn("No se pudo sincronizar el botón del preview.", error);
+  }
+}
+
 function renderEpisodes(seriesId, episodes) {
-  const extra = document.getElementById('previewExtra');
+  currentPreviewSeriesIdForEpisodes = seriesId;
+  currentPreviewEpisodesCache = Array.isArray(episodes) ? episodes : [];
+const extra = document.getElementById('previewExtra');
   const extraTitle = document.getElementById('previewExtraTitle');
   const recs = document.getElementById('previewRecs');
   recs.innerHTML = '';
@@ -923,6 +1175,7 @@ function renderEpisodes(seriesId, episodes) {
 
   const block = document.createElement('div');
   block.className = 'season-block';
+  block.style.cssText = 'width:100%;max-width:none;box-sizing:border-box;';
 
   const tabs = document.createElement('div');
   tabs.className = 'season-tabs';
@@ -937,6 +1190,7 @@ function renderEpisodes(seriesId, episodes) {
 
   const list = document.createElement('div');
   list.className = 'episode-list';
+  list.style.cssText = 'width:100%;max-width:none;display:flex;flex-direction:column;align-items:stretch;box-sizing:border-box;';
 
   function drawSeason(season) {
     list.innerHTML = '';
@@ -945,18 +1199,36 @@ function renderEpisodes(seriesId, episodes) {
       const progress = Math.max(0, Math.min(100, Number(progressMap[key] ?? ep.progress ?? 0)));
       const item = document.createElement('article');
       item.className = 'episode-item';
+      if (isWomoComplete(progress)) item.classList.add('completed');
+      if (progress > 0 && !isWomoComplete(progress)) item.classList.add('started');
+      if (progress <= 0) item.classList.add('not-started');
+      item.style.cssText = 'width:100%;max-width:none;box-sizing:border-box;align-self:stretch;';
+
+      const durationNumber = Number(String(ep.duration || '').replace(/[^0-9.]/g, '')) || 0;
+      const remainingMinutes = durationNumber ? Math.max(1, Math.round(durationNumber * (1 - progress / 100))) : 0;
+      const rightLabel = isWomoComplete(progress)
+        ? '✓'
+        : progress > 0 && remainingMinutes
+          ? `-${remainingMinutes} min`
+          : (ep.duration || '');
+
       item.innerHTML = `
-        <div>
+        <div class="episode-main">
           <div class="episode-title">${ep.title}</div>
-          <div class="episode-duration">${ep.duration || ''}</div>
-          ${progress > 0 ? `<div class="episode-progress"><span style="--value:${progress}%"></span></div>` : ''}
+          <div class="episode-meta">T${ep.season} E${ep.episodeNumber}</div>
+          <div class="episode-side">${rightLabel}</div>
+          ${progress > 0 && !isWomoComplete(progress) ? `
+            <div class="episode-progress-row visible">
+              <div class="episode-progress"><span style="--value:${progress}%"></span></div>
+            </div>
+          ` : ''}
         </div>
-        ${progress >= 98 ? `<div class="episode-check">✓</div>` : ''}
       `;
       const seriesItem = allItemsByContinueKey.get(`series:${seriesId}`);
       if (seriesItem) item.addEventListener('click', () => openPlayer(seriesItem, { episode: ep }));
       list.appendChild(item);
     });
+    syncSeriesPreviewPrimaryButton();
   }
 
   function activateSeason(season) {
@@ -964,6 +1236,7 @@ function renderEpisodes(seriesId, episodes) {
       btn.classList.toggle('active', btn.dataset.season === String(season));
     });
     drawSeason(season);
+    syncSeriesPreviewPrimaryButton();
   }
 
   tabs.addEventListener('click', (event) => {
@@ -976,13 +1249,25 @@ function renderEpisodes(seriesId, episodes) {
   block.appendChild(list);
   recs.appendChild(block);
   activateSeason(seasons[0]);
+  syncSeriesPreviewPrimaryButton();
 }
 
 async function openPreview(item) {
+  setCurrentPreviewItem(item || arguments[0]);
+  setCurrentPreviewItem(item || arguments[0]);
+  setTimeout(() => applyCompletedPreviewState(item), 0);
+  setTimeout(() => applyCompletedPreviewState(item), 0);
   const modal = document.getElementById('previewModal');
   const poster = document.getElementById('previewPoster');
-  poster.src = item.poster || item.posterUrl || '';
+  const posterUrl = item.poster || item.posterUrl || '';
+  poster.src = posterUrl;
   poster.alt = item.title || 'Poster';
+
+  const previewCard = modal?.querySelector('.preview-card');
+  if (previewCard) {
+    previewCard.style.setProperty('--preview-bg', posterUrl ? `url("${String(posterUrl).replace(/"/g, '\\"')}")` : 'none');
+    previewCard.scrollTop = 0;
+  }
 
   document.getElementById('previewTitle').textContent = item.title;
   const previewFavorite = document.getElementById('previewFavorite');
@@ -1118,7 +1403,257 @@ function getPlayableUrl(item, episode = null) {
   return episode?.hlsUrl || item.hlsUrl || item.videoUrl || item.url || "";
 }
 
+
+
+
+
+
+
+function getContinueStorageList() {
+  try {
+    const value = JSON.parse(localStorage.getItem(CONTINUE_KEY) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function setContinueStorageList(list) {
+  localStorage.setItem(CONTINUE_KEY, JSON.stringify(Array.isArray(list) ? list : []));
+}
+
+function refreshContinueWatchingRow() {
+  try {
+    const items = getContinueStorageList().map(entry => {
+      const catalogItem = allItemsByContinueKey.get(`${entry.type}:${entry.id}`);
+      return catalogItem ? { ...catalogItem, progress: entry.progress || catalogItem.progress || 0 } : null;
+    }).filter(Boolean);
+    fillRow("continueRow", items, true, true);
+  } catch (_) {}
+}
+
+function removeContinueEverywhere(item) {
+  if (!item) return;
+
+  const filtered = getContinueStorageList().filter(entry =>
+    !(entry.id === item.id && entry.type === item.type)
+  );
+  setContinueStorageList(filtered);
+
+  try {
+    const legacyKey = `${item.type}_${item.id}`;
+    const userRef = getUserDocRef && getUserDocRef();
+    if (userRef) {
+      userRef.collection("continueWatching").doc(legacyKey).delete().catch(() => {});
+      userRef.collection("continueWatching").doc(`${item.type}:${item.id}`).delete().catch(() => {});
+      userRef.collection("continueWatching").doc(item.id).delete().catch(() => {});
+    }
+  } catch (_) {}
+
+  item.progress = 0;
+  refreshContinueWatchingRow();
+}
+
+function markPlayableCompleted(item) {
+  if (!item) return;
+  setItemCompleted(item, true);
+  item.progress = 0;
+  removeContinueEverywhere(item);
+  setMovieConcertPreviewCompletedState(item);
+}
+
+function getCompletedFirstEpisodeForReplay() {
+  const sorted = getSortedPreviewEpisodes && getSortedPreviewEpisodes();
+  return sorted && sorted.length ? sorted[0] : null;
+}
+
+function loadCompletedItems() {
+  try {
+    const value = JSON.parse(localStorage.getItem(COMPLETED_KEY) || "{}");
+    return value && typeof value === "object" ? value : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function completedKeyForItem(item) {
+  return item ? `${item.type}:${item.id}` : "";
+}
+
+function isItemCompleted(item) {
+  const map = loadCompletedItems();
+  return Boolean(map[completedKeyForItem(item)]);
+}
+
+function setItemCompleted(item, completed = true) {
+  if (!item) return;
+  const map = loadCompletedItems();
+  const key = completedKeyForItem(item);
+  if (!key) return;
+  if (completed) map[key] = true;
+  else delete map[key];
+  localStorage.setItem(COMPLETED_KEY, JSON.stringify(map));
+  item.completed = completed;
+}
+
+function isWomoComplete(progress) {
+  return Number(progress || 0) >= 98;
+}
+
+function removeContinueItemFor(item) {
+  removeContinueEverywhere(item);
+}
+
+function markItemAsCompleted(item) {
+  markPlayableCompleted(item);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function getWomoPlayerVideo() {
+  return document.getElementById("playerVideo")
+    || document.querySelector("#playerOverlay video")
+    || document.querySelector(".player-overlay video")
+    || document.querySelector("video");
+}
+
+function getWomoPlayerOverlay() {
+  return document.getElementById("playerOverlay")
+    || document.querySelector(".player-overlay")
+    || document.querySelector("[data-player-overlay]");
+}
+
+function hideWomoPlayerOverlay() {
+  const overlay = getWomoPlayerOverlay();
+  const video = getWomoPlayerVideo();
+  if (video) {
+    try { video.pause(); } catch (_) {}
+    try { video.removeAttribute("src"); video.load(); } catch (_) {}
+  }
+  if (overlay) {
+    overlay.classList.add("hidden");
+    overlay.classList.remove("active", "open", "show");
+    overlay.style.display = "none";
+  }
+  document.body.classList.remove("player-open");
+}
+
+function refreshCurrentPreviewEpisodes() {
+  if (currentPreviewSeriesIdForEpisodes && currentPreviewEpisodesCache.length) {
+    renderEpisodes(currentPreviewSeriesIdForEpisodes, currentPreviewEpisodesCache);
+    syncSeriesPreviewPrimaryButton();
+  }
+}
+
+function saveActiveEpisodeProgress(forceCompleted = false) {
+  try {
+    const video = getWomoPlayerVideo();
+    if (!video || !currentPlayerItem) return;
+
+    const isEpisodePlayback = Boolean(currentPlayerEpisode);
+    const duration = Number(video.duration || 0);
+    const current = Number(video.currentTime || 0);
+
+    if (!forceCompleted) {
+      if (!duration || !Number.isFinite(duration) || duration <= 0) return;
+      if (!current || !Number.isFinite(current) || current <= 0) return;
+    }
+
+    const calculated = forceCompleted
+      ? 100
+      : Math.max(0, Math.min(100, Math.round((current / duration) * 100)));
+
+    const progress = calculated >= 98 ? 100 : calculated;
+
+    if (isEpisodePlayback) {
+      const key = episodeKey(
+        currentPlayerItem.id,
+        currentPlayerEpisode.season,
+        currentPlayerEpisode.episodeNumber,
+        currentPlayerEpisode.id
+      );
+
+      const map = loadEpisodeProgress();
+      const previousProgress = Number(map[key] ?? currentPlayerEpisode.progress ?? 0) || 0;
+      const finalProgress = Math.max(previousProgress, progress);
+
+      if (finalProgress < 1) return;
+
+      map[key] = finalProgress >= 98 ? 100 : finalProgress;
+      localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
+
+      currentPlayerEpisode.progress = map[key];
+
+      const cached = currentPreviewEpisodesCache.find(ep =>
+        ep.id === currentPlayerEpisode.id ||
+        (Number(ep.season || ep.seasonNumber || 1) === Number(currentPlayerEpisode.season || currentPlayerEpisode.seasonNumber || 1) &&
+         Number(ep.episodeNumber || ep.episode || 1) === Number(currentPlayerEpisode.episodeNumber || currentPlayerEpisode.episode || 1))
+      );
+      if (cached) cached.progress = map[key];
+
+      const nextEpisode = map[key] >= 98
+        ? getEpisodeAfter(currentPlayerItem.id, currentPlayerEpisode)
+        : getFirstUnfinishedEpisode();
+
+      refreshCurrentPreviewEpisodes();
+      setSeriesPreviewButtonForEpisode(nextEpisode);
+
+      return;
+    }
+
+    // Movies / concerts
+    if (progress >= 98) {
+      markPlayableCompleted(currentPlayerItem);
+      return;
+    }
+
+    setItemCompleted(currentPlayerItem, false);
+    currentPlayerItem.completed = false;
+    currentPlayerItem.progress = progress;
+    upsertContinueItem(currentPlayerItem, progress);
+    refreshContinueWatchingRow();
+    setMovieConcertPreviewPlayableState(currentPlayerItem);
+  } catch (error) {
+    console.warn("No se pudo guardar el progreso.", error);
+  }
+}
+
+function bindWomoPlayerProgressEvents() {
+  const video = getWomoPlayerVideo();
+  if (!video || video.dataset.womoProgressBound === "true") return;
+
+  video.dataset.womoProgressBound = "true";
+
+  video.addEventListener("timeupdate", () => {
+    saveActiveEpisodeProgress(false);
+  });
+
+  video.addEventListener("pause", () => {
+    saveActiveEpisodeProgress(false);
+  });
+
+  video.addEventListener("ended", () => {
+    saveActiveEpisodeProgress(true);
+    hideWomoPlayerOverlay();
+    refreshCurrentPreviewEpisodes();
+  });
+}
+
 function openPlayer(item, options = {}) {
+  currentPlayerItem = item;
+  currentPlayerEpisode = options?.episode || null;
+  setTimeout(bindWomoPlayerProgressEvents, 0);
   const episode = options.episode || null;
   const url = getPlayableUrl(item, episode);
 
@@ -1183,6 +1718,8 @@ function openPlayer(item, options = {}) {
 }
 
 function closePlayer() {
+  saveActiveEpisodeProgress(false);
+  saveActiveEpisodeProgress(false);
   const overlay = document.getElementById('playerOverlay');
   const video = document.getElementById('womoPlayer');
 
@@ -1472,3 +2009,168 @@ async function loadEpisodeProgressFromCloud() {
   localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
 }
 
+
+
+
+
+document.addEventListener("DOMContentLoaded", () => {
+  bindWomoPlayerProgressEvents();
+});
+
+window.addEventListener("beforeunload", () => {
+  saveActiveEpisodeProgress(false);
+});
+
+
+document.addEventListener("ended", (event) => {
+  if (!event.target || event.target.tagName !== "VIDEO") return;
+  saveActiveEpisodeProgress(true);
+  hideWomoPlayerOverlay();
+  refreshCurrentPreviewEpisodes();
+}, true);
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.body.dataset.womoEndedCaptureBound = "true";
+});
+
+
+
+document.addEventListener("timeupdate", (event) => {
+  const video = event.target;
+  if (!video || video.tagName !== "VIDEO") return;
+  const duration = Number(video.duration || 0);
+  const current = Number(video.currentTime || 0);
+  if (!duration || !current) return;
+  const pct = (current / duration) * 100;
+  if (pct >= 98) {
+    saveActiveEpisodeProgress(true);
+  }
+}, true);
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.body.dataset.womoMarkCompleteAt98NoCloseBound = "true";
+});
+
+
+document.addEventListener("ended", (event) => {
+  if (!event.target || event.target.tagName !== "VIDEO") return;
+  saveActiveEpisodeProgress(true);
+  hideWomoPlayerOverlay();
+  refreshCurrentPreviewEpisodes();
+}, true);
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.body.dataset.womoCloseOnlyOnEndedBound = "true";
+});
+
+
+
+document.addEventListener("DOMContentLoaded", () => {
+  try {
+    const filtered = getContinueStorageList().filter(entry => {
+      const item = allItemsByContinueKey.get(`${entry.type}:${entry.id}`);
+      return item && !isItemCompleted(item) && Number(entry.progress || item.progress || 0) < 98;
+    });
+    setContinueStorageList(filtered);
+    refreshContinueWatchingRow();
+    document.body.dataset.womoFilterCompletedContinueOnLoad = "true";
+  } catch (_) {}
+});
+
+
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("#playerClose, .player-close, [data-close-player]");
+  if (!btn) return;
+  setTimeout(() => forcePreviewButtonRefresh(currentPlayerItem), 0);
+}, true);
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.body.dataset.womoRefreshPreviewButtonsAfterPlayerClose = "true";
+});
+
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("#previewPlay, [data-preview-play], .preview-play, .preview-actions .primary-btn");
+  if (!btn) return;
+
+  // Do not hijack movie or concert buttons.
+  if (!isCurrentPreviewSeries()) return;
+  if (!currentPreviewSeriesIdForEpisodes || !currentPreviewEpisodesCache.length) return;
+
+  const season = Number(btn.dataset.nextSeason || 0);
+  const episodeNumber = Number(btn.dataset.nextEpisode || 0);
+  const episodeId = String(btn.dataset.nextEpisodeId || "");
+
+  let targetEpisode = null;
+
+  if (season && episodeNumber) {
+    targetEpisode = getSortedPreviewEpisodes().find(ep =>
+      Number(ep.season || ep.seasonNumber || 1) === season &&
+      Number(ep.episodeNumber || ep.episode || 1) === episodeNumber &&
+      (!episodeId || String(ep.id || "") === episodeId)
+    ) || getSortedPreviewEpisodes().find(ep =>
+      Number(ep.season || ep.seasonNumber || 1) === season &&
+      Number(ep.episodeNumber || ep.episode || 1) === episodeNumber
+    ) || null;
+  }
+
+  if (!targetEpisode) {
+    targetEpisode = getFirstUnfinishedEpisode() || getSortedPreviewEpisodes()[0] || null;
+  }
+
+  if (!targetEpisode) return;
+
+  const seriesItem = currentPreviewItem && currentPreviewItem.type === "series"
+    ? currentPreviewItem
+    : allItemsByContinueKey.get(`series:${currentPreviewSeriesIdForEpisodes}`);
+
+  if (!seriesItem) return;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  openPlayer(seriesItem, { episode: targetEpisode });
+}, true);
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.body.dataset.womoSeriesPreviewButtonBound = "true";
+});
+
+
+document.addEventListener("click", () => {
+  setTimeout(() => {
+    if (currentPreviewItem) forcePreviewButtonRefresh(currentPreviewItem);
+  }, 80);
+}, true);
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.body.dataset.womoPreviewOpenStateRefreshBound = "true";
+});
+
+
+document.addEventListener("click", (event) => {
+  const closeBtn = event.target.closest("#playerClose, .player-close, [data-close-player]");
+  if (!closeBtn) return;
+  setTimeout(() => {
+    if (currentPreviewItem && currentPreviewItem.type !== "series") {
+      setPreviewButtonModeForItem(currentPreviewItem);
+    }
+  }, 80);
+}, true);
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.body.dataset.womoStartedContinueRefreshBound = "true";
+});
+
+
+document.addEventListener("click", () => {
+  setTimeout(() => {
+    if (currentPreviewItem && currentPreviewItem.type !== "series") {
+      setPreviewButtonModeForItem(currentPreviewItem);
+    }
+  }, 120);
+}, true);
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.body.dataset.womoStartedPreviewRefreshBound = "true";
+});
