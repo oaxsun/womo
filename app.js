@@ -100,6 +100,7 @@ function saveContinueState(items) {
 }
 
 function upsertContinueItem(item, progress = null) {
+  if (window.__womoShuffleNoProgress || window.womoGlobalShuffleNoProgress) return;
   if (item && (isItemCompleted(item) || Number(progress || item.progress || 0) >= 98)) {
     markPlayableCompleted(item);
     return;
@@ -117,6 +118,11 @@ function upsertContinueItem(item, progress = null) {
   saveContinueState(state);
   saveContinueEntryToCloud(newEntry);
   refreshContinueRow();
+  try {
+    if (currentPlayerItem?.type === "series" && currentPlayerEpisode && currentPreviewItem?.id === currentPlayerItem.id) {
+      setSeriesPreviewButtonForEpisode(currentPlayerEpisode);
+    }
+  } catch (_) {}
 }
 
 let allItemsByContinueKey = new Map();
@@ -291,6 +297,7 @@ function normalizeMovie(docSnap) {
     isFavorite: Boolean(data.isFavorite),
     createdAt: toMillis(data.createdAt),
     progress: data.progress || 0,
+    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= 98),
     type: genre.toLowerCase().includes("concierto") ? "concert" : "movie"
   };
 }
@@ -318,6 +325,8 @@ function normalizeSeries(docSnap) {
     isFavorite: Boolean(data.isFavorite),
     createdAt: toMillis(data.createdAt),
     progress: data.progress || 0,
+    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= 98),
+    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= 98),
     type: "series"
   };
 }
@@ -632,10 +641,15 @@ function renderSearchResults() {
   const grid = document.getElementById("searchResults");
 
   if (!query) {
-    if (title) title.textContent = "Buscar";
+    if (title) {
+      title.textContent = "";
+      title.classList.add("search-title-hidden");
+    }
     if (grid) grid.innerHTML = "";
     return;
   }
+
+  if (title) title.classList.remove("search-title-hidden");
 
   const items = getAllCatalogItems()
     .filter(item => searchMatches(item, query))
@@ -1070,9 +1084,44 @@ async function readSeriesEpisodes(seriesId) {
 
 function getSeriesContinueLabel(item, episodes) {
   const state = loadContinueState().find(x => x.id === item.id && x.type === item.type);
-  const season = state?.season || episodes[0]?.season || 1;
-  const episode = state?.episode || episodes[0]?.episodeNumber || 1;
-  const started = Boolean(state || Number(item.progress || 0) > 0);
+  const progressMap = loadEpisodeProgress();
+
+  const sorted = [...(episodes || [])].sort((a, b) =>
+    (Number(a.season || 1) - Number(b.season || 1)) ||
+    (Number(a.episodeNumber || a.episode || 1) - Number(b.episodeNumber || b.episode || 1))
+  );
+
+  let target = null;
+
+  if (state) {
+    target = sorted.find(ep =>
+      Number(ep.season || 1) === Number(state.season || 1) &&
+      Number(ep.episodeNumber || ep.episode || 1) === Number(state.episode || 1)
+    );
+  }
+
+  if (!target) {
+    target = sorted.find(ep => {
+      const key = episodeKey(item.id, ep.season, ep.episodeNumber, ep.id);
+      const progress = Number(progressMap[key] ?? ep.progress ?? 0);
+      return progress > 0 && progress < 98;
+    });
+  }
+
+  if (!target) {
+    target = sorted.find(ep => {
+      const key = episodeKey(item.id, ep.season, ep.episodeNumber, ep.id);
+      const progress = Number(progressMap[key] ?? ep.progress ?? 0);
+      return progress < 98;
+    }) || sorted[0];
+  }
+
+  const season = target?.season || 1;
+  const episode = target?.episodeNumber || target?.episode || 1;
+  const key = target ? episodeKey(item.id, target.season, target.episodeNumber, target.id) : "";
+  const progress = target ? Number(progressMap[key] ?? target.progress ?? 0) : 0;
+  const started = Boolean(state) || (progress > 0 && progress < 98) || Number(item.progress || 0) > 0;
+
   return `${started ? "Continuar" : "Reproducir"} T${season} E${episode}`;
 }
 
@@ -1242,40 +1291,22 @@ function getFirstUnfinishedEpisode() {
 function setSeriesPreviewButtonForEpisode(episode) {
   const primary = getPreviewPrimaryButton();
   const restart = getPreviewRestartButton();
-  if (!primary) return;
+  if (!primary || !episode) return;
 
-  primary.dataset.previewType = "series";
-  primary.dataset.previewId = currentPreviewSeriesIdForEpisodes || "";
+  const progressMap = loadEpisodeProgress();
+  const key = currentPreviewItem ? episodeKey(currentPreviewItem.id, episode.season, episode.episodeNumber, episode.id) : "";
+  const progress = Number(progressMap[key] ?? episode.progress ?? 0);
+  const started = progress > 0 && progress < 98;
 
-  if (episode) {
-    const season = Number(episode.season || episode.seasonNumber || 1);
-    const episodeNumber = Number(episode.episodeNumber || episode.episode || 1);
-    primary.textContent = `Reproducir T${season} E${episodeNumber}`;
-    primary.dataset.seriesMode = "episode";
-    primary.dataset.nextSeason = String(season);
-    primary.dataset.nextEpisode = String(episodeNumber);
-    primary.dataset.nextEpisodeId = String(episode.id || "");
-    if (restart) {
-      restart.classList.remove("hidden");
-      restart.style.display = "";
-    }
-  } else {
-    const replay = getSortedPreviewEpisodes()[0] || null;
-    primary.textContent = "Volver a ver";
-    primary.dataset.seriesMode = "replay";
-    if (replay) {
-      primary.dataset.nextSeason = String(Number(replay.season || replay.seasonNumber || 1));
-      primary.dataset.nextEpisode = String(Number(replay.episodeNumber || replay.episode || 1));
-      primary.dataset.nextEpisodeId = String(replay.id || "");
-    } else {
-      delete primary.dataset.nextSeason;
-      delete primary.dataset.nextEpisode;
-      delete primary.dataset.nextEpisodeId;
-    }
-    if (restart) {
-      restart.classList.add("hidden");
-      restart.style.display = "none";
-    }
+  primary.textContent = `${started ? "Continuar" : "Reproducir"} T${episode.season || 1} E${episode.episodeNumber || episode.episode || 1}`;
+  primary.dataset.seriesMode = "true";
+  primary.dataset.season = String(episode.season || 1);
+  primary.dataset.episode = String(episode.episodeNumber || episode.episode || 1);
+  primary.dataset.episodeId = episode.id || "";
+
+  if (restart) {
+    restart.classList.add("hidden");
+    restart.style.display = "none";
   }
 }
 
@@ -1503,6 +1534,7 @@ function getItemProgress(item) {
 }
 
 function savePlayerProgress() {
+  if (window.__womoShuffleNoProgress || womoGlobalShuffleNoProgress) return;
   if (currentPlayerContext?.saveProgress === false || currentPlayerContext?.shuffleMode) return;
   const video = document.getElementById('womoPlayer');
   if (!video || !currentPlayerContext || !video.duration || !isFinite(video.duration)) return;
@@ -1511,6 +1543,8 @@ function savePlayerProgress() {
   const { item, episode } = currentPlayerContext;
 
   if (item.type === 'series' && episode) {
+    currentPlayerEpisode.progress = progress;
+    currentPlayerItem.progress = progress;
     const entry = {
       id: item.id,
       type: item.type,
@@ -1589,12 +1623,43 @@ function removeContinueEverywhere(item) {
   refreshContinueWatchingRow();
 }
 
+
+/* Completed state cloud sync */
+async function saveCompletedItemToCloud(item) {
+  if (!item || !item.id || !item.type) return;
+  try {
+    const userRef = getUserDocRef && getUserDocRef();
+    if (!userRef) return;
+
+    const collectionName = item.type === "concert" ? "concerts" : item.type === "series" ? "series" : "movies";
+    await db.collection(collectionName).doc(item.id).set({
+      completed: true,
+      progress: 100,
+      completedAt: Date.now()
+    }, { merge: true });
+
+    await userRef.collection("completed").doc(`${item.type}:${item.id}`).set({
+      id: item.id,
+      type: item.type,
+      completed: true,
+      progress: 100,
+      completedAt: Date.now()
+    }, { merge: true });
+  } catch (error) {
+    console.warn("No se pudo sincronizar completado en cloud.", error);
+  }
+}
+
 function markPlayableCompleted(item) {
   if (!item) return;
   setItemCompleted(item, true);
   item.progress = 0;
   removeContinueEverywhere(item);
   setMovieConcertPreviewCompletedState(item);
+
+  try {
+    saveCompletedItemToCloud(item);
+  } catch (_) {}
 }
 
 function getCompletedFirstEpisodeForReplay() {
@@ -1616,6 +1681,8 @@ function completedKeyForItem(item) {
 }
 
 function isItemCompleted(item) {
+  if (!item) return false;
+  if (item.completed === true || Number(item.progress || 0) >= 98) return true;
   const map = loadCompletedItems();
   return Boolean(map[completedKeyForItem(item)]);
 }
@@ -1692,6 +1759,7 @@ function refreshCurrentPreviewEpisodes() {
 }
 
 function saveActiveEpisodeProgress(forceCompleted = false) {
+  if (window.__womoShuffleNoProgress || womoGlobalShuffleNoProgress) return;
   try {
     const video = getWomoPlayerVideo();
     if (!video || !currentPlayerItem) return;
@@ -1835,13 +1903,21 @@ function openPlayer(item, options = {}) {
   overlay.classList.add('open', 'controls-visible');
   overlay.setAttribute('aria-hidden', 'false');
 
-  const savedProgress = episode
-    ? Number(loadEpisodeProgress()[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] || episode.progress || 0)
-    : getItemProgress(item);
+  const hasExplicitStartAt = Object.prototype.hasOwnProperty.call(options, "startAt");
+  const shouldIgnoreSavedProgress = Boolean(options.shuffleMode || options.noProgress || options.fromShuffle || options.saveProgress === false);
+  const savedProgress = shouldIgnoreSavedProgress
+    ? 0
+    : (episode
+      ? Number(loadEpisodeProgress()[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] || episode.progress || 0)
+      : getItemProgress(item));
 
   video.onloadedmetadata = () => {
-    if (savedProgress > 0 && savedProgress < 98 && video.duration && isFinite(video.duration)) {
+    if (hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0) {
+      video.currentTime = Number(options.startAt);
+    } else if (savedProgress > 0 && savedProgress < 98 && video.duration && isFinite(video.duration)) {
       video.currentTime = (savedProgress / 100) * video.duration;
+    } else if (shouldIgnoreSavedProgress) {
+      video.currentTime = 0;
     }
     video.play().catch(() => {});
   };
@@ -2577,4 +2653,337 @@ function womoViewAllCleanModeRender() {
     });
   } catch (_) {}
 }
+
+
+
+
+/* Search centered empty state + Shuffle */
+function womoGetSearchInput() {
+  const page = document.getElementById("searchPage");
+  if (!page) return null;
+  return page.querySelector("#searchInput")
+    || page.querySelector(".search-input")
+    || page.querySelector("input[type='search']")
+    || page.querySelector("input[type='text']");
+}
+
+function womoGetSearchPage() {
+  return document.getElementById("searchPage");
+}
+
+function womoSetSearchState() {
+  const page = womoGetSearchPage();
+  const input = womoGetSearchInput();
+  if (!page || !input) return;
+
+  const value = input.value.trim();
+  page.classList.toggle("search-empty-state", value.length === 0);
+  page.classList.toggle("search-has-query", value.length > 0);
+
+  const empty = document.getElementById("searchShuffleEmpty");
+  if (empty) empty.style.display = value.length === 0 ? "" : "none";
+}
+
+function womoGetRandomSeriesEpisode() {
+  const items = typeof getAllCatalogItems === "function"
+    ? getAllCatalogItems()
+    : Array.from(allItemsByContinueKey?.values?.() || []);
+
+  const series = items.filter(item => item && item.type === "series");
+  const candidates = [];
+
+  series.forEach(show => {
+    let episodes = [];
+    try {
+      if (typeof readSeriesEpisodes === "function") {
+        episodes = readSeriesEpisodes(show.id) || [];
+      }
+    } catch (_) {}
+
+    if (!episodes.length && Array.isArray(show.episodes)) episodes = show.episodes;
+    if (!episodes.length && Array.isArray(show.seasons)) {
+      show.seasons.forEach(season => {
+        if (Array.isArray(season.episodes)) {
+          season.episodes.forEach(ep => candidates.push({ show, episode: { ...ep, season: ep.season || season.season || season.number || 1 } }));
+        }
+      });
+      return;
+    }
+
+    episodes.forEach(ep => {
+      candidates.push({ show, episode: ep });
+    });
+  });
+
+  if (!candidates.length) return null;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+function womoPlayShuffleEpisode() {
+  return womoPlayGlobalShuffleEpisodeFinal();
+}
+
+function womoBindSearchShuffle() {
+  const input = womoGetSearchInput();
+  if (input && !input.dataset.womoSearchStateBound) {
+    input.dataset.womoSearchStateBound = "true";
+    input.addEventListener("input", womoSetSearchState);
+    input.addEventListener("change", womoSetSearchState);
+  }
+
+  const btn = document.getElementById("shufflePlayBtn");
+  if (btn && !btn.dataset.womoShuffleBound) {
+    btn.dataset.womoShuffleBound = "true";
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      womoPlayShuffleEpisode();
+    });
+  }
+
+  womoSetSearchState();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  womoBindSearchShuffle();
+});
+
+document.addEventListener("click", () => {
+  setTimeout(womoBindSearchShuffle, 60);
+}, true);
+
+/* Search real title cleanup */
+function womoHideEmptySearchTitle() {
+  const input = document.getElementById("searchInput");
+  const title = document.getElementById("searchResultsTitle");
+  if (!title || !input) return;
+  if (!input.value.trim()) {
+    title.textContent = "";
+    title.classList.add("search-title-hidden");
+  }
+}
+document.addEventListener("DOMContentLoaded", womoHideEmptySearchTitle);
+document.addEventListener("input", (event) => {
+  if (event.target?.id === "searchInput") setTimeout(womoHideEmptySearchTitle, 0);
+}, true);
+document.addEventListener("click", () => setTimeout(womoHideEmptySearchTitle, 60), true);
+
+
+
+
+/* Search Shuffle async Firebase fix */
+window.__womoShuffleNoProgress = false;
+window.womoGlobalShuffleNoProgress = false;
+
+function womoSetShuffleNoProgress(active) {
+  window.__womoShuffleNoProgress = Boolean(active);
+  window.womoGlobalShuffleNoProgress = Boolean(active);
+  try { womoGlobalShuffleNoProgress = Boolean(active); } catch (_) {}
+}
+
+function womoGetAllCatalogItemsForShuffle() {
+  try {
+    if (typeof getAllCatalogItems === "function") return getAllCatalogItems();
+  } catch (_) {}
+
+  try {
+    return Array.from(allItemsByContinueKey?.values?.() || []);
+  } catch (_) {
+    return [];
+  }
+}
+
+async function womoGetEpisodesForShuffle(show) {
+  let episodes = [];
+
+  try {
+    if (typeof readSeriesEpisodes === "function") {
+      episodes = await readSeriesEpisodes(show.id);
+    }
+  } catch (error) {
+    console.warn("Shuffle no pudo leer episodios de Firebase.", error);
+  }
+
+  if (!Array.isArray(episodes)) episodes = [];
+
+  if (!episodes.length && Array.isArray(show.episodes)) {
+    episodes = show.episodes;
+  }
+
+  if (!episodes.length && Array.isArray(show.seasons)) {
+    show.seasons.forEach(season => {
+      const seasonNumber = Number(season.season || season.number || season.seasonNumber || 1);
+      if (Array.isArray(season.episodes)) {
+        season.episodes.forEach((ep, index) => {
+          episodes.push({
+            ...ep,
+            season: Number(ep.season || ep.seasonNumber || seasonNumber),
+            episodeNumber: Number(ep.episodeNumber || ep.number || ep.episode || ep.ep || index + 1)
+          });
+        });
+      }
+    });
+  }
+
+  return episodes
+    .map((ep, index) => ({
+      ...ep,
+      season: Number(ep.season || ep.seasonNumber || 1),
+      episodeNumber: Number(ep.episodeNumber || ep.number || ep.episode || ep.ep || index + 1),
+      hlsUrl: ep.hlsUrl || ep.videoUrl || ep.url || ep.src || ep.streamUrl || ep.m3u8 || ep.file || ep.link || ""
+    }))
+    .filter(ep => ep.hlsUrl);
+}
+
+async function womoPickRandomSeriesEpisode() {
+  const all = womoGetAllCatalogItemsForShuffle();
+  const series = all.filter(item => item && item.type === "series");
+
+  const candidates = [];
+
+  for (const show of series) {
+    const episodes = await womoGetEpisodesForShuffle(show);
+    episodes.forEach(episode => candidates.push({ show, episode }));
+  }
+
+  if (!candidates.length) return null;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+async function womoPlaySearchShuffle() {
+  const button = document.getElementById("shufflePlayBtn");
+  if (button) {
+    button.disabled = true;
+    button.dataset.originalText = button.textContent || "SHUFFLE";
+    button.innerHTML = '<span class="shuffle-loader" aria-hidden="true"></span>';
+    button.classList.add("loading");
+    button.setAttribute("aria-label", "Cargando");
+  }
+
+  try {
+    const pick = await womoPickRandomSeriesEpisode();
+
+    if (!pick) {
+      alert("No hay episodios disponibles para Shuffle.");
+      return;
+    }
+
+    const { show, episode } = pick;
+
+    womoSetShuffleNoProgress(true);
+
+    if (typeof openPlayer === "function") {
+      openPlayer(show, {
+        episode,
+        startAt: 0,
+        saveProgress: false,
+        noProgress: true,
+        shuffleMode: true,
+        fromShuffle: true,
+        noProgress: true
+      });
+    }
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.classList.remove("loading");
+      button.textContent = button.dataset.originalText || "SHUFFLE";
+      button.removeAttribute("aria-label");
+    }
+  }
+}
+
+function womoBindSearchShuffleButton() {
+  const button = document.getElementById("shufflePlayBtn");
+  if (!button || button.dataset.womoShuffleAsyncBound === "true") return;
+
+  button.dataset.womoShuffleAsyncBound = "true";
+  button.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    womoPlaySearchShuffle();
+  }, true);
+}
+
+document.addEventListener("DOMContentLoaded", womoBindSearchShuffleButton);
+document.addEventListener("click", () => setTimeout(womoBindSearchShuffleButton, 40), true);
+
+document.addEventListener("click", event => {
+  if (event.target.closest("#playerBack, #playerClose, .player-close, [data-close-player]")) {
+    setTimeout(() => womoSetShuffleNoProgress(false), 200);
+  }
+}, true);
+
+function womoPlayShuffleEpisode() {
+  return womoPlaySearchShuffle();
+}
+
+function womoPlayGlobalShuffleEpisode() {
+  return womoPlaySearchShuffle();
+}
+
+function womoPlayGlobalShuffleEpisodeFinal() {
+  return womoPlaySearchShuffle();
+}
+
+
+
+
+/* Shuffle playback should always start from zero without changing saved progress */
+(function(){
+  if (window.__womoOpenPlayerStartZeroPatched) return;
+  window.__womoOpenPlayerStartZeroPatched = true;
+  const originalOpenPlayer = window.openPlayer;
+  if (typeof originalOpenPlayer !== "function") return;
+
+  window.openPlayer = function(item, options = {}) {
+    const isShuffle = Boolean(options && (options.shuffleMode || options.fromShuffle || options.noProgress || options.saveProgress === false));
+    if (isShuffle) {
+      options = {
+        ...options,
+        startAt: 0,
+        saveProgress: false,
+        noProgress: true,
+        fromShuffle: true,
+        shuffleMode: true
+      };
+    }
+    return originalOpenPlayer.call(this, item, options);
+  };
+})();
+
+
+
+
+
+/* Search scroll class sync - only when content overflows */
+function womoSyncSearchScrollClass() {
+  const searchPage = document.getElementById("searchPage");
+  const input = document.getElementById("searchInput");
+  const results = document.getElementById("searchResults");
+  const section = document.querySelector("#searchPage .search-results-section");
+  const isSearchVisible = searchPage && !searchPage.classList.contains("hidden") && getComputedStyle(searchPage).display !== "none";
+
+  let needsScroll = false;
+
+  if (isSearchVisible && input && input.value.trim() && results) {
+    const target = section || results;
+    const rect = target.getBoundingClientRect();
+    const bottom = rect.bottom + 80;
+    needsScroll = bottom > window.innerHeight && results.children.length > 0;
+  }
+
+  document.body.classList.toggle("search-scroll-enabled", Boolean(needsScroll));
+  document.documentElement.classList.toggle("search-scroll-enabled", Boolean(needsScroll));
+}
+
+document.addEventListener("DOMContentLoaded", womoSyncSearchScrollClass);
+document.addEventListener("click", () => setTimeout(womoSyncSearchScrollClass, 120), true);
+document.addEventListener("input", event => {
+  if (event.target?.id === "searchInput") {
+    setTimeout(womoSyncSearchScrollClass, 80);
+    setTimeout(womoSyncSearchScrollClass, 250);
+  }
+}, true);
+window.addEventListener("resize", womoSyncSearchScrollClass);
 

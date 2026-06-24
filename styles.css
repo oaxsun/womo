@@ -4115,3 +4115,336 @@ button.hidden[data-view-all],
   margin-bottom:0 !important;
 }
 
+
+/* Search page final fixed layout */
+#searchPage{
+  position:relative !important;
+  min-height:calc(100vh - 96px) !important;
+  padding:18vh 24px 48px !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+}
+
+#searchPage.search-empty-state,
+#searchPage.search-has-query{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  padding:18vh 24px 48px !important;
+}
+
+#searchPage .search-bar,
+#searchPage .search-box,
+#searchPage .search-field,
+#searchPage .search-input-wrap{
+  width:min(1360px, calc(100vw - 48px)) !important;
+  max-width:1360px !important;
+  margin:0 auto !important;
+}
+
+#searchPage input[type="search"],
+#searchPage input[type="text"],
+#searchInput,
+.search-input{
+  width:min(1360px, calc(100vw - 48px)) !important;
+  max-width:1360px !important;
+  margin:0 auto !important;
+  box-sizing:border-box !important;
+}
+
+#searchPage .search-results,
+#searchPage .search-grid,
+#searchPage #searchResults,
+#searchPage #searchGrid{
+  width:min(1360px, calc(100vw - 48px)) !important;
+  max-width:1360px !important;
+  margin:34px auto 0 !important;
+}
+
+/* Hide the old "Buscar" label/title under the input */
+#searchPage h1,
+#searchPage .search-title,
+#searchPage .section-title,
+#searchPage [data-search-title]{
+  display:none !important;
+}
+
+#searchShuffleEmpty.search-shuffle-empty{
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:18px !important;
+  margin-top:34px !important;
+  text-align:center !important;
+}
+
+#searchPage.search-has-query #searchShuffleEmpty{
+  display:none !important;
+}
+
+#searchShuffleEmpty.search-shuffle-empty p{
+  margin:0 !important;
+  color:#f2f2f2 !important;
+  font-size:clamp(18px, 3vw, 28px) !important;
+  line-height:1.05 !important;
+  font-weight:800 !important;
+  letter-spacing:-.04em !important;
+  text-transform:uppercase !important;
+}
+
+#shufflePlayBtn.shuffle-play-btn{
+  min-width:148px !important;
+  height:44px !important;
+  border:0 !important;
+  border-radius:999px !important;
+  background:#d7ff00 !important;
+  color:#111 !important;
+  font-size:15px !important;
+  font-weight:800 !important;
+  letter-spacing:.04em !important;
+  cursor:pointer !important;
+}
+
+#shufflePlayBtn.shuffle-play-btn:active{
+  transform:scale(.98) !important;
+}
+
+@media (max-width:760px){
+  #searchPage,
+  #searchPage.search-empty-state,
+  #searchPage.search-has-query{
+    padding:16vh 18px 40px !important;
+  }
+
+  #searchPage .search-bar,
+  #searchPage .search-box,
+  #searchPage .search-field,
+  #searchPage .search-input-wrap,
+  #searchPage input[type="search"],
+  #searchPage input[type="text"],
+  #searchInput,
+  .search-input{
+    width:calc(100vw - 36px) !important;
+  }
+}
+
+
+
+/* Search real selectors final */
+#searchPage .library-page{
+  width:100% !important;
+  max-width:none !important;
+  margin:0 !important;
+  padding-top:0 !important;
+}
+
+#searchPage .search-shell{
+  width:min(952px, calc(100vw - 56px)) !important;
+  max-width:952px !important;
+  margin:0 auto 44px !important;
+  box-sizing:border-box !important;
+}
+
+#searchPage .search-shell input{
+  width:100% !important;
+  max-width:none !important;
+}
+
+#searchPage #searchResultsTitle{
+  margin:0 !important;
+}
+
+#searchPage #searchResultsTitle:empty{
+  display:none !important;
+}
+
+#searchPage #searchResultsTitle.search-title-hidden{
+  display:none !important;
+}
+
+#searchPage .search-results-section{
+  width:min(952px, calc(100vw - 56px)) !important;
+  max-width:952px !important;
+  margin:0 auto !important;
+}
+
+#searchPage #searchResults{
+  width:100% !important;
+}
+
+@media (max-width:760px){
+  #searchPage .search-shell,
+  #searchPage .search-results-section{
+    width:calc(100vw - 36px) !important;
+    max-width:none !important;
+  }
+}
+
+
+
+/* Search shuffle placement with real layout */
+#searchShuffleEmpty.search-shuffle-empty{
+  width:min(952px, calc(100vw - 56px)) !important;
+  max-width:952px !important;
+  margin:34px auto 0 !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  justify-content:center !important;
+  text-align:center !important;
+}
+
+#searchPage.search-has-query #searchShuffleEmpty{
+  display:none !important;
+}
+
+@media (max-width:760px){
+  #searchShuffleEmpty.search-shuffle-empty{
+    width:calc(100vw - 36px) !important;
+    max-width:none !important;
+  }
+}
+
+
+
+/* Search bar 30 percent shorter */
+#searchPage .search-shell{
+  width:min(666px, calc(100vw - 56px)) !important;
+  max-width:666px !important;
+  margin:0 auto 44px !important;
+}
+
+#searchPage .search-results-section,
+#searchShuffleEmpty.search-shuffle-empty{
+  width:min(666px, calc(100vw - 56px)) !important;
+  max-width:666px !important;
+}
+
+@media (max-width:760px){
+  #searchPage .search-shell,
+  #searchPage .search-results-section,
+  #searchShuffleEmpty.search-shuffle-empty{
+    width:calc(100vw - 36px) !important;
+    max-width:none !important;
+  }
+}
+
+
+
+
+#shufflePlayBtn:disabled{
+  opacity:.72 !important;
+  cursor:wait !important;
+}
+
+
+
+
+
+/* Shuffle circular loader */
+#shufflePlayBtn.loading{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  pointer-events:none !important;
+}
+
+.shuffle-loader{
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  border:2px solid rgba(17,17,17,.25);
+  border-top-color:#111;
+  display:inline-block;
+  animation:womoShuffleSpin .72s linear infinite;
+}
+
+@keyframes womoShuffleSpin{
+  to{
+    transform:rotate(360deg);
+  }
+}
+
+
+
+
+
+/* Search results scroll fix */
+#searchPage{
+  min-height:100vh !important;
+  height:auto !important;
+  overflow:visible !important;
+  padding-bottom:96px !important;
+}
+
+body:has(#searchPage:not(.hidden)),
+html:has(#searchPage:not(.hidden)){
+  overflow-y:auto !important;
+}
+
+#searchPage .library-page{
+  height:auto !important;
+  min-height:0 !important;
+  overflow:visible !important;
+}
+
+#searchPage .search-results-section,
+#searchPage #searchResults{
+  height:auto !important;
+  max-height:none !important;
+  overflow:visible !important;
+}
+
+#searchPage #searchResults{
+  padding-bottom:80px !important;
+}
+
+
+
+/* Search conditional scroll final */
+html.search-scroll-enabled,
+body.search-scroll-enabled{
+  overflow-y:auto !important;
+  height:auto !important;
+}
+
+html:not(.search-scroll-enabled),
+body:not(.search-scroll-enabled){
+  overflow-y:hidden;
+}
+
+#searchPage{
+  min-height:100vh !important;
+  height:auto !important;
+}
+
+#searchPage .library-page{
+  height:auto !important;
+  min-height:0 !important;
+}
+
+body.search-scroll-enabled #searchPage,
+body.search-scroll-enabled #searchPage .library-page{
+  overflow:visible !important;
+  max-height:none !important;
+  padding-bottom:120px !important;
+}
+
+body.search-scroll-enabled #searchPage .search-results-section,
+body.search-scroll-enabled #searchPage #searchResults{
+  overflow:visible !important;
+  max-height:none !important;
+  height:auto !important;
+}
+
+body:not(.search-scroll-enabled) #searchPage{
+  overflow:hidden !important;
+}
+
+body:not(.search-scroll-enabled) #searchPage .library-page{
+  overflow:hidden !important;
+}
+
