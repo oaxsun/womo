@@ -1737,10 +1737,12 @@ function getWomoPlayerOverlay() {
 }
 
 function hideWomoPlayerOverlay() {
+  womoClearForcedPlayerVisibleState();
   const overlay = getWomoPlayerOverlay();
   const video = getWomoPlayerVideo();
   if (video) {
     try { video.pause(); } catch (_) {}
+    resetTsPlayback(video);
     try { video.removeAttribute("src"); video.load(); } catch (_) {}
   }
   if (overlay) {
@@ -1853,12 +1855,264 @@ function bindWomoPlayerProgressEvents() {
   });
 }
 
+
+/* Experimental .ts playback support */
+let currentTsMediaSource = null;
+let currentTsObjectUrl = null;
+let currentTsAbortController = null;
+
+function isTsVideoUrl(url = "") {
+  try {
+    const clean = String(url || "").split("?")[0].split("#")[0].toLowerCase();
+    return clean.endsWith(".ts") || clean.includes(".ts/");
+  } catch (_) {
+    return false;
+  }
+}
+
+function resetTsPlayback(video) {
+  try {
+    if (currentTsAbortController) currentTsAbortController.abort();
+  } catch (_) {}
+
+  currentTsAbortController = null;
+  currentTsMediaSource = null;
+
+  if (currentTsObjectUrl) {
+    try { URL.revokeObjectURL(currentTsObjectUrl); } catch (_) {}
+    currentTsObjectUrl = null;
+  }
+
+  if (video) {
+    try { video.removeAttribute("src"); } catch (_) {}
+  }
+}
+
+function loadMuxJsForTs() {
+  return new Promise((resolve, reject) => {
+    if (window.muxjs?.mp4?.Transmuxer) {
+      resolve();
+      return;
+    }
+
+    const existing = document.querySelector('script[data-womo-muxjs="true"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", reject, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/mux.js@7.0.0/dist/mux.min.js";
+    script.async = true;
+    script.dataset.womoMuxjs = "true";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar mux.js"));
+    document.head.appendChild(script);
+  });
+}
+
+async function playTsWithMux(video, url) {
+  if (!video || !url || !window.MediaSource) return false;
+
+  await loadMuxJsForTs();
+  resetTsPlayback(video);
+
+  currentTsAbortController = new AbortController();
+
+  const response = await fetch(url, {
+    mode: "cors",
+    signal: currentTsAbortController.signal
+  });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo descargar TS: ${response.status}`);
+  }
+
+  const buffer = await response.arrayBuffer();
+
+  return await new Promise((resolve, reject) => {
+    const mediaSource = new MediaSource();
+    currentTsMediaSource = mediaSource;
+    currentTsObjectUrl = URL.createObjectURL(mediaSource);
+    video.src = currentTsObjectUrl;
+
+    mediaSource.addEventListener("sourceopen", () => {
+      try {
+        const transmuxer = new muxjs.mp4.Transmuxer({ keepOriginalTimestamps: false });
+        let sourceBuffer = null;
+        let segmentReceived = false;
+
+        transmuxer.on("data", segment => {
+          segmentReceived = true;
+
+          const initSegment = segment.initSegment;
+          const data = segment.data;
+          const combined = new Uint8Array(initSegment.byteLength + data.byteLength);
+          combined.set(initSegment, 0);
+          combined.set(data, initSegment.byteLength);
+
+          const mime = 'video/mp4; codecs="' + segment.type + '"';
+
+          if (!sourceBuffer) {
+            if (!MediaSource.isTypeSupported(mime)) {
+              throw new Error(`Codec no soportado por el navegador: ${mime}`);
+            }
+            sourceBuffer = mediaSource.addSourceBuffer(mime);
+          }
+
+          sourceBuffer.addEventListener("updateend", () => {
+            try {
+              if (mediaSource.readyState === "open") mediaSource.endOfStream();
+            } catch (_) {}
+            resolve(true);
+          }, { once: true });
+
+          sourceBuffer.appendBuffer(combined);
+        });
+
+        transmuxer.on("done", () => {
+          if (!segmentReceived) {
+            reject(new Error("El archivo TS no produjo segmentos reproducibles."));
+          }
+        });
+
+        transmuxer.push(new Uint8Array(buffer));
+        transmuxer.flush();
+      } catch (error) {
+        reject(error);
+      }
+    }, { once: true });
+
+    mediaSource.addEventListener("error", () => {
+      reject(new Error("MediaSource falló al reproducir el TS."));
+    }, { once: true });
+  });
+}
+
+
+/* TS seek guard: prevent native TS seeking from locking the player */
+let womoCurrentPlaybackUrl = "";
+let womoTsSeekTimer = null;
+let womoTsLastSafeTime = 0;
+let womoTsIsRecovering = false;
+
+function womoIsCurrentTsPlayback() {
+  return typeof isTsVideoUrl === "function" && isTsVideoUrl(womoCurrentPlaybackUrl);
+}
+
+function womoKeepPlayerClosable() {
+  const overlay = document.getElementById("playerOverlay");
+  if (!overlay) return;
+  overlay.classList.add("controls-visible", "show-controls", "open");
+  overlay.style.pointerEvents = "auto";
+  const back = document.getElementById("playerBack")
+    || document.getElementById("playerClose")
+    || document.querySelector(".player-back")
+    || document.querySelector(".player-close");
+  if (back) {
+    back.style.pointerEvents = "auto";
+    back.style.zIndex = "99999";
+  }
+}
+
+function womoClearTsSeekTimer() {
+  if (womoTsSeekTimer) {
+    clearTimeout(womoTsSeekTimer);
+    womoTsSeekTimer = null;
+  }
+}
+
+function womoRecoverFrozenTsSeek(video) {
+  if (!video || !womoIsCurrentTsPlayback() || womoTsIsRecovering) return;
+  womoTsIsRecovering = true;
+  womoKeepPlayerClosable();
+
+  try { video.pause(); } catch (_) {}
+
+  const url = womoCurrentPlaybackUrl;
+  const fallbackTime = Math.max(0, Number(womoTsLastSafeTime || 0));
+
+  try {
+    video.removeAttribute("src");
+    video.load();
+  } catch (_) {}
+
+  setTimeout(() => {
+    try {
+      video.src = url;
+      video.setAttribute("type", "video/mp2t");
+      video.load();
+
+      video.onloadedmetadata = () => {
+        try {
+          if (fallbackTime > 0 && Number.isFinite(video.duration) && fallbackTime < video.duration - 2) {
+            video.currentTime = fallbackTime;
+          }
+        } catch (_) {}
+        video.play().catch(() => {});
+        womoTsIsRecovering = false;
+      };
+    } catch (_) {
+      womoTsIsRecovering = false;
+    }
+  }, 80);
+}
+
+function bindTsSeekGuard(video) {
+  if (!video || video.dataset.womoTsSeekGuard === "true") return;
+  video.dataset.womoTsSeekGuard = "true";
+
+  video.addEventListener("timeupdate", () => {
+    if (!womoIsCurrentTsPlayback()) return;
+    if (!video.seeking && !video.paused && Number.isFinite(video.currentTime)) {
+      womoTsLastSafeTime = video.currentTime;
+    }
+  });
+
+  video.addEventListener("seeking", () => {
+    if (!womoIsCurrentTsPlayback()) return;
+    womoKeepPlayerClosable();
+    womoClearTsSeekTimer();
+    womoTsSeekTimer = setTimeout(() => {
+      if (video.seeking || video.readyState < 2) {
+        console.warn("TS seek parece congelado. Recuperando reproducción.");
+        womoRecoverFrozenTsSeek(video);
+      }
+    }, 3500);
+  });
+
+  ["seeked", "playing", "canplay", "canplaythrough"].forEach(eventName => {
+    video.addEventListener(eventName, () => {
+      if (!womoIsCurrentTsPlayback()) return;
+      womoClearTsSeekTimer();
+      womoTsIsRecovering = false;
+      womoKeepPlayerClosable();
+    });
+  });
+
+  ["waiting", "stalled", "suspend"].forEach(eventName => {
+    video.addEventListener(eventName, () => {
+      if (!womoIsCurrentTsPlayback()) return;
+      womoKeepPlayerClosable();
+      womoClearTsSeekTimer();
+      womoTsSeekTimer = setTimeout(() => {
+        if (video.readyState < 2) {
+          console.warn("TS playback quedó en espera. Recuperando.");
+          womoRecoverFrozenTsSeek(video);
+        }
+      }, 4500);
+    });
+  });
+}
+
 function openPlayer(item, options = {}) {
   currentPlayerItem = item;
   currentPlayerEpisode = options?.episode || null;
   setTimeout(bindWomoPlayerProgressEvents, 0);
   const episode = options.episode || null;
   const url = getPlayableUrl(item, episode);
+  womoCurrentPlaybackUrl = url;
 
   if (!url) {
     alert("Este título todavía no tiene video configurado.");
@@ -1867,10 +2121,19 @@ function openPlayer(item, options = {}) {
 
   const overlay = document.getElementById('playerOverlay');
   const video = document.getElementById('womoPlayer');
+  bindTsSeekGuard(video);
   video.setAttribute('controlsList', 'nodownload noplaybackrate');
   video.disablePictureInPicture = true;
   const title = document.getElementById('playerTitle');
   const subtitle = document.getElementById('playerSubtitle');
+
+  video.onerror = () => {
+    console.warn("Womo video playback error detail", {
+      url,
+      isTs: isTsVideoUrl(url),
+      error: video.error
+    });
+  };
 
   currentPlayerContext = {
     item,
@@ -1890,12 +2153,19 @@ function openPlayer(item, options = {}) {
 
   video.pause();
   video.removeAttribute('src');
+  resetTsPlayback(video);
   video.load();
 
   if (window.Hls && Hls.isSupported() && url.includes(".m3u8")) {
     currentHls = new Hls();
     currentHls.loadSource(url);
     currentHls.attachMedia(video);
+  } else if (isTsVideoUrl(url)) {
+    // Safari can play MPEG-TS directly. Do not fetch/transmux first, because Archive links may fail CORS.
+    video.src = url;
+    video.setAttribute("type", "video/mp2t");
+    video.load();
+    womoKeepPlayerClosable();
   } else {
     video.src = url;
   }
@@ -1925,10 +2195,18 @@ function openPlayer(item, options = {}) {
   clearInterval(playerSaveTimer);
   playerSaveTimer = setInterval(savePlayerProgress, 5000);
 
+  womoClearAutoNextOverlayVisualOnly();
+  womoForcePlayerVisibleOnOpen();
+  setTimeout(womoForcePlayerVisibleOnOpen, 40);
+  setTimeout(womoForcePlayerVisibleOnOpen, 180);
   if (window.lucide) lucide.createIcons();
 }
 
 function closePlayer() {
+  womoClearForcedPlayerVisibleState();
+  womoClearTsSeekTimer();
+  womoCurrentPlaybackUrl = "";
+  womoTsIsRecovering = false;
   saveActiveEpisodeProgress(false);
   saveActiveEpisodeProgress(false);
   const overlay = document.getElementById('playerOverlay');
@@ -1939,6 +2217,7 @@ function closePlayer() {
   playerSaveTimer = null;
 
   video.pause();
+  resetTsPlayback(video);
   if (currentHls) {
     currentHls.destroy();
     currentHls = null;
@@ -2986,4 +3265,399 @@ document.addEventListener("input", event => {
   }
 }, true);
 window.addEventListener("resize", womoSyncSearchScrollClass);
+
+
+
+console.info("Womo TS support active: .ts URLs play directly in the native video element.");
+
+
+
+
+
+/* Cleanup forced player visibility state */
+function womoClearForcedPlayerVisibleState() {
+  const overlay = document.getElementById("playerOverlay") || document.querySelector(".player-overlay");
+  const video = document.getElementById("womoPlayer") || document.querySelector("#playerOverlay video") || document.querySelector(".player-overlay video");
+
+  if (overlay) {
+    overlay.classList.remove("open", "active", "visible");
+    overlay.style.removeProperty("display");
+    overlay.style.removeProperty("visibility");
+    overlay.style.removeProperty("opacity");
+    overlay.style.removeProperty("pointer-events");
+  }
+
+  if (video) {
+    video.style.removeProperty("display");
+    video.style.removeProperty("visibility");
+    video.style.removeProperty("opacity");
+    video.style.removeProperty("pointer-events");
+  }
+}
+
+/* Fix hidden player after canceled auto-next */
+function womoForcePlayerVisibleOnOpen() {
+  const overlay = document.getElementById("playerOverlay") || document.querySelector(".player-overlay");
+  const video = document.getElementById("womoPlayer") || document.querySelector("#playerOverlay video") || document.querySelector(".player-overlay video");
+
+  if (overlay) {
+    overlay.classList.remove("hidden", "is-hidden", "closed", "closing");
+    overlay.classList.add("open", "active", "visible");
+    overlay.style.display = "";
+    overlay.style.visibility = "visible";
+    overlay.style.opacity = "1";
+    overlay.style.pointerEvents = "auto";
+    overlay.setAttribute("aria-hidden", "false");
+  }
+
+  if (video) {
+    video.style.display = "";
+    video.style.visibility = "visible";
+    video.style.opacity = "1";
+    video.style.pointerEvents = "auto";
+  }
+}
+
+function womoClearAutoNextOverlayVisualOnly() {
+  const autoOverlay = document.getElementById("womoAutoNextOverlay");
+  if (autoOverlay) {
+    autoOverlay.classList.add("hidden");
+    autoOverlay.style.display = "none";
+  }
+
+  const playBtn = document.getElementById("womoAutoNextPlay");
+  if (playBtn) {
+    playBtn.classList.remove("womo-next-progressing");
+  }
+}
+
+/* Safe Netflix-style next episode overlay */
+let womoAutoNextTimer = null;
+let womoAutoNextSeconds = 15;
+let womoAutoNextEpisode = null;
+let womoAutoNextDismissedKey = "";
+let womoAutoNextActiveKey = "";
+
+function womoAutoNextKey() {
+  if (!currentPlayerItem || !currentPlayerEpisode) return "";
+  return [
+    currentPlayerItem.id,
+    "S" + Number(currentPlayerEpisode.season || 1),
+    "E" + Number(currentPlayerEpisode.episodeNumber || currentPlayerEpisode.episode || 1),
+    currentPlayerEpisode.id || ""
+  ].join(":");
+}
+
+function womoAutoNextIsShuffle() {
+  try {
+    return Boolean(
+      window.__womoShuffleNoProgress ||
+      window.womoGlobalShuffleNoProgress ||
+      (typeof currentPlayerContext !== "undefined" && currentPlayerContext && currentPlayerContext.shuffleMode) ||
+      (typeof currentPlayerContext !== "undefined" && currentPlayerContext && currentPlayerContext.saveProgress === false)
+    );
+  } catch (_) {
+    return Boolean(window.__womoShuffleNoProgress || window.womoGlobalShuffleNoProgress);
+  }
+}
+
+function womoAutoNextClearTimer() {
+  if (womoAutoNextTimer) {
+    clearInterval(womoAutoNextTimer);
+    womoAutoNextTimer = null;
+  }
+}
+
+function womoAutoNextHide() {
+  womoAutoNextStopButtonFill();
+  womoAutoNextClearTimer();
+  const overlay = document.getElementById("womoAutoNextOverlay");
+  if (overlay) {
+    overlay.classList.add("hidden");
+    overlay.style.display = "none";
+  }
+  womoAutoNextEpisode = null;
+  womoAutoNextActiveKey = "";
+}
+
+function womoAutoNextEnsureOverlay() {
+  const playerOverlay = document.getElementById("playerOverlay") || document.querySelector(".player-overlay");
+  if (!playerOverlay) return null;
+
+  let overlay = document.getElementById("womoAutoNextOverlay");
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = "womoAutoNextOverlay";
+  overlay.className = "womo-auto-next-overlay hidden";
+  overlay.innerHTML = ''
+    + '<div class="womo-auto-next-text">'
+    + '  <div class="womo-auto-next-kicker">A continuación</div>'
+    + '  <div class="womo-auto-next-title" id="womoAutoNextTitle">Siguiente episodio</div>'
+    + '  <div class="womo-auto-next-count" id="womoAutoNextMeta">T1 E1</div>'
+    + '</div>'
+    + '<div class="womo-auto-next-actions">'
+    + '  <button type="button" id="womoAutoNextPlay">Siguiente en 15s</button>'
+    + '  <button type="button" id="womoAutoNextCancel">Cancelar</button>'
+    + '</div>';
+
+  playerOverlay.appendChild(overlay);
+
+  const playBtn = overlay.querySelector("#womoAutoNextPlay");
+  const cancelBtn = overlay.querySelector("#womoAutoNextCancel");
+
+  if (playBtn) {
+    playBtn.addEventListener("click", function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      womoAutoNextPlayNow();
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      womoAutoNextDismissedKey = womoAutoNextKey();
+      womoAutoNextHide();
+      womoClearAutoNextOverlayVisualOnly();
+    });
+  }
+
+  return overlay;
+}
+
+async function womoAutoNextGetEpisodes(seriesItem) {
+  let episodes = [];
+
+  try {
+    if (typeof currentPreviewItem !== "undefined" && currentPreviewItem && currentPreviewItem.id === seriesItem.id && Array.isArray(currentPreviewEpisodesCache) && currentPreviewEpisodesCache.length) {
+      episodes = currentPreviewEpisodesCache;
+    }
+  } catch (_) {}
+
+  if (!episodes.length) {
+    try {
+      if (typeof readSeriesEpisodes === "function") {
+        episodes = await readSeriesEpisodes(seriesItem.id);
+      }
+    } catch (error) {
+      console.warn("No se pudieron leer episodios para autoplay.", error);
+    }
+  }
+
+  if (!Array.isArray(episodes)) episodes = [];
+
+  return episodes.map(function(ep, index) {
+    return {
+      ...ep,
+      season: Number(ep.season || ep.seasonNumber || 1),
+      episodeNumber: Number(ep.episodeNumber || ep.number || ep.episode || ep.ep || index + 1),
+      hlsUrl: ep.hlsUrl || ep.videoUrl || ep.url || ep.src || ep.streamUrl || ep.m3u8 || ep.file || ep.link || ""
+    };
+  }).sort(function(a, b) {
+    return (a.season - b.season) || (a.episodeNumber - b.episodeNumber);
+  });
+}
+
+async function womoAutoNextFindNextEpisode() {
+  if (!currentPlayerItem || currentPlayerItem.type !== "series" || !currentPlayerEpisode) return null;
+
+  const episodes = await womoAutoNextGetEpisodes(currentPlayerItem);
+  if (!episodes.length) return null;
+
+  const currentSeason = Number(currentPlayerEpisode.season || currentPlayerEpisode.seasonNumber || 1);
+  const currentNumber = Number(currentPlayerEpisode.episodeNumber || currentPlayerEpisode.number || currentPlayerEpisode.episode || 1);
+  const currentId = currentPlayerEpisode.id || "";
+
+  const index = episodes.findIndex(function(ep) {
+    return (currentId && ep.id === currentId) || (Number(ep.season) === currentSeason && Number(ep.episodeNumber) === currentNumber);
+  });
+
+  if (index < 0) return null;
+  return episodes[index + 1] || null;
+}
+
+async function womoAutoNextPlayNow() {
+  const nextEpisode = womoAutoNextEpisode;
+  if (!nextEpisode || !currentPlayerItem || currentPlayerItem.type !== "series") return;
+
+  womoAutoNextHide();
+
+  try {
+    if (!womoAutoNextIsShuffle()) {
+      if (typeof saveActiveEpisodeProgress === "function") saveActiveEpisodeProgress(true);
+      if (typeof savePlayerProgress === "function") savePlayerProgress();
+    }
+  } catch (_) {}
+
+  if (typeof openPlayer === "function") {
+    openPlayer(currentPlayerItem, { episode: nextEpisode });
+  }
+}
+
+
+function womoAutoNextUpdateButtonText() {
+  const playBtn = document.getElementById("womoAutoNextPlay");
+  if (!playBtn) return;
+  const seconds = Math.max(0, Number(womoAutoNextSeconds || 0));
+  playBtn.textContent = "Siguiente en " + seconds + "s";
+}
+
+function womoAutoNextStartButtonFill() {
+  const playBtn = document.getElementById("womoAutoNextPlay");
+  if (!playBtn) return;
+  playBtn.classList.remove("womo-next-progressing");
+  playBtn.style.setProperty("--womo-next-duration", "15s");
+  void playBtn.offsetWidth;
+  playBtn.classList.add("womo-next-progressing");
+  womoAutoNextUpdateButtonText();
+}
+
+function womoAutoNextStopButtonFill() {
+  const playBtn = document.getElementById("womoAutoNextPlay");
+  if (!playBtn) return;
+  playBtn.classList.remove("womo-next-progressing");
+}
+
+function womoAutoNextStartCountdown(nextEpisode) {
+  const key = womoAutoNextKey();
+  if (!key || womoAutoNextDismissedKey === key) return;
+
+  const overlay = womoAutoNextEnsureOverlay();
+  if (!overlay) return;
+
+  womoAutoNextEpisode = nextEpisode;
+  womoAutoNextActiveKey = key;
+  womoAutoNextSeconds = 15;
+
+  const title = overlay.querySelector("#womoAutoNextTitle");
+  const count = overlay.querySelector("#womoAutoNextCount");
+  const meta = overlay.querySelector("#womoAutoNextMeta");
+
+  if (title) {
+    title.textContent = currentPlayerItem?.title || currentPlayerItem?.name || "Serie";
+  }
+  if (meta) {
+    const episodeName = nextEpisode.title || nextEpisode.name || "";
+    const episodeLabel = "T" + (nextEpisode.season || 1) + " E" + (nextEpisode.episodeNumber || nextEpisode.episode || 1);
+    meta.textContent = episodeName ? episodeLabel + " - " + episodeName : episodeLabel;
+  }
+  if (count) count.textContent = String(womoAutoNextSeconds);
+  womoAutoNextUpdateButtonText();
+
+  womoAutoNextStartButtonFill();
+  overlay.classList.remove("hidden");
+  overlay.style.display = "";
+
+  womoAutoNextClearTimer();
+  womoAutoNextTimer = setInterval(function() {
+    womoAutoNextSeconds -= 1;
+    if (count) count.textContent = String(Math.max(0, womoAutoNextSeconds));
+    womoAutoNextUpdateButtonText();
+    if (womoAutoNextSeconds <= 0) {
+      womoAutoNextClearTimer();
+      womoAutoNextPlayNow();
+    }
+  }, 1000);
+}
+
+async function womoAutoNextCheck() {
+  const video = document.getElementById("womoPlayer") || document.querySelector("#playerOverlay video") || document.querySelector(".player-overlay video");
+  if (!video) return;
+
+  if (!currentPlayerItem || currentPlayerItem.type !== "series" || !currentPlayerEpisode || womoAutoNextIsShuffle()) {
+    womoAutoNextHide();
+    return;
+  }
+
+  if (!video.duration || !Number.isFinite(video.duration) || video.duration <= 0) return;
+
+  const remaining = video.duration - video.currentTime;
+  const key = womoAutoNextKey();
+
+  if (remaining > 19) return;
+  if (remaining <= 17 && !womoAutoNextActiveKey && womoAutoNextDismissedKey !== key) {
+    const nextEpisode = await womoAutoNextFindNextEpisode();
+    if (nextEpisode) womoAutoNextStartCountdown(nextEpisode);
+  }
+}
+
+function womoAutoNextBindVideo() {
+  const video = document.getElementById("womoPlayer") || document.querySelector("#playerOverlay video") || document.querySelector(".player-overlay video");
+  if (!video || video.dataset.womoAutoNextBound === "true") return;
+
+  video.dataset.womoAutoNextBound = "true";
+
+  video.addEventListener("timeupdate", function() {
+    womoAutoNextCheck();
+  });
+
+  video.addEventListener("seeking", function() {
+    womoAutoNextHide();
+  });
+
+  video.addEventListener("ended", function() {
+    womoAutoNextHide();
+  });
+
+  video.addEventListener("pause", function() {
+    if (!video.ended && womoAutoNextActiveKey) {
+      womoAutoNextClearTimer();
+    }
+  });
+
+  video.addEventListener("play", function() {
+    if (womoAutoNextActiveKey && !womoAutoNextTimer) {
+      womoAutoNextTimer = setInterval(function() {
+        womoAutoNextSeconds -= 1;
+        const count = document.getElementById("womoAutoNextCount");
+        if (count) count.textContent = String(Math.max(0, womoAutoNextSeconds));
+        womoAutoNextUpdateButtonText();
+        if (womoAutoNextSeconds <= 0) {
+          womoAutoNextClearTimer();
+          womoAutoNextPlayNow();
+        }
+      }, 1000);
+    }
+  });
+}
+
+(function(){
+  if (window.__womoAutoNextOpenPlayerPatched) return;
+  window.__womoAutoNextOpenPlayerPatched = true;
+
+  const originalOpenPlayer = typeof openPlayer === "function" ? openPlayer : null;
+  if (originalOpenPlayer) {
+    openPlayer = function(item, options = {}) {
+      womoAutoNextHide();
+      womoAutoNextDismissedKey = "";
+      womoClearAutoNextOverlayVisualOnly();
+      const result = originalOpenPlayer.call(this, item, options);
+      womoForcePlayerVisibleOnOpen();
+      setTimeout(womoForcePlayerVisibleOnOpen, 40);
+      setTimeout(womoForcePlayerVisibleOnOpen, 180);
+      setTimeout(womoAutoNextBindVideo, 120);
+      return result;
+    };
+  }
+
+  const originalClosePlayer = typeof closePlayer === "function" ? closePlayer : null;
+  if (originalClosePlayer) {
+    closePlayer = function() {
+      womoAutoNextHide();
+      womoClearForcedPlayerVisibleState();
+      return originalClosePlayer.apply(this, arguments);
+    };
+  }
+
+  const originalHidePlayer = typeof hideWomoPlayerOverlay === "function" ? hideWomoPlayerOverlay : null;
+  if (originalHidePlayer) {
+    hideWomoPlayerOverlay = function() {
+      womoAutoNextHide();
+      womoClearForcedPlayerVisibleState();
+      return originalHidePlayer.apply(this, arguments);
+    };
+  }
+})();
 

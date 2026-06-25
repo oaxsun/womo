@@ -4448,3 +4448,214 @@ body:not(.search-scroll-enabled) #searchPage .library-page{
   overflow:hidden !important;
 }
 
+
+
+
+/* TS player safety: keep exit controls clickable */
+#playerOverlay.controls-visible #playerBack,
+#playerOverlay.show-controls #playerBack,
+#playerBack,
+.player-back,
+.player-close{
+  pointer-events:auto !important;
+  z-index:99999 !important;
+}
+
+#playerOverlay video,
+.player-overlay video{
+  z-index:1 !important;
+}
+
+#playerOverlay .player-topbar,
+.player-overlay .player-topbar{
+  z-index:99998 !important;
+  pointer-events:auto !important;
+}
+
+
+
+
+/* Safe Netflix-style next episode overlay */
+#playerNextEpisode,
+.player-next-episode{
+  display:none !important;
+}
+
+.womo-auto-next-overlay{
+  position:absolute;
+  right:24px;
+  bottom:92px;
+  z-index:99999;
+  width:min(390px, calc(100vw - 48px));
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  padding:18px;
+  border-radius:18px;
+  background:rgba(10,10,10,.82);
+  border:1px solid rgba(255,255,255,.12);
+  color:#f5f5f5;
+  backdrop-filter:blur(18px);
+  box-shadow:0 20px 60px rgba(0,0,0,.45);
+  pointer-events:auto;
+}
+
+.womo-auto-next-overlay.hidden{
+  display:none !important;
+}
+
+.womo-auto-next-kicker{
+  color:#d7ff00;
+  font-size:12px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  margin-bottom:5px;
+}
+
+.womo-auto-next-title{
+  font-size:16px;
+  font-weight:800;
+  line-height:1.12;
+  letter-spacing:-.02em;
+  max-width:210px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.womo-auto-next-count{
+  margin-top:6px;
+  font-size:13px;
+  color:rgba(245,245,245,.72);
+}
+
+.womo-auto-next-actions{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  flex:0 0 auto;
+}
+
+#womoAutoNextPlay,
+#womoAutoNextCancel{
+  height:34px;
+  padding:0 13px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  border:0;
+  white-space:nowrap;
+}
+
+#womoAutoNextPlay{
+  background:#d7ff00;
+  color:#111;
+}
+
+#womoAutoNextCancel{
+  background:rgba(255,255,255,.12);
+  color:#fff;
+}
+
+@media (max-width:760px){
+  .womo-auto-next-overlay{
+    left:14px;
+    right:14px;
+    bottom:78px;
+    width:auto;
+    padding:14px;
+  }
+
+  .womo-auto-next-title{
+    max-width:160px;
+    font-size:14px;
+  }
+}
+
+
+
+
+/* Auto-next button timer and smooth fill */
+@keyframes womoNextButtonSmoothFill {
+  from { width:0%; }
+  to { width:100%; }
+}
+
+#womoAutoNextPlay{
+  position:relative !important;
+  overflow:hidden !important;
+  isolation:isolate !important;
+  padding-left:40px !important;
+  padding-right:40px !important;
+  min-width:max-content !important;
+  white-space:nowrap !important;
+  --womo-next-duration:15s;
+}
+
+#womoAutoNextPlay::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  width:0%;
+  background:rgba(17,17,17,.18);
+  z-index:-1;
+}
+
+#womoAutoNextPlay::after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:0;
+  height:3px;
+  width:0%;
+  background:rgba(17,17,17,.38);
+}
+
+#womoAutoNextPlay.womo-next-progressing::before,
+#womoAutoNextPlay.womo-next-progressing::after{
+  animation:womoNextButtonSmoothFill var(--womo-next-duration, 15s) linear forwards;
+}
+
+
+
+
+/* Fix hidden player after canceled auto-next */
+#playerOverlay.open:not(.hidden):not(.is-hidden):not(.closed),
+#playerOverlay.active:not(.hidden):not(.is-hidden):not(.closed),
+#playerOverlay.visible:not(.hidden):not(.is-hidden):not(.closed){
+  display:flex !important;
+  visibility:visible !important;
+  opacity:1 !important;
+  pointer-events:auto !important;
+}
+
+#playerOverlay.open:not(.hidden):not(.is-hidden):not(.closed) #womoPlayer,
+#playerOverlay.active:not(.hidden):not(.is-hidden):not(.closed) #womoPlayer,
+#playerOverlay.visible:not(.hidden):not(.is-hidden):not(.closed) #womoPlayer,
+#playerOverlay.open:not(.hidden):not(.is-hidden):not(.closed) video,
+#playerOverlay.active:not(.hidden):not(.is-hidden):not(.closed) video,
+#playerOverlay.visible:not(.hidden):not(.is-hidden):not(.closed) video{
+  display:block !important;
+  visibility:visible !important;
+  opacity:1 !important;
+}
+
+
+
+
+/* Normal player close must win over forced visibility */
+#playerOverlay.hidden,
+#playerOverlay.is-hidden,
+#playerOverlay.closed,
+.player-overlay.hidden,
+.player-overlay.is-hidden,
+.player-overlay.closed{
+  display:none !important;
+  visibility:hidden !important;
+  opacity:0 !important;
+  pointer-events:none !important;
+}
+
