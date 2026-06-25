@@ -5237,3 +5237,70 @@ button:has(.womo-shuffle-btn-icon),
   z-index:2;
 }
 
+
+
+
+/* Preview no-recommendations bottom fill */
+#previewModal.womo-no-preview-recommendations,
+.preview-modal.womo-no-preview-recommendations,
+.content-preview.womo-no-preview-recommendations,
+.details-modal.womo-no-preview-recommendations,
+#detailsModal.womo-no-preview-recommendations{
+  background:#050505 !important;
+  overflow:hidden !important;
+}
+
+/* When the recommendations block is missing, extend the info surface to the bottom */
+#previewModal.womo-no-preview-recommendations .preview-info,
+#previewModal.womo-no-preview-recommendations .preview-content,
+#previewModal.womo-no-preview-recommendations .preview-copy,
+.preview-modal.womo-no-preview-recommendations .preview-info,
+.preview-modal.womo-no-preview-recommendations .preview-content,
+.preview-modal.womo-no-preview-recommendations .preview-copy,
+.content-preview.womo-no-preview-recommendations .preview-info,
+.content-preview.womo-no-preview-recommendations .preview-content,
+.content-preview.womo-no-preview-recommendations .preview-copy,
+.details-modal.womo-no-preview-recommendations .preview-info,
+.details-modal.womo-no-preview-recommendations .preview-content,
+.details-modal.womo-no-preview-recommendations .preview-copy{
+  background:#050505 !important;
+}
+
+/* Cover only the lower leftover gap under the info block */
+#previewModal.womo-no-preview-recommendations::after,
+.preview-modal.womo-no-preview-recommendations::after,
+.content-preview.womo-no-preview-recommendations::after,
+.details-modal.womo-no-preview-recommendations::after,
+#detailsModal.womo-no-preview-recommendations::after{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  height:76px;
+  background:#050505;
+  pointer-events:none;
+  z-index:2;
+}
+
+/* Keep the actual preview content over the bottom fill */
+#previewModal.womo-no-preview-recommendations .preview-info,
+#previewModal.womo-no-preview-recommendations .preview-content,
+#previewModal.womo-no-preview-recommendations .preview-copy,
+#previewModal.womo-no-preview-recommendations .preview-actions,
+.preview-modal.womo-no-preview-recommendations .preview-info,
+.preview-modal.womo-no-preview-recommendations .preview-content,
+.preview-modal.womo-no-preview-recommendations .preview-copy,
+.preview-modal.womo-no-preview-recommendations .preview-actions,
+.content-preview.womo-no-preview-recommendations .preview-info,
+.content-preview.womo-no-preview-recommendations .preview-content,
+.content-preview.womo-no-preview-recommendations .preview-copy,
+.content-preview.womo-no-preview-recommendations .preview-actions,
+.details-modal.womo-no-preview-recommendations .preview-info,
+.details-modal.womo-no-preview-recommendations .preview-content,
+.details-modal.womo-no-preview-recommendations .preview-copy,
+.details-modal.womo-no-preview-recommendations .preview-actions{
+  position:relative !important;
+  z-index:5 !important;
+}
+

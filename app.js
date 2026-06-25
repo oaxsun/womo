@@ -1009,21 +1009,46 @@ function genreTokens(item) {
 }
 
 function getPreviewRecommendations(item) {
-  const all = [...allItemsByContinueKey.values()].filter(x => x.id !== item.id);
+  const all = [...allItemsByContinueKey.values()]
+    .filter(x => x && x.id !== item.id && x.poster);
 
-  if (item.type === 'series') return [];
+  if (item.type === 'series') {
+    const empty = [];
+    empty.womoTitle = 'Recomendaciones';
+    return empty;
+  }
 
   if (item.type === 'concert') {
-    return all.filter(x => x.type === 'concert').slice(0, 8);
+    const concerts = all
+      .filter(x => x.type === 'concert')
+      .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+      .slice(0, 3);
+    concerts.womoTitle = 'Recomendaciones';
+    return concerts;
   }
 
   const currentGenres = genreTokens(item);
-  if (!currentGenres.length) return [];
 
-  return all
+  const sameGenre = currentGenres.length
+    ? all
+        .filter(x => x.type === 'movie')
+        .filter(x => genreTokens(x).some(genre => currentGenres.includes(genre)))
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+        .slice(0, 8)
+    : [];
+
+  if (sameGenre.length >= 1) {
+    sameGenre.womoTitle = 'Recomendaciones';
+    return sameGenre;
+  }
+
+  const recent = all
     .filter(x => x.type === 'movie')
-    .filter(x => genreTokens(x).some(genre => currentGenres.includes(genre)))
-    .slice(0, 8);
+    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+    .slice(0, 3);
+
+  recent.womoTitle = 'Recientes';
+  return recent;
 }
 
 
@@ -1500,7 +1525,7 @@ async function openPreview(item) {
       extra.classList.add('hidden');
     } else {
       extra.classList.remove('hidden');
-      extraTitle.textContent = item.type === 'concert' ? 'Más conciertos' : 'Recomendaciones';
+      extraTitle.textContent = recommendations.womoTitle || 'Recomendaciones';
       recommendations.forEach(r => {
         const img = document.createElement('img');
         img.src = r.poster || r.posterUrl;
@@ -1508,6 +1533,7 @@ async function openPreview(item) {
         img.addEventListener('click', () => openPreview(r));
         recs.appendChild(img);
       });
+      extra.classList.remove('hidden');
     }
   }
 
@@ -4612,5 +4638,65 @@ function womoRestoreOverlayActionLabels() {
   window.__womoOverlayLabelFixBound = true;
   document.addEventListener("DOMContentLoaded", function(){ setTimeout(womoRestoreOverlayActionLabels, 120); });
   document.addEventListener("click", function(){ setTimeout(womoRestoreOverlayActionLabels, 120); }, true);
+})();
+
+
+
+
+/* Preview bottom fill when there are no recommendations */
+function womoFixPreviewBottomWhenNoRecommendations() {
+  const previews = Array.from(document.querySelectorAll("#previewModal, .preview-modal, .content-preview, .details-modal, #detailsModal"));
+  previews.forEach(preview => {
+    const previewRecs = preview.querySelector("#previewRecs, .preview-recs");
+    const hasPreviewRecs = Boolean(
+      previewRecs &&
+      Array.from(previewRecs.children || []).some(child => child.offsetHeight > 0 || child.tagName === "IMG")
+    );
+
+    if (hasPreviewRecs) {
+      preview.classList.remove("womo-no-preview-recommendations");
+      return;
+    }
+
+    const recommendations = preview.querySelector(
+      ".recommendations, .recommended, .related, .more-like-this, .preview-recommendations, .preview-related, [data-recommendations], [data-related]"
+    );
+
+    const hasVisibleRecommendations = Boolean(
+      recommendations &&
+      recommendations.children &&
+      Array.from(recommendations.children).some(child => {
+        const style = window.getComputedStyle(child);
+        return style.display !== "none" && style.visibility !== "hidden" && child.offsetHeight > 0;
+      })
+    );
+
+    preview.classList.toggle("womo-no-preview-recommendations", !hasVisibleRecommendations);
+  });
+}
+
+(function(){
+  if (window.__womoPreviewBottomFixBound) return;
+  window.__womoPreviewBottomFixBound = true;
+
+  document.addEventListener("click", () => {
+    setTimeout(womoFixPreviewBottomWhenNoRecommendations, 80);
+    setTimeout(womoFixPreviewBottomWhenNoRecommendations, 350);
+  }, true);
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__womoPreviewBottomFixTimer);
+    window.__womoPreviewBottomFixTimer = setTimeout(womoFixPreviewBottomWhenNoRecommendations, 80);
+  });
+
+  try {
+    observer.observe(document.documentElement, { childList:true, subtree:true, attributes:true, attributeFilter:["class", "style"] });
+  } catch (_) {}
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", womoFixPreviewBottomWhenNoRecommendations);
+  } else {
+    womoFixPreviewBottomWhenNoRecommendations();
+  }
 })();
 
