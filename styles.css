@@ -4677,3 +4677,471 @@ video:-webkit-full-screen{
   background:#000 !important;
 }
 
+
+
+
+/* Shuffle next overlay */
+#womoShuffleNextOverlay{
+  z-index:99999;
+}
+
+#womoShuffleNextPlay{
+  position:relative !important;
+  overflow:hidden !important;
+  isolation:isolate !important;
+  padding-left:40px !important;
+  padding-right:40px !important;
+  min-width:max-content !important;
+  white-space:nowrap !important;
+  --womo-next-duration:15s;
+}
+
+#womoShuffleNextPlay::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  width:0%;
+  background:rgba(17,17,17,.18);
+  z-index:-1;
+}
+
+#womoShuffleNextPlay::after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:0;
+  height:3px;
+  width:0%;
+  background:rgba(17,17,17,.38);
+}
+
+#womoShuffleNextPlay.womo-next-progressing::before,
+#womoShuffleNextPlay.womo-next-progressing::after{
+  animation:womoNextButtonSmoothFill var(--womo-next-duration, 15s) linear forwards;
+}
+
+#womoShuffleNextCancel{
+  height:34px;
+  padding:0 13px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  border:0;
+  white-space:nowrap;
+  background:rgba(255,255,255,.12);
+  color:#fff;
+}
+
+
+
+
+/* Shuffle next uses the same button style as series auto-next */
+#womoShuffleNextPlay{
+  height:34px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  border:0;
+  background:#d7ff00;
+  color:#111;
+  position:relative !important;
+  overflow:hidden !important;
+  isolation:isolate !important;
+  padding-left:40px !important;
+  padding-right:40px !important;
+  min-width:max-content !important;
+  white-space:nowrap !important;
+  --womo-next-duration:15s;
+}
+
+#womoShuffleNextPlay::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  width:0%;
+  background:rgba(17,17,17,.18);
+  z-index:-1;
+}
+
+#womoShuffleNextPlay::after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:0;
+  height:3px;
+  width:0%;
+  background:rgba(17,17,17,.38);
+}
+
+#womoShuffleNextPlay.womo-next-progressing::before,
+#womoShuffleNextPlay.womo-next-progressing::after{
+  animation:womoNextButtonSmoothFill var(--womo-next-duration, 15s) linear forwards;
+}
+
+
+
+
+/* Auto-next episode meta ellipsis */
+.womo-auto-next-text{
+  min-width:0 !important;
+  overflow:hidden !important;
+}
+
+.womo-auto-next-count,
+#womoAutoNextMeta,
+#womoShuffleNextMeta{
+  display:block !important;
+  max-width:210px !important;
+  min-width:0 !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+}
+
+@media (max-width:760px){
+  .womo-auto-next-count,
+  #womoAutoNextMeta,
+  #womoShuffleNextMeta{
+    max-width:165px !important;
+  }
+}
+
+
+
+
+/* Series and shuffle auto-next meta ellipsis */
+.womo-auto-next-count,
+#womoAutoNextMeta,
+#womoShuffleNextMeta{
+  display:block !important;
+  max-width:210px !important;
+  min-width:0 !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+}
+
+@media (max-width:760px){
+  .womo-auto-next-count,
+  #womoAutoNextMeta,
+  #womoShuffleNextMeta{
+    max-width:165px !important;
+  }
+}
+
+
+
+
+/* Universal shuffle early skip overlay */
+#womoShuffleSkipOverlay{
+  z-index:99999;
+}
+
+#womoShuffleSkipPlay{
+  height:34px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  border:0;
+  background:#d7ff00;
+  color:#111;
+  position:relative !important;
+  overflow:hidden !important;
+  isolation:isolate !important;
+  padding-left:40px !important;
+  padding-right:40px !important;
+  min-width:max-content !important;
+  white-space:nowrap !important;
+  --womo-next-duration:10s;
+}
+
+#womoShuffleSkipPlay::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  width:0%;
+  background:rgba(17,17,17,.18);
+  z-index:-1;
+}
+
+#womoShuffleSkipPlay::after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:0;
+  height:3px;
+  width:0%;
+  background:rgba(17,17,17,.38);
+}
+
+#womoShuffleSkipPlay.womo-next-progressing::before,
+#womoShuffleSkipPlay.womo-next-progressing::after{
+  animation:womoNextButtonSmoothFill var(--womo-next-duration, 10s) linear forwards;
+}
+
+#womoShuffleSkipCancel{
+  height:34px;
+  padding:0 13px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  border:0;
+  white-space:nowrap;
+  background:rgba(255,255,255,.12);
+  color:#fff;
+}
+
+
+
+
+/* Universal shuffle skip: timer-left layout */
+#womoShuffleSkipOverlay{
+  display:flex;
+  align-items:center;
+  gap:16px;
+}
+
+#womoShuffleSkipOverlay.hidden{
+  display:none !important;
+}
+
+#womoShuffleSkipOverlay .womo-shuffle-skip-timer{
+  flex:0 0 auto;
+  width:58px;
+  height:58px;
+  border-radius:999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.16);
+  color:#fff;
+  font-size:20px;
+  font-weight:900;
+  letter-spacing:-.04em;
+}
+
+#womoShuffleSkipOverlay .womo-shuffle-skip-content{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:18px;
+}
+
+#womoShuffleSkipOverlay .womo-auto-next-title{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:260px;
+}
+
+#womoShuffleSkipPlay{
+  height:34px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  border:0;
+  background:#d7ff00;
+  color:#111;
+  position:relative !important;
+  overflow:hidden !important;
+  isolation:auto !important;
+  padding-left:24px !important;
+  padding-right:24px !important;
+  min-width:max-content !important;
+  white-space:nowrap !important;
+}
+
+#womoShuffleSkipPlay::before,
+#womoShuffleSkipPlay::after{
+  display:none !important;
+  content:none !important;
+  animation:none !important;
+}
+
+#womoShuffleSkipPlay.womo-next-progressing::before,
+#womoShuffleSkipPlay.womo-next-progressing::after{
+  display:none !important;
+  animation:none !important;
+}
+
+@media (max-width:760px){
+  #womoShuffleSkipOverlay{
+    gap:12px;
+  }
+
+  #womoShuffleSkipOverlay .womo-shuffle-skip-timer{
+    width:48px;
+    height:48px;
+    font-size:17px;
+  }
+
+  #womoShuffleSkipOverlay .womo-shuffle-skip-content{
+    gap:12px;
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  #womoShuffleSkipOverlay .womo-auto-next-title{
+    max-width:190px;
+  }
+}
+
+
+
+
+/* Universal shuffle skip manual-only behavior */
+#womoShuffleSkipCancel{
+  display:none !important;
+}
+
+
+
+
+/* Universal shuffle simple early button */
+#womoShuffleSkipOverlay{
+  width:auto !important;
+  min-width:0 !important;
+  max-width:none !important;
+  padding:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  border:0 !important;
+  backdrop-filter:none !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  gap:0 !important;
+}
+
+#womoShuffleSkipOverlay.hidden{
+  display:none !important;
+}
+
+#womoShuffleSkipPlay.womo-shuffle-simple-button,
+#womoShuffleSkipPlay{
+  height:38px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.02em;
+  cursor:pointer;
+  border:0;
+  background:#d7ff00;
+  color:#111;
+  padding:0 26px !important;
+  min-width:0 !important;
+  white-space:nowrap !important;
+  box-shadow:0 10px 30px rgba(0,0,0,.28);
+  position:relative !important;
+  overflow:hidden !important;
+  isolation:auto !important;
+}
+
+#womoShuffleSkipPlay::before,
+#womoShuffleSkipPlay::after,
+#womoShuffleSkipPlay.womo-next-progressing::before,
+#womoShuffleSkipPlay.womo-next-progressing::after{
+  display:none !important;
+  content:none !important;
+  animation:none !important;
+}
+
+#womoShuffleSkipOverlay .womo-shuffle-skip-timer,
+#womoShuffleSkipOverlay .womo-shuffle-skip-content,
+#womoShuffleSkipOverlay .womo-auto-next-text,
+#womoShuffleSkipCancel{
+  display:none !important;
+}
+
+
+
+
+/* Universal shuffle next button fade */
+#womoShuffleSkipOverlay.womo-shuffle-fade-out{
+  animation:womoShuffleSimpleFade 10s linear forwards;
+}
+
+@keyframes womoShuffleSimpleFade{
+  0%{
+    opacity:1;
+    transform:translateY(0);
+  }
+  62%{
+    opacity:1;
+    transform:translateY(0);
+  }
+  100%{
+    opacity:0;
+    transform:translateY(8px);
+  }
+}
+
+#womoShuffleSkipPlay.womo-shuffle-simple-button,
+#womoShuffleSkipPlay{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:8px !important;
+}
+
+#womoShuffleSkipPlay i,
+#womoShuffleSkipPlay svg{
+  width:15px !important;
+  height:15px !important;
+  stroke-width:2.7 !important;
+  flex:0 0 auto !important;
+}
+
+#womoShuffleSkipPlay span{
+  display:inline-block !important;
+}
+
+
+
+
+/* Shuffle buttons icon placement */
+button .womo-shuffle-btn-label,
+[role='button'] .womo-shuffle-btn-label{
+  display:inline-block;
+}
+
+button .womo-shuffle-btn-icon,
+button .womo-shuffle-btn-icon svg,
+[role='button'] .womo-shuffle-btn-icon,
+[role='button'] .womo-shuffle-btn-icon svg{
+  width:15px !important;
+  height:15px !important;
+  stroke-width:2.7 !important;
+  flex:0 0 auto !important;
+}
+
+button:has(.womo-shuffle-btn-icon),
+[role='button']:has(.womo-shuffle-btn-icon){
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+
+
+
+
+/* Uppercase shuffle launcher labels */
+.womo-shuffle-btn-label{
+  letter-spacing:.02em;
+}
+
+
+
+
+/* Shuffle launcher label casing fix */
+.womo-shuffle-btn-label{
+  text-transform:none !important;
+}
+

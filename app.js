@@ -405,6 +405,7 @@ function renderHero(item) {
   }
 
   setupHeroDrag();
+  womoDecorateShuffleButtons();
   if (window.lucide) lucide.createIcons();
 }
 
@@ -1458,7 +1459,7 @@ async function openPreview(item) {
 
   if (item.type === 'series') {
     const episodes = await readSeriesEpisodes(item.id);
-    actions.innerHTML = `<button class="primary" data-preview-play>${getSeriesContinueLabel(item, episodes)}</button><button class="secondary" data-preview-shuffle>Shuffle</button>`;
+    actions.innerHTML = `<button class="primary" data-preview-play>${getSeriesContinueLabel(item, episodes)}</button><button class="secondary" data-preview-shuffle>SHUFFLE</button>`;
     const currentSeason = state?.season || episodes[0]?.season || 1;
     const currentEpisodeNumber = state?.episode || episodes[0]?.episodeNumber || 1;
     const currentEpisode = episodes.find(ep => ep.season === Number(currentSeason) && ep.episodeNumber === Number(currentEpisodeNumber)) || episodes[0] || null;
@@ -1737,6 +1738,9 @@ function getWomoPlayerOverlay() {
 }
 
 function hideWomoPlayerOverlay() {
+  womoHideShuffleSkipOverlay();
+  womoResetShuffleSession();
+  womoHideShuffleNextOverlay();
   womoUnlockMobileOrientation();
   womoClearForcedPlayerVisibleState();
   const overlay = getWomoPlayerOverlay();
@@ -2236,9 +2240,743 @@ function womoBindMobileNativeFullscreen(video) {
   }, { passive: true });
 }
 
+
+
+
+/* Universal Shuffle early skip overlay */
+let womoShuffleSkipTimer = null;
+let womoShuffleSkipSeconds = 10;
+let womoShuffleSkipShownKey = "";
+let womoShuffleSkipSwitching = false;
+
+function womoIsUniversalShufflePlaybackActive() {
+  return womoIsShufflePlaybackActive() && (womoShuffleSessionScope === "universal" || womoShuffleSessionScope === "series");
+}
+
+function womoClearShuffleSkipTimer() {
+  if (womoShuffleSkipTimer) {
+    clearInterval(womoShuffleSkipTimer);
+    womoShuffleSkipTimer = null;
+  }
+}
+
+function womoHideShuffleSkipOverlay() {
+  womoClearShuffleSkipTimer();
+  const overlay = document.getElementById("womoShuffleSkipOverlay");
+  if (overlay) {
+    overlay.classList.remove("womo-shuffle-fade-out");
+    overlay.classList.add("hidden");
+    overlay.style.display = "none";
+  }
+  womoShuffleSkipSwitching = false;
+}
+
+function womoEnsureShuffleSkipOverlay() {
+  const playerOverlay = document.getElementById("playerOverlay") || document.querySelector(".player-overlay");
+  if (!playerOverlay) return null;
+
+  let overlay = document.getElementById("womoShuffleSkipOverlay");
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = "womoShuffleSkipOverlay";
+  overlay.className = "womo-auto-next-overlay hidden womo-shuffle-skip-overlay";
+  overlay.innerHTML = ''
+    + '<button type="button" id="womoShuffleSkipPlay" class="womo-shuffle-simple-button"><span>Siguiente</span><i data-lucide="shuffle"></i></button>';
+
+  playerOverlay.appendChild(overlay);
+
+  const playBtn = overlay.querySelector("#womoShuffleSkipPlay");
+  const cancelBtn = overlay.querySelector("#womoShuffleSkipCancel");
+
+  if (playBtn) {
+    playBtn.addEventListener("click", function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      womoPlayUniversalShuffleSkip();
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      womoShuffleSkipShownKey = womoShuffleCurrentPlaybackKey();
+      womoHideShuffleSkipOverlay();
+    });
+  }
+
+  return overlay;
+}
+
+function womoUpdateShuffleSkipButtonText() {
+  const playBtn = document.getElementById("womoShuffleSkipPlay");
+  if (playBtn && !playBtn.querySelector("span")) {
+    playBtn.innerHTML = '<span>Siguiente</span><i data-lucide="shuffle"></i>';
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+function womoStartShuffleSkipButtonFill() {
+  const playBtn = document.getElementById("womoShuffleSkipPlay");
+  if (playBtn) {
+    playBtn.classList.remove("womo-next-progressing");
+    playBtn.innerHTML = '<span>Siguiente</span><i data-lucide="shuffle"></i>';
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+async function womoPlayUniversalShuffleSkip() {
+  if (womoShuffleSkipSwitching) return;
+  if (!womoIsUniversalShufflePlaybackActive()) return;
+
+  womoShuffleSkipSwitching = true;
+  womoHideShuffleSkipOverlay();
+  womoHideShuffleNextOverlay();
+
+  const result = await womoPickRandomShuffleEpisode();
+
+  if (!result) {
+    console.warn("No se encontró otro episodio para Shuffle.");
+    womoShuffleSkipSwitching = false;
+    return;
+  }
+
+  const { seriesItem, episode } = result;
+
+  try {
+    womoMarkShuffleEpisodeSeen(seriesItem, episode);
+    if (typeof openPlayer === "function") {
+      openPlayer(seriesItem, {
+        episode,
+        startAt: 0,
+        saveProgress: false,
+        shuffleMode: true,
+        fromShuffle: true,
+        noProgress: true,
+        shuffleScope: womoShuffleSessionScope || "universal",
+        shuffleSeriesId: womoShuffleSessionSeriesId || ""
+      });
+    }
+  } finally {
+    setTimeout(function() {
+      womoShuffleSkipSwitching = false;
+    }, 400);
+  }
+}
+
+function womoShowShuffleSkipOverlay() {
+  if (!womoIsUniversalShufflePlaybackActive()) return;
+
+  const currentKey = womoShuffleCurrentPlaybackKey();
+  if (currentKey && womoShuffleSkipShownKey === currentKey) return;
+
+  const overlay = womoEnsureShuffleSkipOverlay();
+  if (!overlay) return;
+
+  womoShuffleSkipSeconds = 10;
+  womoShuffleSkipShownKey = currentKey;
+
+  overlay.classList.remove("hidden");
+  overlay.classList.remove("womo-shuffle-fade-out");
+  overlay.style.display = "";
+  void overlay.offsetWidth;
+  overlay.classList.add("womo-shuffle-fade-out");
+
+  womoStartShuffleSkipButtonFill();
+
+  womoClearShuffleSkipTimer();
+  womoShuffleSkipTimer = setInterval(function() {
+    womoShuffleSkipSeconds -= 1;
+    womoUpdateShuffleSkipButtonText();
+
+    if (womoShuffleSkipSeconds <= 0) {
+      womoHideShuffleSkipOverlay();
+    }
+  }, 1000);
+}
+
+function womoMaybeShowShuffleSkipOverlay() {
+  if (!womoIsUniversalShufflePlaybackActive()) {
+    womoHideShuffleSkipOverlay();
+    return;
+  }
+
+  const video = document.getElementById("womoPlayer") || document.querySelector("#playerOverlay video") || document.querySelector(".player-overlay video");
+  if (!video || !video.duration || !Number.isFinite(video.duration) || video.duration <= 0) return;
+
+  const currentKey = womoShuffleCurrentPlaybackKey();
+  if (currentKey && womoShuffleSkipShownKey === currentKey) return;
+
+  const nextOverlay = document.getElementById("womoShuffleNextOverlay");
+  const nextActive = nextOverlay && !nextOverlay.classList.contains("hidden") && nextOverlay.style.display !== "none";
+  if (nextActive) return;
+
+  const skipOverlay = document.getElementById("womoShuffleSkipOverlay");
+  const skipActive = skipOverlay && !skipOverlay.classList.contains("hidden") && skipOverlay.style.display !== "none";
+  if (skipActive || womoShuffleSkipSwitching) return;
+
+  // Show it 3 seconds after the episode starts.
+  if (video.currentTime >= 3 && video.currentTime <= 13) {
+    womoShowShuffleSkipOverlay();
+  }
+}
+
+function womoBindShuffleSkipVideo() {
+  const video = document.getElementById("womoPlayer") || document.querySelector("#playerOverlay video") || document.querySelector(".player-overlay video");
+  if (!video || video.dataset.womoShuffleSkipBound === "true") return;
+
+  video.dataset.womoShuffleSkipBound = "true";
+
+  video.addEventListener("timeupdate", function() {
+    womoMaybeShowShuffleSkipOverlay();
+  });
+
+  video.addEventListener("seeking", function() {
+    womoHideShuffleSkipOverlay();
+  });
+
+  video.addEventListener("ended", function() {
+    womoHideShuffleSkipOverlay();
+  });
+}
+
+/* Shuffle sessions and scope */
+let womoShuffleSessionId = "";
+let womoShuffleSessionScope = "universal"; // "universal" | "series"
+let womoShuffleSessionSeriesId = "";
+let womoShuffleSessionSeen = new Set();
+
+function womoEpisodeSessionKey(seriesItem, episode) {
+  if (!seriesItem || !episode) return "";
+  const season = Number(episode.season || episode.seasonNumber || 1);
+  const number = Number(episode.episodeNumber || episode.episode || episode.number || episode.ep || 1);
+  return [
+    seriesItem.id || "",
+    "S" + season,
+    "E" + number,
+    episode.id || ""
+  ].join(":");
+}
+
+function womoStartShuffleSession(scope = "universal", seriesId = "") {
+  womoShuffleSessionId = String(Date.now()) + ":" + Math.random().toString(36).slice(2);
+  womoShuffleSessionScope = scope === "series" ? "series" : "universal";
+  womoShuffleSessionSeriesId = seriesId || "";
+  womoShuffleSessionSeen = new Set();
+  womoShuffleSkipShownKey = "";
+}
+
+function womoEnsureShuffleSession(options = {}, item = null, episode = null) {
+  const explicitScope = options.shuffleScope || options.scope || "";
+  const isLocal = explicitScope === "series" || options.localShuffle === true || options.seriesShuffle === true;
+  const scope = isLocal ? "series" : "universal";
+  const seriesId = scope === "series" ? (options.shuffleSeriesId || item?.id || "") : "";
+
+  if (!womoShuffleSessionId || womoShuffleSessionScope !== scope || (scope === "series" && womoShuffleSessionSeriesId !== seriesId)) {
+    womoStartShuffleSession(scope, seriesId);
+  }
+
+  if (item && episode) {
+    const key = womoEpisodeSessionKey(item, episode);
+    if (key) womoShuffleSessionSeen.add(key);
+  }
+}
+
+function womoMarkShuffleEpisodeSeen(seriesItem, episode) {
+  const key = womoEpisodeSessionKey(seriesItem, episode);
+  if (key) womoShuffleSessionSeen.add(key);
+}
+
+function womoIsShuffleEpisodeSeen(seriesItem, episode) {
+  const key = womoEpisodeSessionKey(seriesItem, episode);
+  return Boolean(key && womoShuffleSessionSeen.has(key));
+}
+
+function womoResetShuffleSession() {
+  womoShuffleSessionId = "";
+  womoShuffleSessionScope = "universal";
+  womoShuffleSessionSeriesId = "";
+  womoShuffleSessionSeen = new Set();
+}
+
+function womoDetectLocalShuffleClick(event) {
+  const target = event.target && event.target.closest ? event.target.closest("button, [role='button'], .shuffle-play-btn, .shuffle-btn") : null;
+  if (!target) return;
+
+  const text = (target.textContent || "").toLowerCase();
+  const id = (target.id || "").toLowerCase();
+  const cls = (target.className || "").toString().toLowerCase();
+
+  if (!text.includes("shuffle") && !id.includes("shuffle") && !cls.includes("shuffle")) return;
+
+  const preview = target.closest(".preview-modal, #previewModal, .preview, .content-preview, .details-modal, #detailsModal");
+  const searchPage = target.closest("#searchPage");
+
+  if ((preview && !searchPage) || (typeof currentPreviewItem !== "undefined" && currentPreviewItem && currentPreviewItem.type === "series" && !searchPage)) {
+    window.__womoNextShuffleScope = "series";
+  } else {
+    window.__womoNextShuffleScope = "universal";
+  }
+}
+
+/* Shuffle auto-next episode */
+let womoShuffleNextTimer = null;
+let womoShuffleNextSeconds = 15;
+let womoShuffleNextSwitching = false;
+let womoShuffleNextPendingResult = null;
+let womoShuffleNextPicking = false;
+let womoShuffleNextDismissedKey = "";
+
+
+function womoShuffleCurrentPlaybackKey() {
+  try {
+    if (!currentPlayerItem || !currentPlayerEpisode) return "";
+    return [
+      currentPlayerItem.id || "",
+      "S" + Number(currentPlayerEpisode.season || 1),
+      "E" + Number(currentPlayerEpisode.episodeNumber || currentPlayerEpisode.episode || currentPlayerEpisode.number || 1),
+      currentPlayerEpisode.id || ""
+    ].join(":");
+  } catch (_) {
+    return "";
+  }
+}
+
+function womoIsShufflePlaybackActive() {
+  try {
+    return Boolean(
+      window.__womoShuffleNoProgress ||
+      window.womoGlobalShuffleNoProgress ||
+      currentPlayerContext?.shuffleMode ||
+      currentPlayerContext?.fromShuffle ||
+      currentPlayerContext?.noProgress ||
+      currentPlayerContext?.saveProgress === false
+    );
+  } catch (_) {
+    return Boolean(window.__womoShuffleNoProgress || window.womoGlobalShuffleNoProgress);
+  }
+}
+
+function womoClearShuffleNextTimer() {
+  if (womoShuffleNextTimer) {
+    clearInterval(womoShuffleNextTimer);
+    womoShuffleNextTimer = null;
+  }
+}
+
+function womoHideShuffleNextOverlay() {
+  womoClearShuffleNextTimer();
+  const overlay = document.getElementById("womoShuffleNextOverlay");
+  if (overlay) {
+    overlay.classList.add("hidden");
+    overlay.style.display = "none";
+  }
+  womoShuffleNextSwitching = false;
+  womoShuffleNextPendingResult = null;
+}
+
+function womoEnsureShuffleNextOverlay() {
+  const playerOverlay = document.getElementById("playerOverlay") || document.querySelector(".player-overlay");
+  if (!playerOverlay) return null;
+
+  let overlay = document.getElementById("womoShuffleNextOverlay");
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = "womoShuffleNextOverlay";
+  overlay.className = "womo-auto-next-overlay hidden womo-shuffle-next-overlay";
+  overlay.innerHTML = ''
+    + '<div class="womo-auto-next-text">'
+    + '  <div class="womo-auto-next-kicker">A continuación</div>'
+    + '  <div class="womo-auto-next-title" id="womoShuffleNextTitle">Serie</div>'
+    + '  <div class="womo-auto-next-count" id="womoShuffleNextMeta">T1 E1</div>'
+    + '</div>'
+    + '<div class="womo-auto-next-actions">'
+    + '  <button type="button" id="womoShuffleNextPlay">Siguiente en 15s</button>'
+    + '  <button type="button" id="womoShuffleNextCancel">Cancelar</button>'
+    + '</div>';
+
+  playerOverlay.appendChild(overlay);
+
+  const playBtn = overlay.querySelector("#womoShuffleNextPlay");
+  const cancelBtn = overlay.querySelector("#womoShuffleNextCancel");
+
+  if (playBtn) {
+    playBtn.addEventListener("click", function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      womoPlayNextShuffleEpisode();
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      womoShuffleNextDismissedKey = womoShuffleCurrentPlaybackKey();
+      womoHideShuffleNextOverlay();
+    });
+  }
+
+  return overlay;
+}
+
+function womoUpdateShuffleNextButtonText() {
+  const playBtn = document.getElementById("womoShuffleNextPlay");
+  if (!playBtn) return;
+  playBtn.textContent = "Siguiente en " + Math.max(0, Number(womoShuffleNextSeconds || 0)) + "s";
+}
+
+function womoStartShuffleNextButtonFill() {
+  const playBtn = document.getElementById("womoShuffleNextPlay");
+  if (!playBtn) return;
+  playBtn.classList.remove("womo-next-progressing");
+  playBtn.style.setProperty("--womo-next-duration", "15s");
+  void playBtn.offsetWidth;
+  playBtn.classList.add("womo-next-progressing");
+  womoUpdateShuffleNextButtonText();
+}
+
+async function womoReadShuffleEpisodesFromSeries(seriesItem) {
+  if (!seriesItem) return [];
+
+  try {
+    if (typeof readSeriesEpisodes === "function") {
+      const episodes = await readSeriesEpisodes(seriesItem.id);
+      if (Array.isArray(episodes)) return episodes;
+    }
+  } catch (error) {
+    console.warn("No se pudieron leer episodios shuffle para", seriesItem?.title || seriesItem?.id, error);
+  }
+
+  if (Array.isArray(seriesItem.episodes)) return seriesItem.episodes;
+
+  return [];
+}
+
+function womoShufflePickRandom(list) {
+  if (!Array.isArray(list) || !list.length) return null;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+async function womoPickRandomShuffleEpisode() {
+  const allItems = Array.from(
+    (typeof allItemsByContinueKey !== "undefined" && allItemsByContinueKey?.values)
+      ? allItemsByContinueKey.values()
+      : []
+  );
+
+  let seriesList = allItems.filter(item => item && item.type === "series");
+
+  if (!seriesList.length && typeof items !== "undefined" && Array.isArray(items)) {
+    seriesList = items.filter(item => item && item.type === "series");
+  }
+
+  if (!seriesList.length && typeof contentItems !== "undefined" && Array.isArray(contentItems)) {
+    seriesList = contentItems.filter(item => item && item.type === "series");
+  }
+
+  if (!seriesList.length) return null;
+
+  if (!womoShuffleSessionId) {
+    const scope = currentPlayerItem && currentPlayerItem.type === "series" ? "series" : "universal";
+    womoStartShuffleSession(scope, scope === "series" ? currentPlayerItem.id : "");
+  }
+
+  if (womoShuffleSessionScope === "series") {
+    const seriesId = womoShuffleSessionSeriesId || currentPlayerItem?.id || "";
+    seriesList = seriesList.filter(item => item.id === seriesId);
+
+    // If the series isn't in the loaded list, fall back to currentPlayerItem.
+    if (!seriesList.length && currentPlayerItem && currentPlayerItem.type === "series") {
+      seriesList = [currentPlayerItem];
+    }
+  } else {
+    // Universal shuffle intentionally uses all available series.
+    seriesList = seriesList.slice().sort(() => Math.random() - 0.5);
+  }
+
+  const candidatePool = [];
+
+  for (const seriesItem of seriesList) {
+    const episodes = await womoReadShuffleEpisodesFromSeries(seriesItem);
+    const playableEpisodes = (episodes || []).filter(ep => {
+      const url = ep?.hlsUrl || ep?.videoUrl || ep?.url || ep?.src || ep?.streamUrl || ep?.m3u8 || ep?.file || ep?.link || "";
+      return Boolean(url);
+    });
+
+    playableEpisodes.forEach(ep => {
+      candidatePool.push({ seriesItem, episode: ep });
+    });
+  }
+
+  if (!candidatePool.length) return null;
+
+  let unseen = candidatePool.filter(entry => !womoIsShuffleEpisodeSeen(entry.seriesItem, entry.episode));
+
+  // If the session exhausted every episode, start a fresh session for the same scope.
+  if (!unseen.length) {
+    const scope = womoShuffleSessionScope;
+    const seriesId = womoShuffleSessionSeriesId;
+    womoStartShuffleSession(scope, seriesId);
+    unseen = candidatePool.slice();
+  }
+
+  const result = womoShufflePickRandom(unseen);
+  if (result) womoMarkShuffleEpisodeSeen(result.seriesItem, result.episode);
+
+  return result || null;
+}
+
+async function womoPlayNextShuffleEpisode() {
+  if (womoShuffleNextSwitching) return;
+  womoShuffleNextSwitching = true;
+
+  womoClearShuffleNextTimer();
+
+  const overlay = document.getElementById("womoShuffleNextOverlay");
+  if (overlay) {
+    overlay.classList.add("hidden");
+    overlay.style.display = "none";
+  }
+
+  const result = womoShuffleNextPendingResult || await womoPickRandomShuffleEpisode();
+  womoShuffleNextPendingResult = null;
+
+  if (!result) {
+    console.warn("No se encontró otro episodio para Shuffle.");
+    womoShuffleNextSwitching = false;
+    return;
+  }
+
+  const { seriesItem, episode } = result;
+  womoShuffleNextDismissedKey = "";
+
+  try {
+    if (typeof openPlayer === "function") {
+      openPlayer(seriesItem, {
+        episode,
+        startAt: 0,
+        saveProgress: false,
+        shuffleMode: true,
+        fromShuffle: true,
+        noProgress: true,
+        shuffleScope: womoShuffleSessionScope || window.__womoNextShuffleScope || "universal",
+        shuffleSeriesId: womoShuffleSessionSeriesId || ""
+      });
+    }
+  } finally {
+    setTimeout(function() {
+      womoShuffleNextSwitching = false;
+    }, 400);
+  }
+}
+
+async function womoShowShuffleNextOverlay() {
+  womoHideShuffleSkipOverlay();
+  if (!womoIsShufflePlaybackActive()) return;
+
+  const overlay = womoEnsureShuffleNextOverlay();
+  if (!overlay) return;
+
+  // Pick the next random episode before showing the overlay so we can show its info.
+  const result = await womoPickRandomShuffleEpisode();
+  if (!result) return;
+
+  womoShuffleNextPendingResult = result;
+  womoShuffleNextSeconds = 15;
+
+  const title = overlay.querySelector("#womoShuffleNextTitle");
+  const meta = overlay.querySelector("#womoShuffleNextMeta");
+
+  const seriesName = result.seriesItem?.title || result.seriesItem?.name || "Serie";
+  const ep = result.episode || {};
+  const episodeName = ep.title || ep.name || "";
+  const episodeLabel = "T" + (ep.season || 1) + " E" + (ep.episodeNumber || ep.episode || ep.number || 1);
+
+  if (title) title.textContent = seriesName;
+  if (meta) meta.textContent = episodeName ? womoEllipsisText(episodeLabel + " - " + episodeName, 32) : episodeLabel;
+
+  overlay.classList.remove("hidden");
+  overlay.style.display = "";
+
+  womoStartShuffleNextButtonFill();
+
+  womoClearShuffleNextTimer();
+  womoShuffleNextTimer = setInterval(function() {
+    womoShuffleNextSeconds -= 1;
+    womoUpdateShuffleNextButtonText();
+
+    if (womoShuffleNextSeconds <= 0) {
+      womoClearShuffleNextTimer();
+      const playBtn = document.getElementById("womoShuffleNextPlay");
+      if (playBtn) playBtn.click();
+      else womoPlayNextShuffleEpisode();
+    }
+  }, 1000);
+}
+
+function womoMaybeShowShuffleNextOverlay() {
+  if (!womoIsShufflePlaybackActive()) {
+    womoHideShuffleNextOverlay();
+    return;
+  }
+
+  const video = document.getElementById("womoPlayer") || document.querySelector("#playerOverlay video") || document.querySelector(".player-overlay video");
+  if (!video || !video.duration || !Number.isFinite(video.duration) || video.duration <= 0) return;
+
+  const currentKey = womoShuffleCurrentPlaybackKey();
+  if (currentKey && womoShuffleNextDismissedKey === currentKey) return;
+
+  const remaining = video.duration - video.currentTime;
+  const overlay = document.getElementById("womoShuffleNextOverlay");
+  const isActive = overlay && !overlay.classList.contains("hidden") && overlay.style.display !== "none";
+
+  // Same safe margin as normal auto-next: appears with 17s left and timer is 15s.
+  if (remaining <= 17 && remaining >= 0 && !isActive && !womoShuffleNextSwitching && !womoShuffleNextPicking) {
+    womoShuffleNextPicking = true;
+    womoShowShuffleNextOverlay().finally(function() {
+      womoShuffleNextPicking = false;
+    });
+  }
+}
+
+function womoBindShuffleNextVideo() {
+  const video = document.getElementById("womoPlayer") || document.querySelector("#playerOverlay video") || document.querySelector(".player-overlay video");
+  if (!video || video.dataset.womoShuffleNextBound === "true") return;
+
+  video.dataset.womoShuffleNextBound = "true";
+
+  video.addEventListener("timeupdate", function() {
+    womoMaybeShowShuffleNextOverlay();
+  });
+
+  video.addEventListener("seeking", function() {
+    womoHideShuffleNextOverlay();
+  });
+
+  video.addEventListener("ended", function(event) {
+    const currentKey = womoShuffleCurrentPlaybackKey();
+    if (currentKey && womoShuffleNextDismissedKey === currentKey) {
+      womoHideShuffleNextOverlay();
+      return;
+    }
+
+    const overlay = document.getElementById("womoShuffleNextOverlay");
+    const isActive = overlay && !overlay.classList.contains("hidden") && overlay.style.display !== "none";
+
+    if (womoIsShufflePlaybackActive() && isActive) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      const playBtn = document.getElementById("womoShuffleNextPlay");
+      if (playBtn) playBtn.click();
+      else womoPlayNextShuffleEpisode();
+    }
+  }, true);
+}
+
+
+/* Shuffle button icon polish */
+function womoDecorateShuffleButtons() {
+  const buttons = Array.from(document.querySelectorAll("button, [role='button'], .shuffle-btn, .shuffle-play-btn"));
+
+  buttons.forEach(btn => {
+    if (!btn) return;
+
+    const btnId = (btn.id || "").toLowerCase();
+    const btnClass = (btn.className || "").toString().toLowerCase();
+    const text = (btn.textContent || "").trim();
+
+    // Never touch internal player/auto-next/skip overlay buttons.
+    if (
+      btn.closest("#playerOverlay") ||
+      btn.closest(".player-overlay") ||
+      btnId.startsWith("womoshuffle") ||
+      btnId.startsWith("womoautonext") ||
+      btnId.includes("cancel") ||
+      btnId.includes("skip") ||
+      btnId.includes("nextplay") ||
+      text.toLowerCase() === "cancelar" ||
+      text.toLowerCase() === "quedarse" ||
+      text.toLowerCase() === "siguiente"
+    ) {
+      return;
+    }
+
+    const plainText = text.toLowerCase();
+    const looksLikeShuffle =
+      plainText === "shuffle" ||
+      plainText === "shuffle" ||
+      btnClass.includes("shuffle-btn") ||
+      btnClass.includes("shuffle-play-btn") ||
+      (btnId.includes("shuffle") && !btnId.includes("cancel") && !btnId.includes("skip") && !btnId.includes("next"));
+
+    if (!looksLikeShuffle) return;
+
+    const searchPage = btn.closest("#searchPage, .search-page, [data-page='search']");
+    const preview = btn.closest(".preview-modal, #previewModal, .preview, .content-preview, .details-modal, #detailsModal");
+
+    // Universal launcher usually lives in Search. Local launcher lives inside a series preview.
+    const isLocalShuffle = Boolean(preview && !searchPage);
+    const label = isLocalShuffle ? "Shuffle" : "SHUFFLE";
+
+    if (btn.dataset.womoShuffleIconDecorated === "true" && btn.querySelector(".womo-shuffle-btn-icon")) {
+      const labelEl = btn.querySelector(".womo-shuffle-btn-label");
+      if (labelEl) labelEl.textContent = label;
+      return;
+    }
+
+    btn.dataset.womoShuffleIconDecorated = "true";
+    btn.innerHTML = '<span class="womo-shuffle-btn-label">' + label + '</span><i data-lucide="shuffle" class="womo-shuffle-btn-icon"></i>';
+
+    if (window.lucide) {
+      try { lucide.createIcons(); } catch (_) {}
+    }
+  });
+}
+
+(function(){
+  if (window.__womoShuffleIconDecoratorBound) return;
+  window.__womoShuffleIconDecoratorBound = true;
+
+  document.addEventListener("DOMContentLoaded", function() {
+    setTimeout(womoDecorateShuffleButtons, 80);
+    setTimeout(womoDecorateShuffleButtons, 400);
+  });
+
+  document.addEventListener("click", function() {
+    setTimeout(womoDecorateShuffleButtons, 80);
+    setTimeout(womoDecorateShuffleButtons, 350);
+  }, true);
+
+  const observer = new MutationObserver(function() {
+    clearTimeout(window.__womoShuffleIconDecorateTimer);
+    window.__womoShuffleIconDecorateTimer = setTimeout(womoDecorateShuffleButtons, 80);
+  });
+
+  try {
+    observer.observe(document.documentElement, { childList:true, subtree:true });
+  } catch (_) {}
+})();
+
 function openPlayer(item, options = {}) {
   currentPlayerItem = item;
   currentPlayerEpisode = options?.episode || null;
+  if (options && (options.shuffleMode || options.fromShuffle || options.noProgress || options.saveProgress === false)) {
+    if (!options.shuffleScope) {
+      options.shuffleScope = window.__womoNextShuffleScope || "universal";
+    }
+    if (options.shuffleScope === "series" && !options.shuffleSeriesId) {
+      options.shuffleSeriesId = item?.id || "";
+    }
+    womoEnsureShuffleSession(options, item, options?.episode || null);
+    window.__womoNextShuffleScope = "";
+  }
   setTimeout(bindWomoPlayerProgressEvents, 0);
   const episode = options.episode || null;
   const url = getPlayableUrl(item, episode);
@@ -2332,10 +3070,15 @@ function openPlayer(item, options = {}) {
   womoForcePlayerVisibleOnOpen();
   setTimeout(womoForcePlayerVisibleOnOpen, 40);
   setTimeout(womoForcePlayerVisibleOnOpen, 180);
+  setTimeout(womoBindShuffleNextVideo, 130);
+      setTimeout(womoBindShuffleSkipVideo, 135);
   if (window.lucide) lucide.createIcons();
 }
 
 function closePlayer() {
+  womoHideShuffleSkipOverlay();
+  womoResetShuffleSession();
+  womoHideShuffleNextOverlay();
   womoUnlockMobileOrientation();
   womoClearForcedPlayerVisibleState();
   womoClearTsSeekTimer();
@@ -3292,7 +4035,9 @@ async function womoPlaySearchShuffle() {
         noProgress: true,
         shuffleMode: true,
         fromShuffle: true,
-        noProgress: true
+        noProgress: true,
+        shuffleScope: womoShuffleSessionScope || window.__womoNextShuffleScope || "universal",
+        shuffleSeriesId: womoShuffleSessionSeriesId || ""
       });
     }
   } finally {
@@ -3631,6 +4376,13 @@ async function womoAutoNextPlayNow() {
 }
 
 
+
+function womoEllipsisText(text, maxLength = 28) {
+  text = String(text || "");
+  if (text.length <= maxLength) return text;
+  return text.slice(0, Math.max(0, maxLength - 3)).trimEnd() + "...";
+}
+
 function womoAutoNextUpdateButtonText() {
   const playBtn = document.getElementById("womoAutoNextPlay");
   if (!playBtn) return;
@@ -3675,7 +4427,7 @@ function womoAutoNextStartCountdown(nextEpisode) {
   if (meta) {
     const episodeName = nextEpisode.title || nextEpisode.name || "";
     const episodeLabel = "T" + (nextEpisode.season || 1) + " E" + (nextEpisode.episodeNumber || nextEpisode.episode || 1);
-    meta.textContent = episodeName ? episodeLabel + " - " + episodeName : episodeLabel;
+    meta.textContent = episodeName ? womoEllipsisText(episodeLabel + " - " + episodeName, 32) : episodeLabel;
   }
   if (count) count.textContent = String(womoAutoNextSeconds);
   womoAutoNextUpdateButtonText();
@@ -3772,6 +4524,7 @@ function womoAutoNextBindVideo() {
       setTimeout(womoForcePlayerVisibleOnOpen, 40);
       setTimeout(womoForcePlayerVisibleOnOpen, 180);
       setTimeout(womoAutoNextBindVideo, 120);
+      setTimeout(womoBindShuffleNextVideo, 130);
       setTimeout(function(){ const v = document.getElementById('womoPlayer'); womoBindMobileNativeFullscreen(v); }, 140);
       return result;
     };
@@ -3794,5 +4547,29 @@ function womoAutoNextBindVideo() {
       return originalHidePlayer.apply(this, arguments);
     };
   }
+})();
+
+
+
+(function(){
+  if (window.__womoShuffleClickDetectorBound) return;
+  window.__womoShuffleClickDetectorBound = true;
+  document.addEventListener("click", womoDetectLocalShuffleClick, true);
+})();
+
+
+
+function womoRestoreOverlayActionLabels() {
+  const nextCancel = document.getElementById("womoShuffleNextCancel");
+  if (nextCancel) nextCancel.textContent = "Cancelar";
+
+  const skipCancel = document.getElementById("womoShuffleSkipCancel");
+  if (skipCancel) skipCancel.textContent = "Quedarse";
+}
+(function(){
+  if (window.__womoOverlayLabelFixBound) return;
+  window.__womoOverlayLabelFixBound = true;
+  document.addEventListener("DOMContentLoaded", function(){ setTimeout(womoRestoreOverlayActionLabels, 120); });
+  document.addEventListener("click", function(){ setTimeout(womoRestoreOverlayActionLabels, 120); }, true);
 })();
 
