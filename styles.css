@@ -5304,3 +5304,40 @@ button:has(.womo-shuffle-btn-icon),
   z-index:5 !important;
 }
 
+
+
+
+/* Preview open backdrop fade restored */
+.preview-modal,
+#previewModal{
+  background:rgba(0,0,0,0) !important;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+  transition:
+    background .32s ease,
+    backdrop-filter .32s ease,
+    -webkit-backdrop-filter .32s ease,
+    opacity .28s ease !important;
+}
+
+.preview-modal.open,
+#previewModal.open{
+  background:rgba(0,0,0,.62) !important;
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+}
+
+.preview-card{
+  transform:translateY(18px) scale(.985);
+  opacity:0;
+  transition:
+    transform .34s cubic-bezier(.16,1,.3,1),
+    opacity .26s ease !important;
+}
+
+.preview-modal.open .preview-card,
+#previewModal.open .preview-card{
+  transform:translateY(0) scale(1);
+  opacity:1;
+}
+
