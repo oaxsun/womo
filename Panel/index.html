@@ -30,6 +30,7 @@
       <button class="nav-btn" data-view="movies">Películas</button>
       <button class="nav-btn" data-view="series">Series</button>
       <button class="nav-btn" data-view="concerts">Conciertos</button>
+      <button class="nav-btn" data-view="analytics">Analytics</button>
     </nav>
   </aside>
 
@@ -163,6 +164,34 @@
     <section id="concertsView" class="view">
       <div class="grid-list" id="concertsList"></div>
     </section>
+
+    <section id="analyticsView" class="view">
+      <div class="panel analytics-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Métricas</p>
+            <h2>Analytics</h2>
+          </div>
+          <button id="refreshAnalyticsBtn" class="secondary-btn small" type="button">Actualizar</button>
+        </div>
+
+        <div class="analytics-tabs" role="tablist" aria-label="Analytics">
+          <button type="button" class="analytics-tab active" data-analytics-tab="titles">Títulos</button>
+          <button type="button" class="analytics-tab" data-analytics-tab="users">Usuarios</button>
+        </div>
+
+        <div id="analyticsTitlesPanel" class="analytics-tab-panel active">
+          <p class="helper">Selecciona un título para ver reproducciones, usuarios, finalizados y favoritos.</p>
+          <div id="analyticsTitlesList" class="analytics-list"></div>
+        </div>
+
+        <div id="analyticsUsersPanel" class="analytics-tab-panel">
+          <p class="helper">Selecciona un usuario para ver su email, favoritos e historial.</p>
+          <div id="analyticsUsersList" class="analytics-list"></div>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <dialog id="editorDialog" class="editor">
@@ -211,6 +240,7 @@
       </div>
 
       <div class="checks">
+        <label class="check-option publish-option"><input id="published" type="checkbox" checked /> <span>Publicado</span><small>Visible en Womo</small></label>
         <label class="check-option"><input id="showInNew" type="checkbox" /> <span>Mostrar en Lo nuevo</span></label>
         <label class="check-option"><input id="showInHome" type="checkbox" checked /> <span>Mostrar en sección principal</span></label>
       </div>
@@ -287,6 +317,29 @@
     </form>
   </dialog>
 
-  <script type="module" src="/Panel/panel-admin.js?v=21"></script>
+
+  <dialog id="analyticsTitleDialog" class="editor small-editor analytics-dialog">
+    <div class="editor-head">
+      <div>
+        <p class="eyebrow">Título</p>
+        <h2 id="analyticsTitleName">Analytics del título</h2>
+      </div>
+      <button class="icon-btn" value="cancel" type="button" id="closeAnalyticsTitle">×</button>
+    </div>
+    <div id="analyticsTitleBody" class="analytics-detail"></div>
+  </dialog>
+
+  <dialog id="analyticsUserDialog" class="editor small-editor analytics-dialog">
+    <div class="editor-head">
+      <div>
+        <p class="eyebrow">Usuario</p>
+        <h2 id="analyticsUserName">Analytics del usuario</h2>
+      </div>
+      <button class="icon-btn" value="cancel" type="button" id="closeAnalyticsUser">×</button>
+    </div>
+    <div id="analyticsUserBody" class="analytics-detail"></div>
+  </dialog>
+
+  <script type="module" src="/Panel/panel-admin.js?v=22"></script>
 </body>
 </html>
