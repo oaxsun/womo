@@ -1737,6 +1737,7 @@ function getWomoPlayerOverlay() {
 }
 
 function hideWomoPlayerOverlay() {
+  womoUnlockMobileOrientation();
   womoClearForcedPlayerVisibleState();
   const overlay = getWomoPlayerOverlay();
   const video = getWomoPlayerVideo();
@@ -2106,6 +2107,135 @@ function bindTsSeekGuard(video) {
   });
 }
 
+
+/* Mobile native fullscreen on play */
+function womoIsMobileViewport() {
+  try {
+    return window.matchMedia("(max-width: 760px), (pointer: coarse)").matches;
+  } catch (_) {
+    return window.innerWidth <= 760;
+  }
+}
+
+
+/* Mobile landscape orientation helper */
+async function womoLockMobileLandscape() {
+  if (!womoIsMobileViewport()) return;
+
+  try {
+    if (screen.orientation && typeof screen.orientation.lock === "function") {
+      await screen.orientation.lock("landscape");
+    }
+  } catch (error) {
+    console.warn("El navegador no permitió bloquear orientación horizontal.", error);
+  }
+}
+
+function womoUnlockMobileOrientation() {
+  try {
+    if (screen.orientation && typeof screen.orientation.unlock === "function") {
+      screen.orientation.unlock();
+    }
+  } catch (_) {}
+}
+
+function womoPrepareVideoForLandscape(video) {
+  if (!video) return;
+  try {
+    video.style.objectFit = "contain";
+    video.style.backgroundColor = "#000";
+  } catch (_) {}
+}
+
+function womoTryMobileNativeFullscreen(video) {
+  if (!video || !womoIsMobileViewport()) return;
+
+  // Avoid looping fullscreen requests for the same playback open.
+  if (video.dataset.womoTriedMobileFullscreen === "true") return;
+  video.dataset.womoTriedMobileFullscreen = "true";
+
+  womoPrepareVideoForLandscape(video);
+
+  // Best effort: Android/Chrome can usually honor this. iOS Safari may ignore it.
+  womoLockMobileLandscape();
+
+  try {
+    // iPhone/iPad Safari video-native fullscreen.
+    if (typeof video.webkitEnterFullscreen === "function") {
+      video.webkitEnterFullscreen();
+      setTimeout(womoLockMobileLandscape, 120);
+      setTimeout(womoLockMobileLandscape, 520);
+      return;
+    }
+
+    // Modern mobile browsers.
+    if (typeof video.requestFullscreen === "function") {
+      video.requestFullscreen()
+        .then(() => womoLockMobileLandscape())
+        .catch(() => {});
+      setTimeout(womoLockMobileLandscape, 120);
+      return;
+    }
+
+    if (typeof video.webkitRequestFullscreen === "function") {
+      video.webkitRequestFullscreen();
+      setTimeout(womoLockMobileLandscape, 120);
+    }
+  } catch (error) {
+    console.warn("No se pudo activar fullscreen móvil automático.", error);
+  }
+}
+
+function womoResetMobileFullscreenAttempt(video) {
+  if (!video) return;
+  try { delete video.dataset.womoTriedMobileFullscreen; } catch (_) {
+    try { video.removeAttribute("data-womo-tried-mobile-fullscreen"); } catch (__) {}
+  }
+}
+
+
+function womoBindMobileFullscreenLandscapeEvents(video) {
+  if (!video || video.dataset.womoLandscapeEventsBound === "true") return;
+  video.dataset.womoLandscapeEventsBound = "true";
+
+  video.addEventListener("webkitbeginfullscreen", function() {
+    womoPrepareVideoForLandscape(video);
+    womoLockMobileLandscape();
+    setTimeout(womoLockMobileLandscape, 300);
+  });
+
+  video.addEventListener("webkitendfullscreen", function() {
+    womoUnlockMobileOrientation();
+  });
+
+  document.addEventListener("fullscreenchange", function() {
+    if (document.fullscreenElement) {
+      womoLockMobileLandscape();
+    } else {
+      womoUnlockMobileOrientation();
+    }
+  });
+}
+
+function womoBindMobileNativeFullscreen(video) {
+  womoBindMobileFullscreenLandscapeEvents(video);
+  if (!video || video.dataset.womoMobileFullscreenBound === "true") return;
+  video.dataset.womoMobileFullscreenBound = "true";
+
+  // If browser requires a user gesture, the first tap/play event is the best moment.
+  video.addEventListener("play", function() {
+    womoTryMobileNativeFullscreen(video);
+  }, { passive: true });
+
+  video.addEventListener("click", function() {
+    womoTryMobileNativeFullscreen(video);
+  }, { passive: true });
+
+  video.addEventListener("touchend", function() {
+    womoTryMobileNativeFullscreen(video);
+  }, { passive: true });
+}
+
 function openPlayer(item, options = {}) {
   currentPlayerItem = item;
   currentPlayerEpisode = options?.episode || null;
@@ -2121,6 +2251,8 @@ function openPlayer(item, options = {}) {
 
   const overlay = document.getElementById('playerOverlay');
   const video = document.getElementById('womoPlayer');
+  womoResetMobileFullscreenAttempt(video);
+  womoBindMobileNativeFullscreen(video);
   bindTsSeekGuard(video);
   video.setAttribute('controlsList', 'nodownload noplaybackrate');
   video.disablePictureInPicture = true;
@@ -2189,6 +2321,7 @@ function openPlayer(item, options = {}) {
     } else if (shouldIgnoreSavedProgress) {
       video.currentTime = 0;
     }
+    womoTryMobileNativeFullscreen(video);
     video.play().catch(() => {});
   };
 
@@ -2203,6 +2336,7 @@ function openPlayer(item, options = {}) {
 }
 
 function closePlayer() {
+  womoUnlockMobileOrientation();
   womoClearForcedPlayerVisibleState();
   womoClearTsSeekTimer();
   womoCurrentPlaybackUrl = "";
@@ -3638,6 +3772,7 @@ function womoAutoNextBindVideo() {
       setTimeout(womoForcePlayerVisibleOnOpen, 40);
       setTimeout(womoForcePlayerVisibleOnOpen, 180);
       setTimeout(womoAutoNextBindVideo, 120);
+      setTimeout(function(){ const v = document.getElementById('womoPlayer'); womoBindMobileNativeFullscreen(v); }, 140);
       return result;
     };
   }

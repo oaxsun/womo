@@ -4659,3 +4659,21 @@ body:not(.search-scroll-enabled) #searchPage .library-page{
   pointer-events:none !important;
 }
 
+
+
+
+/* Mobile native fullscreen landscape polish */
+#womoPlayer,
+#playerOverlay video,
+.player-overlay video{
+  object-fit:contain;
+  background:#000;
+}
+
+:fullscreen #womoPlayer,
+:-webkit-full-screen #womoPlayer,
+video:-webkit-full-screen{
+  object-fit:contain !important;
+  background:#000 !important;
+}
+
