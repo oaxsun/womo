@@ -2964,6 +2964,121 @@ function womoDecorateShuffleButtons() {
   } catch (_) {}
 })();
 
+
+/* Womo loading skeleton */
+let womoSkeletonVisible = false;
+
+function womoCreateSkeletonRow(title = "Cargando") {
+  const row = document.createElement("section");
+  row.className = "womo-skeleton-row";
+  row.innerHTML = ''
+    + '<div class="womo-skeleton-row-head">'
+    + '  <div class="womo-skeleton-title shimmer"></div>'
+    + '</div>'
+    + '<div class="womo-skeleton-strip">'
+    + Array.from({ length: 7 }).map(() => '<div class="womo-skeleton-card shimmer"></div>').join('')
+    + '</div>';
+  return row;
+}
+
+function womoShowSkeletonLoading() {
+  if (womoSkeletonVisible) return;
+  womoSkeletonVisible = true;
+
+  const main =
+    document.querySelector("main") ||
+    document.getElementById("app") ||
+    document.querySelector(".app") ||
+    document.body;
+
+  if (!main || document.getElementById("womoSkeletonLoading")) return;
+
+  const skeleton = document.createElement("div");
+  skeleton.id = "womoSkeletonLoading";
+  skeleton.className = "womo-skeleton-loading";
+  skeleton.innerHTML = ''
+    + '<section class="womo-skeleton-hero">'
+    + '  <div class="womo-skeleton-hero-copy">'
+    + '    <div class="womo-skeleton-kicker shimmer"></div>'
+    + '    <div class="womo-skeleton-hero-title shimmer"></div>'
+    + '    <div class="womo-skeleton-hero-line shimmer"></div>'
+    + '    <div class="womo-skeleton-hero-line short shimmer"></div>'
+    + '    <div class="womo-skeleton-actions">'
+    + '      <div class="womo-skeleton-pill shimmer"></div>'
+    + '      <div class="womo-skeleton-pill muted shimmer"></div>'
+    + '    </div>'
+    + '  </div>'
+    + '</section>';
+
+  skeleton.appendChild(womoCreateSkeletonRow("Películas"));
+  skeleton.appendChild(womoCreateSkeletonRow("Series"));
+  skeleton.appendChild(womoCreateSkeletonRow("Conciertos"));
+
+  main.prepend(skeleton);
+}
+
+function womoHideSkeletonLoading() {
+  womoSkeletonVisible = false;
+  const skeleton = document.getElementById("womoSkeletonLoading");
+  if (!skeleton) return;
+
+  skeleton.classList.add("womo-skeleton-hide");
+  setTimeout(() => skeleton.remove(), 260);
+}
+
+function womoHasRenderedContent() {
+  const selectors = [
+    ".content-card",
+    ".movie-card",
+    ".poster-card",
+    ".row-card",
+    ".content-row img",
+    ".hero img",
+    "[data-content-id]",
+    ".womo-card"
+  ];
+
+  return selectors.some(selector => document.querySelector(selector));
+}
+
+function womoStartSkeletonWatch() {
+  womoShowSkeletonLoading();
+
+  let attempts = 0;
+  const timer = setInterval(() => {
+    attempts += 1;
+
+    if (womoHasRenderedContent()) {
+      clearInterval(timer);
+      womoHideSkeletonLoading();
+      return;
+    }
+
+    // Failsafe: never leave skeleton forever.
+    if (attempts >= 80) {
+      clearInterval(timer);
+      womoHideSkeletonLoading();
+    }
+  }, 150);
+}
+
+(function(){
+  if (window.__womoSkeletonBound) return;
+  window.__womoSkeletonBound = true;
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", womoStartSkeletonWatch);
+  } else {
+    womoStartSkeletonWatch();
+  }
+
+  window.addEventListener("load", function() {
+    setTimeout(function() {
+      if (womoHasRenderedContent()) womoHideSkeletonLoading();
+    }, 250);
+  });
+})();
+
 function openPlayer(item, options = {}) {
   currentPlayerItem = item;
   currentPlayerEpisode = options?.episode || null;
