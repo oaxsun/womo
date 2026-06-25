@@ -216,3 +216,119 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
   }
 }
 
+
+
+
+/* Analytics UI fix */
+.analytics-tabs{
+  display:flex !important;
+  gap:12px !important;
+  padding:0 !important;
+  background:transparent !important;
+  border:0 !important;
+  border-radius:0 !important;
+  margin:22px 0 !important;
+}
+
+.analytics-tab{
+  border:0 !important;
+  border-radius:999px !important;
+  padding:10px 14px !important;
+  background:#2c2c2e !important;
+  color:#fff !important;
+  font-size:13px !important;
+  font-weight:800 !important;
+  cursor:pointer !important;
+}
+
+.analytics-tab.active{
+  background:var(--accent) !important;
+  color:#000 !important;
+}
+
+#analyticsTitlesList.analytics-list{
+  display:grid !important;
+  grid-template-columns:repeat(5, minmax(0, 1fr)) !important;
+  gap:18px !important;
+}
+
+.analytics-title-card{
+  min-width:0;
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:10px;
+  cursor:pointer;
+  transition:.2s ease;
+}
+
+.analytics-title-card:hover{
+  transform:translateY(-2px);
+  border-color:rgba(235,255,0,.4);
+}
+
+.analytics-title-card img{
+  width:100% !important;
+  height:auto !important;
+  aspect-ratio:2/3 !important;
+  object-fit:cover !important;
+  border-radius:13px !important;
+  background:#333 !important;
+  display:block !important;
+}
+
+.analytics-title-info{
+  margin-top:10px;
+  min-width:0;
+}
+
+.analytics-title-info strong{
+  display:block;
+  font-size:14px;
+  line-height:1.2;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.analytics-title-info span{
+  display:block;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.analytics-title-stats{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin-top:10px;
+}
+
+.analytics-title-stats span{
+  font-size:11px;
+  color:#fff;
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:4px 7px;
+}
+
+@media(max-width:1200px){
+  #analyticsTitlesList.analytics-list{
+    grid-template-columns:repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+@media(max-width:900px){
+  #analyticsTitlesList.analytics-list{
+    grid-template-columns:repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media(max-width:620px){
+  #analyticsTitlesList.analytics-list{
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+    gap:12px !important;
+  }
+}
+

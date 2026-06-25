@@ -560,13 +560,13 @@ function renderAnalyticsTitles() {
   }
 
   container.innerHTML = state.analyticsTitles.map(item => `
-    <article class="analytics-row" data-analytics-title="${item.type}:${item.id}" role="button" tabindex="0">
+    <article class="analytics-title-card" data-analytics-title="${item.type}:${item.id}" role="button" tabindex="0">
       <img src="${item.posterUrl || ""}" alt="" />
-      <div>
+      <div class="analytics-title-info">
         <strong>${item.title}</strong>
         <span>${typeLabel(item.type)} · ${item.published === false ? "Oculto" : "Publicado"}</span>
       </div>
-      <div class="analytics-mini-stats">
+      <div class="analytics-title-stats">
         <span>${item.plays} plays</span>
         <span>${item.playUsersCount} usuarios</span>
         <span>${item.completedUsersCount} finalizados</span>
