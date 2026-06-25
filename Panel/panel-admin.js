@@ -554,23 +554,24 @@ function renderAnalyticsTitles() {
   const container = $("analyticsTitlesList");
   if (!container) return;
 
+  container.classList.add("grid-list");
+  container.classList.remove("analytics-list");
+
   if (!state.analyticsLoaded) {
     container.innerHTML = `<p class="helper">Carga Analytics para ver métricas.</p>`;
     return;
   }
 
   container.innerHTML = state.analyticsTitles.map(item => `
-    <article class="analytics-title-card" data-analytics-title="${item.type}:${item.id}" role="button" tabindex="0">
-      <img src="${item.posterUrl || ""}" alt="" />
-      <div class="analytics-title-info">
-        <strong>${item.title}</strong>
-        <span>${typeLabel(item.type)} · ${item.published === false ? "Oculto" : "Publicado"}</span>
-      </div>
-      <div class="analytics-title-stats">
-        <span>${item.plays} plays</span>
-        <span>${item.playUsersCount} usuarios</span>
-        <span>${item.completedUsersCount} finalizados</span>
-        <span>${item.favoriteUsersCount} favoritos</span>
+    <article class="card analytics-title-card ${item.published === false ? "unpublished" : ""}" data-analytics-title="${item.type}:${item.id}" role="button" tabindex="0" title="Ver analytics">
+      <img class="poster" src="${item.posterUrl || ""}" alt="" />
+      <h3>${item.title || item.id}</h3>
+      <p>${typeLabel(item.type)} · ${item.published === false ? "Oculto" : "Publicado"}</p>
+      <div class="badge-row">
+        <span class="badge on">${item.plays} plays</span>
+        <span class="badge">${item.playUsersCount} usuarios</span>
+        <span class="badge">${item.completedUsersCount} fin.</span>
+        <span class="badge">${item.favoriteUsersCount} fav.</span>
       </div>
     </article>
   `).join("") || `<p class="helper">No hay datos de títulos todavía.</p>`;
@@ -579,6 +580,8 @@ function renderAnalyticsTitles() {
 function renderAnalyticsUsers() {
   const container = $("analyticsUsersList");
   if (!container) return;
+  container.classList.remove("grid-list");
+  container.classList.add("analytics-list");
 
   if (!state.analyticsLoaded) {
     container.innerHTML = `<p class="helper">Carga Analytics para ver usuarios.</p>`;

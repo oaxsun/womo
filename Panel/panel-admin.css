@@ -332,3 +332,83 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
   }
 }
 
+
+
+
+/* Analytics titles use the same card style as Películas */
+#analyticsTitlesList.grid-list{
+  display:grid !important;
+  grid-template-columns:repeat(auto-fill,minmax(170px,1fr)) !important;
+  gap:22px !important;
+}
+
+#analyticsTitlesList .analytics-title-card{
+  background:var(--panel) !important;
+  border:1px solid var(--border) !important;
+  border-radius:22px !important;
+  padding:12px !important;
+  cursor:pointer !important;
+  transition:.2s !important;
+  min-width:0 !important;
+}
+
+#analyticsTitlesList .analytics-title-card:hover{
+  transform:translateY(-2px) !important;
+  border-color:rgba(235,255,0,.4) !important;
+}
+
+#analyticsTitlesList .analytics-title-card .poster,
+#analyticsTitlesList .analytics-title-card img.poster{
+  width:100% !important;
+  height:auto !important;
+  aspect-ratio:2/3 !important;
+  border-radius:14px !important;
+  object-fit:cover !important;
+  background:#3a3a3c !important;
+  display:block !important;
+  max-width:none !important;
+}
+
+#analyticsTitlesList .analytics-title-card h3{
+  font-size:15px !important;
+  margin-top:12px !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+}
+
+#analyticsTitlesList .analytics-title-card p{
+  color:var(--muted) !important;
+  font-size:13px !important;
+  margin-top:4px !important;
+}
+
+#analyticsTitlesList .analytics-title-card .badge-row{
+  display:flex !important;
+  gap:6px !important;
+  margin-top:8px !important;
+  flex-wrap:wrap !important;
+}
+
+#analyticsTitlesList .analytics-title-card .badge{
+  font-size:11px !important;
+  border:1px solid var(--border) !important;
+  color:var(--muted) !important;
+  padding:4px 8px !important;
+  border-radius:999px !important;
+}
+
+#analyticsTitlesList .analytics-title-card .badge.on{
+  background:var(--accent) !important;
+  color:#000 !important;
+  border-color:var(--accent) !important;
+}
+
+/* Remove old analytics-title-card grid overrides */
+.analytics-title-card img:not(.poster){
+  max-width:100%;
+}
+.publish-option small{
+  display:none !important;
+}
+
