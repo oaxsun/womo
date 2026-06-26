@@ -5498,3 +5498,55 @@ button:has(.womo-shuffle-btn-icon),
   }
 }
 
+
+
+
+/* Poster edge cleanup */
+.poster-card,
+.poster,
+.card-poster,
+.movie-card,
+.content-card{
+  background:#0b0b0b !important;
+  overflow:hidden;
+}
+
+.poster-card{
+  border-color:rgba(255,255,255,.04) !important;
+}
+
+.poster-card img,
+.poster,
+.card-poster img,
+.movie-card img,
+.content-card img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  background:#0b0b0b;
+}
+
+/* Hide tiny white/transparent poster edges and browser antialiasing */
+.poster-card > img,
+.poster-card .poster,
+.poster-card picture img{
+  transform:scale(1.012);
+  transform-origin:center center;
+}
+
+/* Keep progress bars and overlays from being affected */
+.poster-card .progress,
+.poster-card .progress-bar,
+.poster-card .poster-progress,
+.poster-card [class*="progress"]{
+  transform:none !important;
+}
+
+/* Extra clipping for rounded poster cards */
+.poster-card,
+.poster-card .poster-image,
+.poster-card .poster-wrap{
+  isolation:isolate;
+}
+
