@@ -5344,30 +5344,22 @@ button:has(.womo-shuffle-btn-icon),
 
 
 
-/* Womo app skeleton loading */
+/* Womo app skeleton loading - global safe overlay */
 #womoSkeleton{
-  position:absolute;
+  position:fixed;
   inset:0;
-  z-index:20;
+  z-index:999;
   background:#050505;
   color:#fff;
   opacity:1;
-  transition:opacity .26s ease, transform .26s ease;
+  transition:opacity .24s ease, transform .24s ease;
   pointer-events:none;
+  overflow:hidden;
 }
 
 #womoSkeleton.womo-skeleton-exit{
   opacity:0;
   transform:translateY(-6px);
-}
-
-#homePage{
-  position:relative;
-}
-
-#homePage.womo-loading > .hero,
-#homePage.womo-loading > .content-row{
-  opacity:0;
 }
 
 .womo-skeleton-hero{

@@ -409,7 +409,6 @@ function renderHero(item) {
   setupHeroDrag();
   womoDecorateShuffleButtons();
   if (window.lucide) lucide.createIcons();
-  womoHideSkeleton();
 }
 
 function posterCard(item, showProgress = false) {
@@ -948,7 +947,7 @@ function setupSettings() {
 }
 
 
-/* Womo app skeleton loading */
+/* Womo app skeleton loading - global safe overlay */
 function womoSkeletonCard() {
   return '<div class="womo-skeleton-card shimmer"></div>';
 }
@@ -989,20 +988,23 @@ function womoBuildSkeletonHTML() {
 }
 
 function womoShowSkeleton() {
-  const home = document.getElementById("homePage");
-  if (!home || document.getElementById("womoSkeleton")) return;
-  home.classList.add("womo-loading");
-  home.insertAdjacentHTML("afterbegin", womoBuildSkeletonHTML());
+  if (document.getElementById("womoSkeleton")) return;
+
+  const login = document.getElementById("loginScreen");
+  if (login && !login.classList.contains("hidden")) return;
+
+  document.body.insertAdjacentHTML("beforeend", womoBuildSkeletonHTML());
 }
 
 function womoHideSkeleton() {
-  const home = document.getElementById("homePage");
   const skeleton = document.getElementById("womoSkeleton");
-  if (home) home.classList.remove("womo-loading");
   if (!skeleton) return;
 
   skeleton.classList.add("womo-skeleton-exit");
-  setTimeout(() => skeleton.remove(), 260);
+  setTimeout(() => {
+    const current = document.getElementById("womoSkeleton");
+    if (current) current.remove();
+  }, 240);
 }
 
 function womoHasVisibleCatalog() {
@@ -1018,22 +1020,6 @@ function womoAutoHideSkeleton() {
   }
   return false;
 }
-
-(function(){
-  if (window.__womoSkeletonLoadingBound) return;
-  window.__womoSkeletonLoadingBound = true;
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", womoShowSkeleton);
-  } else {
-    womoShowSkeleton();
-  }
-
-  window.addEventListener("load", () => {
-    setTimeout(womoAutoHideSkeleton, 250);
-    setTimeout(womoAutoHideSkeleton, 800);
-  });
-})();
 
 
 async function init() {
@@ -1079,6 +1065,7 @@ async function init() {
   fillRow("moviesRow", movieItems, false, true);
   fillRow("seriesRow", series, false, true);
   fillRow("concertsRow", concertItems, false, true);
+  womoHideSkeleton();
   setupRowEdgeScroll();
   renderSearchResults();
   renderFavorites();
@@ -4790,5 +4777,33 @@ function womoFixPreviewBottomWhenNoRecommendations() {
   } else {
     womoFixPreviewBottomWhenNoRecommendations();
   }
+})();
+
+
+
+
+/* Womo skeleton safety cleanup */
+(function(){
+  if (window.__womoSkeletonCleanupBound) return;
+  window.__womoSkeletonCleanupBound = true;
+
+  const tryHide = () => {
+    if (typeof womoAutoHideSkeleton === "function") womoAutoHideSkeleton();
+  };
+
+  window.addEventListener("load", () => {
+    setTimeout(tryHide, 250);
+    setTimeout(tryHide, 900);
+    setTimeout(womoHideSkeleton, 3500);
+  });
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(window.__womoSkeletonCleanupTimer);
+    window.__womoSkeletonCleanupTimer = setTimeout(tryHide, 80);
+  });
+
+  try {
+    observer.observe(document.documentElement, { childList:true, subtree:true });
+  } catch (_) {}
 })();
 
