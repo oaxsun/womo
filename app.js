@@ -409,6 +409,7 @@ function renderHero(item) {
   setupHeroDrag();
   womoDecorateShuffleButtons();
   if (window.lucide) lucide.createIcons();
+  womoHideSkeleton();
 }
 
 function posterCard(item, showProgress = false) {
@@ -946,7 +947,97 @@ function setupSettings() {
   }
 }
 
+
+/* Womo app skeleton loading */
+function womoSkeletonCard() {
+  return '<div class="womo-skeleton-card shimmer"></div>';
+}
+
+function womoBuildSkeletonHTML() {
+  const row = Array.from({ length: 6 }).map(womoSkeletonCard).join("");
+  return `
+    <div id="womoSkeleton" class="womo-skeleton" aria-hidden="true">
+      <section class="womo-skeleton-hero">
+        <div class="womo-skeleton-hero-copy">
+          <div class="womo-skeleton-kicker shimmer"></div>
+          <div class="womo-skeleton-title shimmer"></div>
+          <div class="womo-skeleton-line shimmer"></div>
+          <div class="womo-skeleton-line short shimmer"></div>
+          <div class="womo-skeleton-actions">
+            <div class="womo-skeleton-pill shimmer"></div>
+            <div class="womo-skeleton-circle shimmer"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="womo-skeleton-row-block">
+        <div class="womo-skeleton-row-title shimmer"></div>
+        <div class="womo-skeleton-strip">${row}</div>
+      </section>
+
+      <section class="womo-skeleton-row-block">
+        <div class="womo-skeleton-row-title shimmer"></div>
+        <div class="womo-skeleton-strip">${row}</div>
+      </section>
+
+      <section class="womo-skeleton-row-block">
+        <div class="womo-skeleton-row-title shimmer"></div>
+        <div class="womo-skeleton-strip">${row}</div>
+      </section>
+    </div>
+  `;
+}
+
+function womoShowSkeleton() {
+  const home = document.getElementById("homePage");
+  if (!home || document.getElementById("womoSkeleton")) return;
+  home.classList.add("womo-loading");
+  home.insertAdjacentHTML("afterbegin", womoBuildSkeletonHTML());
+}
+
+function womoHideSkeleton() {
+  const home = document.getElementById("homePage");
+  const skeleton = document.getElementById("womoSkeleton");
+  if (home) home.classList.remove("womo-loading");
+  if (!skeleton) return;
+
+  skeleton.classList.add("womo-skeleton-exit");
+  setTimeout(() => skeleton.remove(), 260);
+}
+
+function womoHasVisibleCatalog() {
+  return Boolean(
+    document.querySelector("#hero .hero-poster, #hero img, .poster-card, .poster-row img")
+  );
+}
+
+function womoAutoHideSkeleton() {
+  if (womoHasVisibleCatalog()) {
+    womoHideSkeleton();
+    return true;
+  }
+  return false;
+}
+
+(function(){
+  if (window.__womoSkeletonLoadingBound) return;
+  window.__womoSkeletonLoadingBound = true;
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", womoShowSkeleton);
+  } else {
+    womoShowSkeleton();
+  }
+
+  window.addEventListener("load", () => {
+    setTimeout(womoAutoHideSkeleton, 250);
+    setTimeout(womoAutoHideSkeleton, 800);
+  });
+})();
+
+
 async function init() {
+  womoShowSkeleton();
   setupNavigation();
   setupSettings();
 
@@ -3208,6 +3299,7 @@ setupPlayerControls();
 let womoAppStarted = false;
 
 async function bootWomoAppAfterLogin() {
+  womoShowSkeleton();
   if (womoAppStarted) return;
   womoAppStarted = true;
 

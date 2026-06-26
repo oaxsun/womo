@@ -5341,3 +5341,168 @@ button:has(.womo-shuffle-btn-icon),
   opacity:1;
 }
 
+
+
+
+/* Womo app skeleton loading */
+#womoSkeleton{
+  position:absolute;
+  inset:0;
+  z-index:20;
+  background:#050505;
+  color:#fff;
+  opacity:1;
+  transition:opacity .26s ease, transform .26s ease;
+  pointer-events:none;
+}
+
+#womoSkeleton.womo-skeleton-exit{
+  opacity:0;
+  transform:translateY(-6px);
+}
+
+#homePage{
+  position:relative;
+}
+
+#homePage.womo-loading > .hero,
+#homePage.womo-loading > .content-row{
+  opacity:0;
+}
+
+.womo-skeleton-hero{
+  min-height:55vh;
+  position:relative;
+  display:flex;
+  align-items:flex-end;
+  padding:0 clamp(22px, 5vw, 70px) 58px;
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 72% 26%, rgba(255,255,255,.10), transparent 30%),
+    linear-gradient(90deg, #080808 0%, #151515 52%, #070707 100%);
+}
+
+.womo-skeleton-hero::after{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  height:42%;
+  background:linear-gradient(to bottom, transparent, #050505);
+  pointer-events:none;
+}
+
+.womo-skeleton-hero-copy{
+  position:relative;
+  z-index:2;
+  width:min(520px, 86vw);
+}
+
+.womo-skeleton-kicker{
+  width:84px;
+  height:13px;
+  border-radius:999px;
+  margin-bottom:18px;
+}
+
+.womo-skeleton-title{
+  width:min(430px, 78vw);
+  height:52px;
+  border-radius:16px;
+  margin-bottom:18px;
+}
+
+.womo-skeleton-line{
+  width:min(470px, 84vw);
+  height:14px;
+  border-radius:999px;
+  margin-bottom:10px;
+}
+
+.womo-skeleton-line.short{
+  width:min(315px, 62vw);
+}
+
+.womo-skeleton-actions{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-top:24px;
+}
+
+.womo-skeleton-pill{
+  width:134px;
+  height:44px;
+  border-radius:999px;
+}
+
+.womo-skeleton-circle{
+  width:44px;
+  height:44px;
+  border-radius:50%;
+}
+
+.womo-skeleton-row-block{
+  padding:0 clamp(16px, 4vw, 58px);
+  margin-top:28px;
+}
+
+.womo-skeleton-row-title{
+  width:160px;
+  height:18px;
+  border-radius:999px;
+  margin-bottom:14px;
+}
+
+.womo-skeleton-strip{
+  display:flex;
+  gap:12px;
+  overflow:hidden;
+}
+
+.womo-skeleton-card{
+  flex:0 0 clamp(128px, 14vw, 198px);
+  aspect-ratio:2/3;
+  border-radius:12px;
+}
+
+#womoSkeleton .shimmer{
+  position:relative;
+  overflow:hidden;
+  background:linear-gradient(90deg, rgba(255,255,255,.07), rgba(255,255,255,.13), rgba(255,255,255,.07));
+}
+
+#womoSkeleton .shimmer::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  transform:translateX(-100%);
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent);
+  animation:womoSkeletonShimmer 1.35s infinite;
+}
+
+@keyframes womoSkeletonShimmer{
+  100%{ transform:translateX(100%); }
+}
+
+@media (max-width:760px){
+  .womo-skeleton-hero{
+    min-height:58vh;
+    padding:0 20px 54px;
+  }
+
+  .womo-skeleton-title{
+    height:42px;
+  }
+
+  .womo-skeleton-card{
+    flex-basis:116px;
+    border-radius:10px;
+  }
+
+  .womo-skeleton-strip{
+    gap:10px;
+  }
+}
+
