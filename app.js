@@ -352,6 +352,8 @@ async function readCollection(name, normalizer) {
   }
 }
 
+
+
 function renderHero(item) {
   const hero = document.getElementById("hero");
   if (!item) {
@@ -456,7 +458,7 @@ function hideContinueViewAllButtons() {
 }
 
 function fillRow(id, data, progress = false, hideWhenEmpty = false) {
-  const rowLimit = id === "continueRow" ? 20 : 5;
+  const rowLimit = 10;
   updateViewAllButtonsVisibility(id, Array.isArray(data) ? data.length : 0);
   const row = document.getElementById(id);
   if (!row) return;
@@ -466,8 +468,10 @@ function fillRow(id, data, progress = false, hideWhenEmpty = false) {
     section.classList.toggle("hidden", !data.length);
   }
 
-  row.innerHTML = data.length
-    ? data.map(item => posterCard(item, progress)).join("")
+  const visibleData = Array.isArray(data) ? data.slice(0, rowLimit) : [];
+
+  row.innerHTML = visibleData.length
+    ? visibleData.map(item => posterCard(item, progress)).join("")
     : `<div class="row-empty">Sin contenido por ahora.</div>`;
 
   row.querySelectorAll(".poster-card").forEach(card => {
@@ -682,7 +686,15 @@ function changePage(page) {
   document.getElementById(`${page}Page`).classList.add("active");
 }
 
+
+function decorateViewAllButtons() {
+  document.querySelectorAll("[data-view-all]").forEach(button => {
+    button.textContent = "Ver más";
+  });
+}
+
 function setupNavigation() {
+  decorateViewAllButtons();
   document.querySelectorAll(".nav-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       changePage(btn.dataset.page);
@@ -870,29 +882,83 @@ function clearLocalMemoryState() {
 }
 
 async function clearUserMemory() {
-  const userRef = getUserDocRef();
-  if (!userRef) return;
-
-  const confirmed = confirm("¿Seguro que quieres borrar toda tu memoria de Womo? Se eliminarán favoritos, progreso y episodios vistos.");
-  if (!confirmed) return;
-
-  const clearedAt = Date.now();
+  const ok = confirm("¿Restablecer historial? Esto eliminará tus películas vistas, episodios vistos, progreso y continuar viendo. Tus favoritos se conservarán.");
+  if (!ok) return;
 
   try {
-    await Promise.all([
-      deleteCollectionDocs(userRef.collection("favorites")),
-      deleteCollectionDocs(userRef.collection("continueWatching")),
-      deleteCollectionDocs(userRef.collection("episodeProgress")),
-      clearUserMetaDocs(userRef),
-      userRef.set({ memoryClearedAt: clearedAt }, { merge: true })
-    ]);
-  } catch (error) {
-    console.warn("No se pudo borrar toda la memoria en Firebase.", error);
-  }
+    // Local playback history/progress only. Favorites are intentionally preserved.
+    localStorage.removeItem(CONTINUE_KEY);
+    localStorage.removeItem(EPISODE_PROGRESS_KEY);
 
-  localStorage.setItem(MEMORY_CLEAR_SEEN_KEY, String(clearedAt));
-  clearLocalMemoryState();
-  alert("Memoria borrada.");
+    if (typeof COMPLETED_KEY !== "undefined") {
+      localStorage.removeItem(COMPLETED_KEY);
+    }
+
+    localStorage.removeItem(MEMORY_CLEARED_KEY);
+    localStorage.removeItem(MEMORY_CLEAR_SEEN_KEY);
+
+    // Reset in-memory playback state without touching favorites.
+    try {
+      getAllCatalogItems().forEach(item => {
+        item.progress = 0;
+        item.completed = false;
+        item.lastWatchedAt = null;
+      });
+    } catch (_) {}
+
+    // Cloud cleanup for viewed/progress state only.
+    const userRef = typeof getUserDocRef === "function" ? getUserDocRef() : null;
+    if (userRef) {
+      const subcollections = [
+        "continueWatching",
+        "episodeProgress",
+        "completed",
+        "playHistory"
+      ];
+
+      for (const name of subcollections) {
+        try {
+          const snap = await userRef.collection(name).get();
+          await Promise.all(snap.docs.map(doc => doc.ref.delete()));
+        } catch (error) {
+          console.warn(`No se pudo restablecer ${name}.`, error);
+        }
+      }
+
+      try {
+        await userRef.set({
+          historyResetAt: Date.now(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch (_) {}
+    }
+
+    // Refresh UI as if this user had never watched anything.
+    fillRow("continueRow", [], true, true);
+    refreshContinueRow();
+    renderSearchResults();
+    renderFavorites();
+    syncFavoriteUI();
+
+    document.querySelectorAll(".progress span, .episode-progress span, [class*='progress'] span").forEach(span => {
+      span.style.setProperty("--value", "0%");
+    });
+
+    if (currentPreviewItem) {
+      try {
+        if (currentPreviewItem.type === "series") {
+          refreshCurrentPreviewEpisodes();
+        } else {
+          setPreviewButtonModeForItem(currentPreviewItem);
+        }
+      } catch (_) {}
+    }
+
+    alert("Historial restablecido. Tus favoritos se conservaron.");
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo restablecer el historial. Intenta de nuevo.");
+  }
 }
 
 async function logoutCurrentDevice() {
@@ -925,10 +991,51 @@ async function logoutEverywhere() {
   }
 }
 
+
+async function sendPasswordResetEmail() {
+  const user = firebase.auth().currentUser;
+  const email = user?.email;
+
+  if (!email) {
+    alert("No se encontró el correo de tu sesión actual.");
+    return;
+  }
+
+  const confirmed = confirm(`¿Enviar correo para restablecer contraseña a ${email}?`);
+  if (!confirmed) return;
+
+  const button = document.getElementById("resetPasswordBtn");
+  const originalText = button ? button.textContent : "";
+
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Enviando...";
+    }
+
+    await firebase.auth().sendPasswordResetEmail(email);
+    alert("Correo enviado. Revisa tu bandeja de entrada, spam o promociones para restablecer tu contraseña.");
+  } catch (error) {
+    console.error("No se pudo enviar el correo de restablecimiento.", error);
+    alert("No se pudo enviar el correo. Intenta de nuevo más tarde.");
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || "Restablecer";
+    }
+  }
+}
+
 function setupSettings() {
+  const resetPasswordBtn = document.getElementById("resetPasswordBtn");
   const clearBtn = document.getElementById("clearMemoryBtn");
   const logoutEverywhereBtn = document.getElementById("logoutEverywhereBtn");
   const logoutBtn = document.getElementById("logoutBtn");
+
+  if (resetPasswordBtn && resetPasswordBtn.dataset.ready !== "true") {
+    resetPasswordBtn.dataset.ready = "true";
+    resetPasswordBtn.addEventListener("click", sendPasswordResetEmail);
+  }
 
   if (clearBtn && clearBtn.dataset.ready !== "true") {
     clearBtn.dataset.ready = "true";

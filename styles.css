@@ -5550,3 +5550,172 @@ button:has(.womo-shuffle-btn-icon),
   isolation:isolate;
 }
 
+
+
+
+.settings-action:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+
+
+
+
+/* Transparent navbar container */
+.sidebar,
+.mobile-nav{
+  background:transparent !important;
+  box-shadow:none !important;
+  border-color:transparent !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+
+.nav-btn.active{
+  background:transparent !important;
+  color:var(--accent) !important;
+}
+
+.nav-btn:hover{
+  background:transparent !important;
+}
+
+
+
+
+
+
+/* Update fade right color to #202020 transparent */
+.hero::before{
+  background:linear-gradient(90deg, rgba(13,13,13,1) 0%, rgba(13,13,13,.90) 28%, rgba(32,32,32,.42) 64%, rgba(32,32,32,0) 100%) !important;
+}
+
+/* Ver más regular and aligned with section title baseline/bottom */
+.content-row .row-header{
+  align-items:flex-end !important;
+  gap:20px !important;
+  justify-content:flex-start !important;
+}
+
+.row-header button[data-view-all]{
+  font-weight:400 !important;
+  font-size:10px !important;
+  line-height:1 !important;
+  padding:0 0 4px !important;
+  align-self:flex-end !important;
+}
+
+.view-more-chevron{
+  font-weight:400 !important;
+}
+
+@media (max-width:760px){
+  :root{
+    --womo-card-width:142px;
+    --womo-card-gap:14px;
+  }
+
+  .poster-row{
+    overflow-x:auto !important;
+  }
+}
+
+
+
+
+
+
+/* Ver más label */
+.content-row .row-header{
+  justify-content:flex-start;
+  gap:20px;
+  align-items:flex-end;
+}
+
+.content-row .row-header h2{
+  flex:0 0 auto;
+}
+
+.row-header button[data-view-all]{
+  display:inline-flex;
+  align-items:flex-end;
+  margin-left:0 !important;
+  padding:0 0 4px !important;
+  color:var(--accent);
+  font-size:10px;
+  font-weight:400 !important;
+  line-height:1;
+}
+
+.view-more-chevron{
+  display:none !important;
+}
+
+
+
+
+/* Hero width = 5 visible posters, rows max 10 rendered */
+:root{
+  --womo-visible-card-width:180px;
+  --womo-visible-card-gap:24px;
+  --womo-visible-row-width:calc((var(--womo-visible-card-width) * 5) + (var(--womo-visible-card-gap) * 4));
+}
+
+.hero,
+.content-row,
+.empty-page{
+  max-width:var(--womo-visible-row-width) !important;
+}
+
+/* Render up to 10 cards, but only 5 are visible by default on desktop */
+.poster-row{
+  grid-auto-columns:var(--womo-visible-card-width) !important;
+  gap:var(--womo-visible-card-gap) !important;
+  max-width:var(--womo-visible-row-width) !important;
+  overflow-x:hidden !important;
+  overflow-y:visible !important;
+}
+
+.poster-card{
+  width:var(--womo-visible-card-width);
+}
+
+/* Keep edge hover scroll working on desktop while hiding the scrollbar */
+.poster-row::-webkit-scrollbar{
+  display:none;
+}
+
+.poster-row{
+  scrollbar-width:none;
+}
+
+/* Hero description 25% shorter */
+.hero-info p{
+  max-width:488px !important;
+}
+
+@media (max-width:760px){
+  .hero,
+  .content-row,
+  .empty-page{
+    max-width:none !important;
+  }
+
+  .poster-row{
+    max-width:none !important;
+    overflow-x:auto !important;
+    overflow-y:visible !important;
+    grid-auto-columns:142px !important;
+    gap:14px !important;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .poster-card{
+    width:142px;
+  }
+
+  .hero-info p{
+    max-width:100% !important;
+  }
+}
+
