@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Admin</title>
-  <link rel="stylesheet" href="/Panel/panel-admin.css?v=23" />
+  <link rel="stylesheet" href="/Panel/panel-admin.css?v=24" />
 </head>
 <body>
   <section id="loginScreen" class="login-screen">
@@ -32,6 +32,11 @@
       <button class="nav-btn" data-view="concerts">Conciertos</button>
       <button class="nav-btn" data-view="analytics">Analytics</button>
     </nav>
+
+    <div class="sidebar-user">
+      <span id="userEmail" class="user-email"></span>
+      <button id="logoutBtn" class="secondary-btn sidebar-logout" type="button">Salir</button>
+    </div>
   </aside>
 
   <main class="app hidden">
@@ -50,8 +55,6 @@
         <button id="importConcertBtn" class="secondary-btn hidden" type="button">Importar concierto</button>
         <button id="pasteConcertCodeBtn" class="secondary-btn hidden" type="button">Ingresar código</button>
         <input id="importConcertInput" type="file" accept="application/json,.json" class="hidden" />
-        <span id="userEmail" class="user-email"></span>
-        <button id="logoutBtn" class="secondary-btn" type="button">Salir</button>
         <button id="primaryAction" class="primary-btn">Agregar película</button>
       </div>
     </header>
@@ -370,6 +373,6 @@
     <div id="analyticsUserBody" class="analytics-detail"></div>
   </dialog>
 
-  <script type="module" src="/Panel/panel-admin.js?v=23"></script>
+  <script type="module" src="/Panel/panel-admin.js?v=24"></script>
 </body>
 </html>
