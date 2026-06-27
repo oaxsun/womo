@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Admin</title>
-  <link rel="stylesheet" href="/Panel/panel-admin.css?v=21" />
+  <link rel="stylesheet" href="/Panel/panel-admin.css?v=23" />
 </head>
 <body>
   <section id="loginScreen" class="login-screen">
@@ -42,10 +42,13 @@
       </div>
       <div class="top-actions">
         <button id="importMovieBtn" class="secondary-btn hidden" type="button">Importar película</button>
+        <button id="pasteMovieCodeBtn" class="secondary-btn hidden" type="button">Ingresar código</button>
         <input id="importMovieInput" type="file" accept="application/json,.json" class="hidden" />
         <button id="importSeriesBtn" class="secondary-btn hidden" type="button">Importar serie</button>
+        <button id="pasteSeriesCodeBtn" class="secondary-btn hidden" type="button">Ingresar código</button>
         <input id="importSeriesInput" type="file" accept="application/json,.json" class="hidden" />
         <button id="importConcertBtn" class="secondary-btn hidden" type="button">Importar concierto</button>
+        <button id="pasteConcertCodeBtn" class="secondary-btn hidden" type="button">Ingresar código</button>
         <input id="importConcertInput" type="file" accept="application/json,.json" class="hidden" />
         <span id="userEmail" class="user-email"></span>
         <button id="logoutBtn" class="secondary-btn" type="button">Salir</button>
@@ -274,6 +277,7 @@
         </div>
         <div class="dialog-tools">
           <button type="button" id="importEpisodeBtn" class="secondary-btn small">Importar</button>
+          <button type="button" id="pasteEpisodeCodeBtn" class="secondary-btn small">Ingresar código</button>
           <input id="importEpisodeInput" type="file" accept="application/json,.json" class="hidden" />
           <button class="icon-btn" value="cancel" type="button" id="closeEpisodeEditor">×</button>
         </div>
@@ -318,6 +322,32 @@
   </dialog>
 
 
+
+  <dialog id="jsonCodeDialog" class="editor small-editor json-code-dialog">
+    <form method="dialog" id="jsonCodeForm">
+      <div class="editor-head">
+        <div>
+          <p class="eyebrow" id="jsonCodeType">JSON</p>
+          <h2 id="jsonCodeTitle">Ingresar código</h2>
+        </div>
+        <button class="icon-btn" value="cancel" type="button" id="closeJsonCodeDialog">×</button>
+      </div>
+
+      <p class="helper" id="jsonCodeHelp">Pega aquí el JSON y presiona importar.</p>
+
+      <label class="json-code-label">
+        Código JSON
+        <textarea id="jsonCodeText" rows="14" spellcheck="false" placeholder='{"title":"American Psycho","year":2000}'></textarea>
+      </label>
+
+      <div class="editor-actions">
+        <button type="button" id="cancelJsonCodeBtn" class="secondary-btn">Cancelar</button>
+        <div class="spacer"></div>
+        <button type="submit" class="primary-btn">Importar código</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="analyticsTitleDialog" class="editor small-editor analytics-dialog">
     <div class="editor-head">
       <div>
@@ -340,6 +370,6 @@
     <div id="analyticsUserBody" class="analytics-detail"></div>
   </dialog>
 
-  <script type="module" src="/Panel/panel-admin.js?v=22"></script>
+  <script type="module" src="/Panel/panel-admin.js?v=23"></script>
 </body>
 </html>

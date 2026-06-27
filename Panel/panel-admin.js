@@ -297,18 +297,7 @@ function normalizeConcertFromJson(rawConcert, index = 0) {
 async function importConcertsFromJson(file) {
   try {
     const text = await file.text();
-    const json = JSON.parse(text);
-    const items = Array.isArray(json) ? json : Array.isArray(json.concerts) ? json.concerts : [json];
-    if (!items.length) return showStatus("El JSON no contiene conciertos");
-
-    const normalized = items.map(normalizeConcertFromJson);
-    const invalid = normalized.find(item => !item.data.title);
-    if (invalid) return alert("El JSON debe incluir al menos title en cada concierto. Poster URL y HLS URL se pueden agregar después desde el editor.");
-
-    await Promise.all(normalized.map(item => setDoc(doc(db, "concerts", item.id), item.data, { merge: true })));
-    showStatus(`${normalized.length} concierto${normalized.length === 1 ? "" : "s"} importado${normalized.length === 1 ? "" : "s"}`);
-    await loadAll();
-    setView("concerts");
+    await importConcertsFromJsonValue(JSON.parse(text));
   } catch (error) {
     console.error(error);
     alert("No se pudo importar el JSON. Revisa que el archivo sea válido.");
@@ -320,18 +309,7 @@ async function importConcertsFromJson(file) {
 async function importMoviesFromJson(file) {
   try {
     const text = await file.text();
-    const json = JSON.parse(text);
-    const items = Array.isArray(json) ? json : Array.isArray(json.movies) ? json.movies : [json];
-    if (!items.length) return showStatus("El JSON no contiene películas");
-
-    const normalized = items.map(normalizeMovieFromJson);
-    const invalid = normalized.find(item => !item.data.title);
-    if (invalid) return alert("El JSON debe incluir al menos title en cada película. Poster URL y HLS URL se pueden agregar después desde el editor.");
-
-    await Promise.all(normalized.map(item => setDoc(doc(db, "movies", item.id), item.data, { merge: true })));
-    showStatus(`${normalized.length} película${normalized.length === 1 ? "" : "s"} importada${normalized.length === 1 ? "" : "s"}`);
-    await loadAll();
-    setView("movies");
+    await importMoviesFromJsonValue(JSON.parse(text));
   } catch (error) {
     console.error(error);
     alert("No se pudo importar el JSON. Revisa que el archivo sea válido.");
@@ -343,31 +321,147 @@ async function importMoviesFromJson(file) {
 async function importSeriesFromJson(file) {
   try {
     const text = await file.text();
-    const json = JSON.parse(text);
-    const items = Array.isArray(json) ? json : Array.isArray(json.series) ? json.series : [json];
-    if (!items.length) return showStatus("El JSON no contiene series");
-
-    const normalized = items.map(normalizeSeriesFromJson);
-    const invalid = normalized.find(item => !item.data.title);
-    if (invalid) return alert("El JSON debe incluir al menos title en cada serie. Poster URL se puede agregar después desde el editor.");
-
-    await Promise.all(normalized.map(async item => {
-      await setDoc(doc(db, "series", item.id), item.data, { merge: true });
-      if (item.episodes.length) {
-        const episodes = item.episodes.map(normalizeEpisodeFromJson);
-        await Promise.all(episodes.map(ep => setDoc(doc(db, "series", item.id, "episodes", ep.id), ep.data, { merge: true })));
-      }
-    }));
-
-    showStatus(`${normalized.length} serie${normalized.length === 1 ? "" : "s"} importada${normalized.length === 1 ? "" : "s"}`);
-    await loadAll();
-    setView("series");
+    await importSeriesFromJsonValue(JSON.parse(text));
   } catch (error) {
     console.error(error);
     alert("No se pudo importar el JSON. Revisa que el archivo sea válido.");
   } finally {
     $("importSeriesInput").value = "";
   }
+}
+
+
+
+function parseJsonCode(text) {
+  const value = String(text || "").trim();
+  if (!value) throw new Error("empty-json-code");
+  return JSON.parse(value);
+}
+
+async function importConcertsFromJsonValue(json) {
+  const items = Array.isArray(json) ? json : Array.isArray(json.concerts) ? json.concerts : [json];
+  if (!items.length) return showStatus("El JSON no contiene conciertos");
+
+  const normalized = items.map(normalizeConcertFromJson);
+  const invalid = normalized.find(item => !item.data.title);
+  if (invalid) return alert("El JSON debe incluir al menos title en cada concierto. Poster URL y HLS URL se pueden agregar después desde el editor.");
+
+  await Promise.all(normalized.map(item => setDoc(doc(db, "concerts", item.id), item.data, { merge: true })));
+  showStatus(`${normalized.length} concierto${normalized.length === 1 ? "" : "s"} importado${normalized.length === 1 ? "" : "s"}`);
+  await loadAll();
+  setView("concerts");
+}
+
+async function importMoviesFromJsonValue(json) {
+  const items = Array.isArray(json) ? json : Array.isArray(json.movies) ? json.movies : [json];
+  if (!items.length) return showStatus("El JSON no contiene películas");
+
+  const normalized = items.map(normalizeMovieFromJson);
+  const invalid = normalized.find(item => !item.data.title);
+  if (invalid) return alert("El JSON debe incluir al menos title en cada película. Poster URL y HLS URL se pueden agregar después desde el editor.");
+
+  await Promise.all(normalized.map(item => setDoc(doc(db, "movies", item.id), item.data, { merge: true })));
+  showStatus(`${normalized.length} película${normalized.length === 1 ? "" : "s"} importada${normalized.length === 1 ? "" : "s"}`);
+  await loadAll();
+  setView("movies");
+}
+
+async function importSeriesFromJsonValue(json) {
+  const items = Array.isArray(json) ? json : Array.isArray(json.series) ? json.series : [json];
+  if (!items.length) return showStatus("El JSON no contiene series");
+
+  const normalized = items.map(normalizeSeriesFromJson);
+  const invalid = normalized.find(item => !item.data.title);
+  if (invalid) return alert("El JSON debe incluir al menos title en cada serie. Poster URL se puede agregar después desde el editor.");
+
+  await Promise.all(normalized.map(async item => {
+    await setDoc(doc(db, "series", item.id), item.data, { merge: true });
+    if (item.episodes.length) {
+      const episodes = item.episodes.map(normalizeEpisodeFromJson);
+      await Promise.all(episodes.map(ep => setDoc(doc(db, "series", item.id, "episodes", ep.id), ep.data, { merge: true })));
+    }
+  }));
+
+  showStatus(`${normalized.length} serie${normalized.length === 1 ? "" : "s"} importada${normalized.length === 1 ? "" : "s"}`);
+  await loadAll();
+  setView("series");
+}
+
+function getEpisodeRawFromJsonValue(json) {
+  return Array.isArray(json) ? json[0] : Array.isArray(json.episodes) ? json.episodes[0] : json;
+}
+
+async function importMovieCode(text) {
+  try {
+    await importMoviesFromJsonValue(parseJsonCode(text));
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo importar el código. Revisa que sea JSON válido.");
+  }
+}
+
+async function importSeriesCode(text) {
+  try {
+    await importSeriesFromJsonValue(parseJsonCode(text));
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo importar el código. Revisa que sea JSON válido.");
+  }
+}
+
+async function importConcertCode(text) {
+  try {
+    await importConcertsFromJsonValue(parseJsonCode(text));
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo importar el código. Revisa que sea JSON válido.");
+  }
+}
+
+async function importEpisodeCode(text) {
+  try {
+    const raw = getEpisodeRawFromJsonValue(parseJsonCode(text));
+    if (!raw) return alert("El JSON no contiene episodio.");
+    fillEpisodeForm(raw);
+    showStatus("Campos del episodio importados. Revisa y guarda.");
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo importar el código del episodio. Revisa que sea JSON válido.");
+  }
+}
+
+let jsonCodeMode = null;
+
+function openJsonCodeDialog(mode) {
+  jsonCodeMode = mode;
+  const labels = {
+    movie: { type: "Película", title: "Ingresar código de película", help: "Pega un objeto JSON de película o un arreglo de películas." },
+    series: { type: "Serie", title: "Ingresar código de serie", help: "Pega un objeto JSON de serie, un arreglo de series o un objeto con la propiedad series." },
+    concert: { type: "Concierto", title: "Ingresar código de concierto", help: "Pega un objeto JSON de concierto o un arreglo de conciertos." },
+    episode: { type: "Episodio", title: "Ingresar código de episodio", help: "Pega un objeto JSON de episodio. Se llenarán los campos y después podrás guardar." }
+  };
+
+  const config = labels[mode] || labels.movie;
+  $("jsonCodeType").textContent = config.type;
+  $("jsonCodeTitle").textContent = config.title;
+  $("jsonCodeHelp").textContent = config.help;
+  $("jsonCodeText").value = "";
+  $("jsonCodeDialog").showModal();
+  setTimeout(() => $("jsonCodeText").focus(), 40);
+}
+
+async function submitJsonCode(e) {
+  e.preventDefault();
+  const text = $("jsonCodeText").value;
+
+  if (jsonCodeMode === "series") await importSeriesCode(text);
+  else if (jsonCodeMode === "concert") await importConcertCode(text);
+  else if (jsonCodeMode === "episode") await importEpisodeCode(text);
+  else await importMovieCode(text);
+
+  $("jsonCodeDialog").close();
+  $("jsonCodeText").value = "";
+  jsonCodeMode = null;
 }
 
 
@@ -691,8 +785,11 @@ function setView(view) {
 
   primaryAction.style.visibility = (view === "home" || view === "analytics") ? "hidden" : "visible";
   $("importMovieBtn").classList.toggle("hidden", view !== "movies");
+  $("pasteMovieCodeBtn").classList.toggle("hidden", view !== "movies");
   $("importSeriesBtn").classList.toggle("hidden", view !== "series");
+  $("pasteSeriesCodeBtn").classList.toggle("hidden", view !== "series");
   $("importConcertBtn").classList.toggle("hidden", view !== "concerts");
+  $("pasteConcertCodeBtn").classList.toggle("hidden", view !== "concerts");
   if (view === "analytics" && !state.analyticsLoaded) loadAnalytics();
   render();
 }
@@ -964,8 +1061,7 @@ function openEpisodeEditor(ep = null) {
 async function importEpisodeFromJson(file) {
   try {
     const text = await file.text();
-    const json = JSON.parse(text);
-    const raw = Array.isArray(json) ? json[0] : Array.isArray(json.episodes) ? json.episodes[0] : json;
+    const raw = getEpisodeRawFromJsonValue(JSON.parse(text));
     if (!raw) return alert("El JSON no contiene episodio.");
     fillEpisodeForm(raw);
     showStatus("Campos del episodio importados. Revisa y guarda.");
@@ -1067,6 +1163,15 @@ $("importSeriesBtn").addEventListener("click", () => $("importSeriesInput").clic
 $("importSeriesInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importSeriesFromJson(file); });
 $("importConcertBtn").addEventListener("click", () => $("importConcertInput").click());
 $("importConcertInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importConcertsFromJson(file); });
+
+$("pasteMovieCodeBtn").addEventListener("click", () => openJsonCodeDialog("movie"));
+$("pasteSeriesCodeBtn").addEventListener("click", () => openJsonCodeDialog("series"));
+$("pasteConcertCodeBtn").addEventListener("click", () => openJsonCodeDialog("concert"));
+$("pasteEpisodeCodeBtn").addEventListener("click", () => openJsonCodeDialog("episode"));
+$("jsonCodeForm").addEventListener("submit", submitJsonCode);
+$("closeJsonCodeDialog").addEventListener("click", () => $("jsonCodeDialog").close());
+$("cancelJsonCodeBtn").addEventListener("click", () => $("jsonCodeDialog").close());
+
 
 // Extra direct listeners for the Películas and Series grids.
 // This makes the entire card open the same editor used by the manual add flow.

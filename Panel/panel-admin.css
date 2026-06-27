@@ -412,3 +412,34 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
   display:none !important;
 }
 
+
+
+
+/* JSON code import */
+.json-code-dialog textarea,
+#jsonCodeText{
+  min-height:320px;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size:13px;
+  line-height:1.45;
+  resize:vertical;
+  white-space:pre;
+}
+
+.json-code-label{
+  display:grid;
+  gap:8px;
+  color:var(--muted);
+  font-size:13px;
+  font-weight:800;
+}
+
+.top-actions{
+  flex-wrap:wrap;
+}
+
+.dialog-tools{
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
