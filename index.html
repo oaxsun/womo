@@ -8,6 +8,56 @@
 </head>
 <body>
 
+<div id="womoSkeleton" class="womo-skeleton-screen">
+  <div class="womo-skeleton-shell">
+    <section class="womo-skeleton-hero">
+      <div class="womo-skeleton-hero-poster"></div>
+      <div class="womo-skeleton-hero-info">
+        <div class="womo-skeleton-dots"></div>
+        <div class="womo-skeleton-title"></div>
+        <div class="womo-skeleton-meta"></div>
+        <div class="womo-skeleton-copy short"></div>
+        <div class="womo-skeleton-copy"></div>
+        <div class="womo-skeleton-button"></div>
+      </div>
+    </section>
+
+    <section class="womo-skeleton-section">
+      <div class="womo-skeleton-row-head">
+        <div class="womo-skeleton-heading"></div>
+        <div class="womo-skeleton-more"></div>
+      </div>
+      <div class="womo-skeleton-row">
+        <div class="womo-skeleton-card"></div>
+        <div class="womo-skeleton-card"></div>
+        <div class="womo-skeleton-card"></div>
+        <div class="womo-skeleton-card"></div>
+        <div class="womo-skeleton-card"></div>
+      </div>
+    </section>
+
+    <section class="womo-skeleton-section">
+      <div class="womo-skeleton-row-head">
+        <div class="womo-skeleton-heading"></div>
+        <div class="womo-skeleton-more"></div>
+      </div>
+      <div class="womo-skeleton-row">
+        <div class="womo-skeleton-card"></div>
+        <div class="womo-skeleton-card"></div>
+        <div class="womo-skeleton-card"></div>
+        <div class="womo-skeleton-card"></div>
+        <div class="womo-skeleton-card"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="womo-skeleton-mobile-nav">
+    <span></span><span></span><span></span>
+  </div>
+</div>
+
+
+
 <div id="loginScreen" class="login-screen">
   <img class="login-logo" src="assets/logo.svg" alt="Womo">
   <h1>Bienvenido a Womo</h1>
@@ -25,13 +75,18 @@
     <img class="logo-mark" src="assets/logo.svg" alt="Womo" />
 
     <nav class="nav">
-      <button class="nav-btn" data-page="search" aria-label="Buscar" data-label="Buscar"><i data-lucide="search"></i></button>
-      <button class="nav-btn active" data-page="home" aria-label="Inicio" data-label="Home"><i data-lucide="house"></i></button>
-      <button class="nav-btn" data-page="favorites" aria-label="Favoritos" data-label="Favoritos"><i data-lucide="heart"></i></button>
+      <button type="button" class="nav-btn" data-page="search" aria-label="Buscar" data-label="Buscar"><i data-lucide="search"></i></button>
+      <button type="button" class="nav-btn active" data-page="home" aria-label="Inicio" data-label="Home"><i data-lucide="house"></i></button>
+      <button type="button" class="nav-btn" data-page="favorites" aria-label="Favoritos" data-label="Favoritos"><i data-lucide="heart"></i></button>
     </nav>
 
-    <button class="nav-btn settings-nav" data-page="settings" aria-label="Configuración" data-label="Config"><i data-lucide="settings"></i></button>
+    <button type="button" class="nav-btn settings-nav" data-page="settings" aria-label="Configuración" data-label="Config"><i data-lucide="settings"></i></button>
   </aside>
+
+  
+    <button type="button" class="top-settings-btn nav-btn" data-page="settings" aria-label="Configuración" data-label="Config">
+      <i data-lucide="settings"></i>
+    </button>
 
   <main class="app-shell">
     <section class="page active" id="homePage">
@@ -143,7 +198,7 @@
             <h2>Contraseña</h2>
             <p>Recibe por correo un link seguro para crear una nueva contraseña.</p>
           </div>
-          <button id="resetPasswordBtn" class="settings-action secondary">Restablecer</button>
+          <button type="button" id="resetPasswordBtn" class="settings-action secondary">Restablecer</button>
         </div>
 
         <div class="settings-card">
@@ -151,7 +206,7 @@
             <h2>Historial</h2>
             <p>Restablece tus películas vistas, episodios vistos, progreso y continuar viendo. Tus favoritos se conservan.</p>
           </div>
-          <button id="clearMemoryBtn" class="settings-action danger">Restablecer</button>
+          <button type="button" id="clearMemoryBtn" class="settings-action danger">Restablecer</button>
         </div>
 
         <div class="settings-card">
@@ -159,7 +214,7 @@
             <h2>Cerrar en todos lados</h2>
             <p>Cierra tu sesión en todos los dispositivos donde hayas iniciado sesión.</p>
           </div>
-          <button id="logoutEverywhereBtn" class="settings-action secondary">Cerrar en todos lados</button>
+          <button type="button" id="logoutEverywhereBtn" class="settings-action secondary">Cerrar en todos lados</button>
         </div>
 
         <div class="settings-card">
@@ -167,7 +222,7 @@
             <h2>Cerrar sesión</h2>
             <p>Sal de Womo únicamente en este navegador.</p>
           </div>
-          <button id="logoutBtn" class="settings-action">Cerrar sesión</button>
+          <button type="button" id="logoutBtn" class="settings-action">Cerrar sesión</button>
         </div>
       </div>
     </section>
@@ -179,8 +234,8 @@
   <div class="preview-card">
     <div class="preview-hero">
       <img id="previewPoster" class="preview-hero-poster" alt="">
-      <button id="previewFavorite" class="preview-fav-btn" aria-label="Agregar a favoritos"><i data-lucide="heart"></i></button>
-      <button class="preview-close" aria-label="Cerrar">‹</button>
+      <button type="button" id="previewFavorite" class="preview-fav-btn" aria-label="Agregar a favoritos"><i data-lucide="heart"></i></button>
+      <button type="button" class="preview-close" aria-label="Cerrar">‹</button>
 
       <div class="preview-hero-content">
         <div class="preview-title-row">
@@ -204,7 +259,7 @@
 
 <div id="playerOverlay" class="player-overlay" aria-hidden="true">
   <div class="player-topbar">
-    <button id="playerBack" class="player-back" aria-label="Volver"><i data-lucide="chevron-left"></i></button>
+    <button type="button" id="playerBack" class="player-back" aria-label="Volver"><i data-lucide="chevron-left"></i></button>
     <div>
       <div id="playerTitle" class="player-title"></div>
       <div id="playerSubtitle" class="player-subtitle"></div>

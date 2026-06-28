@@ -1,3 +1,22 @@
+
+(function setupWomoSkeletonLifecycle(){
+  const hideSkeleton = () => {
+    const skeleton = document.getElementById("womoSkeleton");
+    if (!skeleton) return;
+    skeleton.classList.add("is-hidden");
+    setTimeout(() => skeleton.remove(), 320);
+  };
+
+  window.womoHideSkeleton = hideSkeleton;
+
+  window.addEventListener("load", () => {
+    setTimeout(hideSkeleton, 900);
+  });
+
+  document.addEventListener("womo:ready", hideSkeleton);
+})();
+
+
 const firebaseConfig = {
   apiKey: "AIzaSyBGUUoYmYNcQk_T7QvDUKwZmNh-nHOwENY",
   authDomain: "womo-5d922.firebaseapp.com",
@@ -4912,5 +4931,342 @@ function womoFixPreviewBottomWhenNoRecommendations() {
   try {
     observer.observe(document.documentElement, { childList:true, subtree:true });
   } catch (_) {}
+})();
+
+
+
+setTimeout(() => window.womoHideSkeleton?.(), 1200);
+
+
+
+/* Final UX/player safety fixes */
+(function womoFinalInteractionFixes(){
+  function closePreviewSafely(){
+    const modal = document.getElementById("previewModal");
+    if (!modal) return;
+    modal.classList.remove("open", "dragging");
+    modal.style.setProperty("--sheet-y", "0px");
+    document.body.classList.remove("preview-open");
+  }
+
+  function setupFinalPreviewGuards(){
+    const modal = document.getElementById("previewModal");
+    if (!modal || modal.dataset.finalGuards === "true") return;
+    modal.dataset.finalGuards = "true";
+
+    // Desktop: click outside card closes preview.
+    modal.addEventListener("pointerdown", (event) => {
+      if (window.matchMedia("(max-width: 760px)").matches) return;
+      const card = event.target.closest(".preview-card");
+      if (!card && modal.classList.contains("open")) {
+        event.preventDefault();
+        closePreviewSafely();
+      }
+    });
+
+    // Mobile: sheet drag down to close.
+    const card = modal.querySelector(".preview-card");
+    if (!card) return;
+
+    let startY = 0;
+    let currentY = 0;
+    let dragging = false;
+
+    card.addEventListener("pointerdown", (event) => {
+      if (!window.matchMedia("(max-width: 760px)").matches) return;
+      // Allow normal interaction with controls.
+      if (event.target.closest("button, input, select, textarea, video, a")) return;
+      startY = event.clientY;
+      currentY = 0;
+      dragging = true;
+      card.setPointerCapture?.(event.pointerId);
+      modal.classList.add("dragging");
+    });
+
+    card.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      currentY = Math.max(0, event.clientY - startY);
+      modal.style.setProperty("--sheet-y", `${currentY}px`);
+    });
+
+    function endDrag(){
+      if (!dragging) return;
+      dragging = false;
+      modal.classList.remove("dragging");
+      if (currentY > 110) {
+        closePreviewSafely();
+      } else {
+        modal.style.setProperty("--sheet-y", "0px");
+      }
+    }
+
+    card.addEventListener("pointerup", endDrag);
+    card.addEventListener("pointercancel", endDrag);
+  }
+
+  function setupPlayerReloadGuard(){
+    // Many mobile browsers reload when an untyped button inside an implicit form submits.
+    document.addEventListener("click", (event) => {
+      const btn = event.target.closest("button");
+      if (!btn) return;
+      if (!btn.getAttribute("type")) btn.setAttribute("type", "button");
+    }, true);
+
+    // If a form submit sneaks in from app controls, block it.
+    document.addEventListener("submit", (event) => {
+      const target = event.target;
+      if (target && !target.closest("#loginForm")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
+
+    const playerOverlay = document.getElementById("playerOverlay");
+    if (playerOverlay && playerOverlay.dataset.reloadGuard !== "true") {
+      playerOverlay.dataset.reloadGuard = "true";
+      playerOverlay.addEventListener("click", (event) => {
+        event.stopPropagation();
+      }, true);
+    }
+  }
+
+  function setupTopSettings(){
+    document.querySelectorAll(".top-settings-btn").forEach(btn => {
+      if (btn.dataset.finalReady === "true") return;
+      btn.dataset.finalReady = "true";
+      btn.setAttribute("type", "button");
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof changePage === "function") {
+          changePage("settings");
+          if (typeof setupSettings === "function") setupSettings();
+        }
+      });
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    setupFinalPreviewGuards();
+    setupPlayerReloadGuard();
+    setupTopSettings();
+  });
+
+  setTimeout(() => {
+    setupFinalPreviewGuards();
+    setupPlayerReloadGuard();
+    setupTopSettings();
+  }, 500);
+
+  const originalPushState = history.pushState;
+  history.pushState = function(){
+    return originalPushState.apply(this, arguments);
+  };
+})();
+
+
+
+
+/* Final mobile preview sheet controls */
+(function womoPreviewSheetFinal(){
+  function getPreviewModal(){
+    return document.getElementById("previewModal");
+  }
+
+  function closePreviewFinal(){
+    const modal = getPreviewModal();
+    if (!modal) return;
+    modal.classList.remove("open", "dragging");
+    modal.style.setProperty("--sheet-y", "0px");
+    document.body.classList.remove("preview-open");
+  }
+
+  function setupPreviewSheetFinal(){
+    const modal = getPreviewModal();
+    if (!modal || modal.dataset.sheetFinal === "true") return;
+    modal.dataset.sheetFinal = "true";
+
+    modal.addEventListener("pointerdown", (event) => {
+      if (!modal.classList.contains("open")) return;
+      const card = event.target.closest(".preview-card");
+      if (!card) {
+        event.preventDefault();
+        closePreviewFinal();
+      }
+    });
+
+    const closeBtn = modal.querySelector("#previewClose, .preview-close");
+    if (closeBtn) {
+      closeBtn.setAttribute("type", "button");
+      closeBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closePreviewFinal();
+      });
+    }
+
+    const card = modal.querySelector(".preview-card");
+    if (!card) return;
+
+    let startY = 0;
+    let currentY = 0;
+    let dragging = false;
+
+    card.addEventListener("pointerdown", (event) => {
+      if (!window.matchMedia("(max-width: 760px)").matches) return;
+      if (event.target.closest("button, input, select, textarea, video, a")) return;
+      startY = event.clientY;
+      currentY = 0;
+      dragging = true;
+      modal.classList.add("dragging");
+      card.setPointerCapture?.(event.pointerId);
+    });
+
+    card.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      currentY = Math.max(0, event.clientY - startY);
+      modal.style.setProperty("--sheet-y", `${currentY}px`);
+    });
+
+    function finishDrag(){
+      if (!dragging) return;
+      dragging = false;
+      modal.classList.remove("dragging");
+      if (currentY > 110) {
+        closePreviewFinal();
+      } else {
+        modal.style.setProperty("--sheet-y", "0px");
+      }
+    }
+
+    card.addEventListener("pointerup", finishDrag);
+    card.addEventListener("pointercancel", finishDrag);
+  }
+
+  function setupSettingsTopFinal(){
+    document.querySelectorAll(".top-settings-btn").forEach(btn => {
+      if (btn.dataset.sheetFinal === "true") return;
+      btn.dataset.sheetFinal = "true";
+      btn.setAttribute("type", "button");
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof changePage === "function") changePage("settings");
+        if (typeof setupSettings === "function") setupSettings();
+      });
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    setupPreviewSheetFinal();
+    setupSettingsTopFinal();
+  });
+  setTimeout(() => {
+    setupPreviewSheetFinal();
+    setupSettingsTopFinal();
+  }, 500);
+  window.womoClosePreviewFinal = closePreviewFinal;
+})();
+
+
+
+
+/* Final preview buttons + sheet interaction repair */
+(function womoModalButtonsRepair(){
+  function modal(){ return document.getElementById("previewModal"); }
+  function card(){ return modal()?.querySelector(".preview-card"); }
+
+  function closePreview(){
+    const m = modal();
+    if (!m) return;
+    m.classList.remove("open", "dragging");
+    m.style.setProperty("--sheet-y", "0px");
+    document.body.classList.remove("preview-open");
+  }
+
+  function bindPreviewControls(){
+    const m = modal();
+    if (!m || m.dataset.buttonsRepair === "true") return;
+    m.dataset.buttonsRepair = "true";
+
+    // Outside tap closes, but taps inside do not block the app's existing button listeners.
+    m.addEventListener("pointerdown", (event) => {
+      if (!m.classList.contains("open")) return;
+      if (!event.target.closest(".preview-card")) {
+        event.preventDefault();
+        closePreview();
+      }
+    });
+
+    // Volver/cerrar
+    m.querySelectorAll("#previewClose, .preview-close").forEach(btn => {
+      btn.setAttribute("type", "button");
+      btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closePreview();
+      });
+    });
+
+    // Favorito fallback
+    m.querySelectorAll("#previewFavorite, #previewFav, .preview-fav, .preview-favorite, .preview-fav-btn").forEach(btn => {
+      btn.setAttribute("type", "button");
+      btn.addEventListener("click", (event) => {
+        if (btn.dataset.womoFavoriteFallback === "true") return;
+        // Let original handler run first when present.
+        setTimeout(() => {
+          const item = window.currentPreviewItem || window.womoCurrentPreviewItem || null;
+          if (!item || typeof toggleFavoriteItem !== "function") return;
+          // If original did nothing, fallback toggle.
+          if (!event.defaultPrevented) {
+            const active = toggleFavoriteItem(item);
+            btn.classList.toggle("active", active);
+          }
+        }, 0);
+      });
+    });
+
+    // Safety: all modal buttons are button type, never submit.
+    m.querySelectorAll("button").forEach(btn => btn.setAttribute("type", "button"));
+
+    // Drag down to close, but never starts on interactive controls.
+    const c = card();
+    if (!c) return;
+    let startY = 0;
+    let currentY = 0;
+    let dragging = false;
+
+    c.addEventListener("pointerdown", (event) => {
+      if (!window.matchMedia("(max-width: 760px)").matches) return;
+      if (event.target.closest("button, input, select, textarea, video, a")) return;
+      startY = event.clientY;
+      currentY = 0;
+      dragging = true;
+      m.classList.add("dragging");
+      c.setPointerCapture?.(event.pointerId);
+    });
+
+    c.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      currentY = Math.max(0, event.clientY - startY);
+      m.style.setProperty("--sheet-y", `${currentY}px`);
+    });
+
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      m.classList.remove("dragging");
+      if (currentY > 110) closePreview();
+      else m.style.setProperty("--sheet-y", "0px");
+    };
+    c.addEventListener("pointerup", end);
+    c.addEventListener("pointercancel", end);
+  }
+
+  // Re-bind whenever preview opens because the app may rewrite modal buttons.
+  document.addEventListener("click", () => setTimeout(bindPreviewControls, 0), true);
+  document.addEventListener("DOMContentLoaded", bindPreviewControls);
+  setTimeout(bindPreviewControls, 500);
+  window.womoClosePreview = closePreview;
 })();
 
