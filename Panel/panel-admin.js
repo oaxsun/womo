@@ -1359,3 +1359,193 @@ onAuthStateChanged(auth, async (user) => {
     showStatus(`Error Firebase: ${err.code || ""} ${err.message || err}`);
   });
 });
+
+
+
+/* Cartoon import/code final fix */
+(function setupCartoonImportFinalFix(){
+  const safe$ = (id) => document.getElementById(id);
+
+  function parseCartoonJsonCodeFinal(text) {
+    const raw = String(text || "").trim();
+    if (!raw) throw new Error("empty");
+    return JSON.parse(raw);
+  }
+
+  function finalSlugify(value) {
+    if (typeof slugify === "function") return slugify(value);
+    return String(value || "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || `cartoon-${Date.now()}`;
+  }
+
+  function finalNormalizeEpisode(rawEpisode, index = 0) {
+    if (typeof normalizeEpisodeFromJson === "function") return normalizeEpisodeFromJson(rawEpisode, index);
+    const season = Number(rawEpisode.season || rawEpisode.temporada || 1);
+    const episode = Number(rawEpisode.episode || rawEpisode.episodeNumber || rawEpisode.capitulo || index + 1);
+    const title = String(rawEpisode.title || rawEpisode.name || `Episodio ${episode}`).trim();
+    const id = finalSlugify(rawEpisode.id || `${season}-${episode}-${title}`);
+    return {
+      id,
+      data: {
+        title,
+        season,
+        episode,
+        duration: rawEpisode.duration || rawEpisode.durationText || "",
+        hlsUrl: rawEpisode.hlsUrl || rawEpisode.videoUrl || rawEpisode.url || "",
+        createdAt: rawEpisode.createdAt || Date.now()
+      }
+    };
+  }
+
+  function finalNormalizeCartoon(rawCartoon, index = 0) {
+    if (typeof normalizeCartoonFromJson === "function") return normalizeCartoonFromJson(rawCartoon, index);
+
+    const title = String(rawCartoon.title || rawCartoon.name || "").trim();
+    const id = finalSlugify(rawCartoon.id || rawCartoon.docId || rawCartoon.slug || title || `cartoon-${Date.now()}-${index}`);
+    const episodesRaw = Array.isArray(rawCartoon.episodes) ? rawCartoon.episodes : Array.isArray(rawCartoon.capitulos) ? rawCartoon.capitulos : [];
+
+    return {
+      id,
+      data: {
+        title,
+        year: rawCartoon.year ? Number(rawCartoon.year) : "",
+        genres: Array.isArray(rawCartoon.genres) ? rawCartoon.genres : rawCartoon.genre ? [rawCartoon.genre] : [],
+        genre: Array.isArray(rawCartoon.genres) ? rawCartoon.genres.join(", ") : rawCartoon.genre || "",
+        synopsis: rawCartoon.synopsis || rawCartoon.description || "",
+        description: rawCartoon.description || rawCartoon.synopsis || "",
+        posterUrl: rawCartoon.posterUrl || rawCartoon.poster || "",
+        poster: rawCartoon.poster || rawCartoon.posterUrl || "",
+        type: "cartoon",
+        published: rawCartoon.published !== false,
+        createdAt: rawCartoon.createdAt || Date.now()
+      },
+      episodes: episodesRaw
+    };
+  }
+
+  async function finalImportCartoonsFromValue(json) {
+    const items = Array.isArray(json)
+      ? json
+      : Array.isArray(json.cartoons)
+        ? json.cartoons
+        : Array.isArray(json.series)
+          ? json.series
+          : [json];
+
+    if (!items.length) {
+      alert("El JSON no contiene cartoons.");
+      return;
+    }
+
+    const normalized = items.map(finalNormalizeCartoon);
+    const invalid = normalized.find(item => !item.data.title);
+    if (invalid) {
+      alert("El JSON debe incluir al menos title en cada cartoon.");
+      return;
+    }
+
+    await Promise.all(normalized.map(async item => {
+      await setDoc(doc(db, "cartoons", item.id), item.data, { merge: true });
+
+      if (item.episodes?.length) {
+        const eps = item.episodes.map(finalNormalizeEpisode);
+        await Promise.all(eps.map(ep => setDoc(doc(db, "cartoons", item.id, "episodes", ep.id), ep.data, { merge: true })));
+      }
+    }));
+
+    if (typeof showStatus === "function") {
+      showStatus(`${normalized.length} cartoon${normalized.length === 1 ? "" : "s"} importado${normalized.length === 1 ? "" : "s"}`);
+    }
+
+    if (typeof loadAll === "function") await loadAll();
+    if (typeof setView === "function") setView("cartoons");
+  }
+
+  async function finalImportCartoonFile(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      await finalImportCartoonsFromValue(JSON.parse(text));
+    } catch (error) {
+      console.error(error);
+      alert("No se pudo importar el JSON de cartoons. Revisa que sea válido.");
+    } finally {
+      const input = safe$("importCartoonInput");
+      if (input) input.value = "";
+    }
+  }
+
+  function finalOpenCartoonCodeDialog() {
+    if (typeof openJsonCodeDialog === "function") {
+      openJsonCodeDialog("cartoon");
+      return;
+    }
+
+    const text = prompt("Pega el JSON del cartoon:");
+    if (!text) return;
+    finalImportCartoonsFromValue(parseCartoonJsonCodeFinal(text)).catch(error => {
+      console.error(error);
+      alert("No se pudo importar el código. Revisa que sea JSON válido.");
+    });
+  }
+
+  // Patch submitJsonCode indirectly if the existing dialog opens with cartoon mode but submit didn't handle it.
+  const oldSubmitButton = safe$("jsonCodeSubmit");
+  if (oldSubmitButton && oldSubmitButton.dataset.cartoonFinalFix !== "true") {
+    oldSubmitButton.dataset.cartoonFinalFix = "true";
+    oldSubmitButton.addEventListener("click", async () => {
+      try {
+        if (window.jsonCodeMode !== "cartoon" && typeof jsonCodeMode !== "undefined" && jsonCodeMode !== "cartoon") return;
+        const textarea = safe$("jsonCodeTextarea") || safe$("jsonCodeInput") || document.querySelector("[data-json-code-input]");
+        const text = textarea ? textarea.value : "";
+        if (!text.trim()) return;
+        await finalImportCartoonsFromValue(parseCartoonJsonCodeFinal(text));
+        const modal = safe$("jsonCodeModal");
+        modal?.classList.remove("open");
+      } catch (error) {
+        console.error(error);
+        alert("No se pudo importar el código. Revisa que sea JSON válido.");
+      }
+    }, true);
+  }
+
+  function bindCartoonImportButtonsFinal() {
+    const importBtn = safe$("importCartoonBtn");
+    const input = safe$("importCartoonInput");
+    const pasteBtn = safe$("pasteCartoonCodeBtn");
+
+    if (importBtn && input && importBtn.dataset.cartoonFinalFix !== "true") {
+      importBtn.dataset.cartoonFinalFix = "true";
+      importBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        input.click();
+      });
+    }
+
+    if (input && input.dataset.cartoonFinalFix !== "true") {
+      input.dataset.cartoonFinalFix = "true";
+      input.addEventListener("change", (event) => {
+        const file = event.target.files?.[0];
+        finalImportCartoonFile(file);
+      });
+    }
+
+    if (pasteBtn && pasteBtn.dataset.cartoonFinalFix !== "true") {
+      pasteBtn.dataset.cartoonFinalFix = "true";
+      pasteBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        finalOpenCartoonCodeDialog();
+      });
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", bindCartoonImportButtonsFinal);
+  setTimeout(bindCartoonImportButtonsFinal, 300);
+  window.importCartoonsFromJsonValueFinal = finalImportCartoonsFromValue;
+})();
+
