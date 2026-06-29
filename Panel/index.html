@@ -30,6 +30,7 @@
       <button class="nav-btn" data-view="movies">Películas</button>
       <button class="nav-btn" data-view="series">Series</button>
       <button class="nav-btn" data-view="concerts">Conciertos</button>
+      <button class="nav-btn" data-view="cartoons">Cartoons</button>
       <button class="nav-btn" data-view="analytics">Analytics</button>
     </nav>
 
@@ -55,6 +56,9 @@
         <button id="importConcertBtn" class="secondary-btn hidden" type="button">Importar concierto</button>
         <button id="pasteConcertCodeBtn" class="secondary-btn hidden" type="button">Ingresar código</button>
         <input id="importConcertInput" type="file" accept="application/json,.json" class="hidden" />
+        <button id="importCartoonBtn" class="secondary-btn hidden" type="button">Importar cartoon</button>
+        <button id="pasteCartoonCodeBtn" class="secondary-btn hidden" type="button">Ingresar código</button>
+        <input id="importCartoonInput" type="file" accept="application/json,.json" class="hidden" />
         <button id="primaryAction" class="primary-btn">Agregar película</button>
       </div>
     </header>
@@ -70,7 +74,7 @@
           </div>
           <button id="saveHomeBtn" class="primary-btn small">Guardar Home</button>
         </div>
-        <p class="helper">Selecciona qué aparece en Lo nuevo, Películas, Series y Conciertos. Cada sección está limitada a 10 elementos.</p>
+        <p class="helper">Selecciona qué aparece en Lo nuevo, Películas, Series, Conciertos y Cartoons. Cada sección está limitada a 10 elementos.</p>
         <div class="home-sections">
           <article class="home-config">
             <div class="home-config-head">
@@ -86,7 +90,7 @@
             </div>
 
             <div class="manual-picker" data-picker="new">
-              <input data-home-search="new" placeholder="Buscar película, serie o concierto para Lo nuevo..." />
+              <input data-home-search="new" placeholder="Buscar película, serie, concierto o cartoon para Lo nuevo..." />
               <div class="search-results" data-results="new"></div>
             </div>
 
@@ -155,6 +159,90 @@
 
             <div class="selected-strip" data-selected="concerts"></div>
           </article>
+
+          <article class="home-config">
+            <div class="home-config-head">
+              <div>
+                <p class="eyebrow">Sección 01</p>
+                <h3>Lo nuevo</h3>
+              </div>
+              <select data-home-mode="new" aria-label="Modo Lo nuevo">
+                <option value="recent">Recientes</option>
+                <option value="popular">Popularidad</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+
+            <div class="manual-picker" data-picker="new">
+              <input data-home-search="new" placeholder="Buscar película, serie, concierto o cartoon para Lo nuevo..." />
+              <div class="search-results" data-results="new"></div>
+            </div>
+
+            <div class="selected-strip" data-selected="new"></div>
+          </article>
+
+          <article class="home-config">
+            <div class="home-config-head">
+              <div>
+                <p class="eyebrow">Sección 02</p>
+                <h3>Películas</h3>
+              </div>
+              <select data-home-mode="movies" aria-label="Modo Películas">
+                <option value="recent">Recientes</option>
+                <option value="popular">Popularidad</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+
+            <div class="manual-picker" data-picker="movies">
+              <input data-home-search="movies" placeholder="Buscar película para la sección Películas..." />
+              <div class="search-results" data-results="movies"></div>
+            </div>
+
+            <div class="selected-strip" data-selected="movies"></div>
+          </article>
+
+          <article class="home-config">
+            <div class="home-config-head">
+              <div>
+                <p class="eyebrow">Sección 03</p>
+                <h3>Series</h3>
+              </div>
+              <select data-home-mode="series" aria-label="Modo Series">
+                <option value="recent">Recientes</option>
+                <option value="popular">Popularidad</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+
+            <div class="manual-picker" data-picker="series">
+              <input data-home-search="series" placeholder="Buscar serie para la sección Series..." />
+              <div class="search-results" data-results="series"></div>
+            </div>
+
+            <div class="selected-strip" data-selected="series"></div>
+          </article>
+
+          <article class="home-config">
+            <div class="home-config-head">
+              <div>
+                <p class="eyebrow">Sección 05</p>
+                <h3>Cartoons</h3>
+              </div>
+              <select data-home-mode="cartoons" aria-label="Modo Cartoons">
+                <option value="recent">Recientes</option>
+                <option value="popular">Popularidad</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+
+            <div class="manual-picker" data-picker="cartoons">
+              <input data-home-search="cartoons" placeholder="Buscar concierto para la sección Cartoons..." />
+              <div class="search-results" data-results="cartoons"></div>
+            </div>
+
+            <div class="selected-strip" data-selected="cartoons"></div>
+          </article>
         </div>
       </div>
     </section>
@@ -169,6 +257,10 @@
 
     <section id="concertsView" class="view">
       <div class="grid-list" id="concertsList"></div>
+    </section>
+
+    <section id="cartoonsView" class="view">
+      <div class="grid-list" id="cartoonsList"></div>
     </section>
 
     <section id="analyticsView" class="view">
