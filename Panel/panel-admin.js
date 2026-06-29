@@ -42,15 +42,14 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-const HOME_SECTION_KEYS = ["new", "movies", "series", "concerts", "cartoons"];
+const HOME_SECTION_KEYS = ["new", "movies", "series", "concerts"];
 
 const defaultHomeConfig = {
   sections: {
     new: { mode: "recent", limit: 10, selectedItems: [] },
     movies: { mode: "recent", limit: 10, selectedItems: [] },
     series: { mode: "recent", limit: 10, selectedItems: [] },
-    concerts: { mode: "recent", limit: 10, selectedItems: [] },
-    cartoons: { mode: "recent", limit: 10, selectedItems: [] }
+    concerts: { mode: "recent", limit: 10, selectedItems: [] }
   }
 };
 
@@ -61,7 +60,6 @@ const state = {
   movies: [],
   series: [],
   concerts: [],
-  cartoons: [],
   homeConfig: clone(defaultHomeConfig),
   editingType: "movie",
   editingId: null,
@@ -77,7 +75,7 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
-const views = { home: $("homeView"), movies: $("moviesView"), series: $("seriesView"), concerts: $("concertsView"), cartoons: $("cartoonsView"), analytics: $("analyticsView") };
+const views = { home: $("homeView"), movies: $("moviesView"), series: $("seriesView"), concerts: $("concertsView"), analytics: $("analyticsView") };
 const pageTitle = $("pageTitle");
 const primaryAction = $("primaryAction");
 const statusBox = $("status");
@@ -108,7 +106,7 @@ function formatGenresForInput(value) {
 }
 
 function getAllContent() {
-  return [...state.movies, ...state.series, ...state.concerts, ...state.cartoons];
+  return [...state.movies, ...state.series, ...state.concerts];
 }
 
 function refKey(ref) {
@@ -116,26 +114,23 @@ function refKey(ref) {
 }
 
 function normalizeSelectedItem(item) {
-  const type = item.type === "cartoon" ? "cartoon" : item.type === "series" ? "series" : item.type === "concert" ? "concert" : "movie";
+  const type = item.type === "series" ? "series" : item.type === "concert" ? "concert" : "movie";
   return { id: item.id, type };
 }
 
 function typeLabel(type) {
-  if (type === "cartoon") return "Cartoon";
   if (type === "series") return "Serie";
   if (type === "concert") return "Concierto";
   return "Película";
 }
 
 function collectionForType(type) {
-  if (type === "cartoon") return "cartoons";
   if (type === "series") return "series";
   if (type === "concert") return "concerts";
   return "movies";
 }
 
 function listForType(type) {
-  if (type === "cartoon") return state.cartoons;
   if (type === "series") return state.series;
   if (type === "concert") return state.concerts;
   return state.movies;
@@ -179,7 +174,6 @@ function getRawContentForSection(sectionKey) {
   if (sectionKey === "movies") return state.movies;
   if (sectionKey === "series") return state.series;
   if (sectionKey === "concerts") return state.concerts;
-  if (sectionKey === "cartoons") return state.cartoons;
   return getAllContent();
 }
 
@@ -271,14 +265,6 @@ function normalizeSeriesFromJson(rawSeries, index = 0) {
   };
 }
 
-function normalizeCartoonFromJson(rawCartoon, index = 0) {
-  const normalized = normalizeSeriesFromJson(rawCartoon, index);
-  const idSource = rawCartoon.id || rawCartoon.docId || rawCartoon.slug || rawCartoon.title || rawCartoon.name || `cartoon-${Date.now()}-${index}`;
-  normalized.id = slugify(String(idSource));
-  normalized.data.type = "cartoon";
-  return normalized;
-}
-
 function normalizeEpisodeFromJson(rawEpisode, index = 0) {
   const seasonNumber = Number(rawEpisode.seasonNumber || rawEpisode.season || 1);
   const episodeNumber = Number(rawEpisode.episodeNumber || rawEpisode.episode || index + 1);
@@ -332,18 +318,6 @@ async function importMoviesFromJson(file) {
   }
 }
 
-async function importCartoonsFromJson(file) {
-  try {
-    const text = await file.text();
-    await importCartoonsFromJsonValue(JSON.parse(text));
-  } catch (error) {
-    console.error(error);
-    alert("No se pudo importar el JSON. Revisa que el archivo sea válido.");
-  } finally {
-    $("importCartoonInput").value = "";
-  }
-}
-
 async function importSeriesFromJson(file) {
   try {
     const text = await file.text();
@@ -392,35 +366,6 @@ async function importMoviesFromJsonValue(json) {
   setView("movies");
 }
 
-async function importCartoonsFromJsonValue(json) {
-  const items = Array.isArray(json)
-    ? json
-    : Array.isArray(json.cartoons)
-      ? json.cartoons
-      : Array.isArray(json.series)
-        ? json.series
-        : [json];
-
-  if (!items.length) return showStatus("El JSON no contiene cartoons");
-
-  const normalized = items.map(normalizeCartoonFromJson);
-  const invalid = normalized.find(item => !item.data.title);
-  if (invalid) return alert("El JSON debe incluir al menos title en cada cartoon. Poster URL se puede agregar después desde el editor.");
-
-  await Promise.all(normalized.map(async item => {
-    await setDoc(doc(db, "cartoons", item.id), item.data, { merge: true });
-
-    if (item.episodes.length) {
-      const episodes = item.episodes.map(normalizeEpisodeFromJson);
-      await Promise.all(episodes.map(ep => setDoc(doc(db, "cartoons", item.id, "episodes", ep.id), ep.data, { merge: true })));
-    }
-  }));
-
-  showStatus(`${normalized.length} cartoon${normalized.length === 1 ? "" : "s"} importado${normalized.length === 1 ? "" : "s"}`);
-  await loadAll();
-  setView("cartoons");
-}
-
 async function importSeriesFromJsonValue(json) {
   const items = Array.isArray(json) ? json : Array.isArray(json.series) ? json.series : [json];
   if (!items.length) return showStatus("El JSON no contiene series");
@@ -464,15 +409,6 @@ async function importSeriesCode(text) {
   }
 }
 
-async function importCartoonCode(text) {
-  try {
-    await importCartoonsFromJsonValue(parseJsonCode(text));
-  } catch (error) {
-    console.error(error);
-    alert("No se pudo importar el código. Revisa que sea JSON válido.");
-  }
-}
-
 async function importConcertCode(text) {
   try {
     await importConcertsFromJsonValue(parseJsonCode(text));
@@ -502,7 +438,6 @@ function openJsonCodeDialog(mode) {
     movie: { type: "Película", title: "Ingresar código de película", help: "Pega un objeto JSON de película o un arreglo de películas." },
     series: { type: "Serie", title: "Ingresar código de serie", help: "Pega un objeto JSON de serie, un arreglo de series o un objeto con la propiedad series." },
     concert: { type: "Concierto", title: "Ingresar código de concierto", help: "Pega un objeto JSON de concierto o un arreglo de conciertos." },
-    cartoon: { type: "Cartoon", title: "Ingresar código de cartoon", help: "Pega un objeto JSON de cartoon, un arreglo de cartoons o un objeto con la propiedad cartoons." },
     episode: { type: "Episodio", title: "Ingresar código de episodio", help: "Pega un objeto JSON de episodio. Se llenarán los campos y después podrás guardar." }
   };
 
@@ -520,7 +455,6 @@ async function submitJsonCode(e) {
   const text = $("jsonCodeText").value;
 
   if (jsonCodeMode === "series") await importSeriesCode(text);
-  else if (jsonCodeMode === "cartoon") await importCartoonCode(text);
   else if (jsonCodeMode === "concert") await importConcertCode(text);
   else if (jsonCodeMode === "episode") await importEpisodeCode(text);
   else await importMovieCode(text);
@@ -566,7 +500,7 @@ async function readUserSubcollection(userId, subcollectionName) {
 }
 
 function normalizeAnalyticsEntry(entry) {
-  const type = entry.type === "cartoon" ? "cartoon" : entry.type === "series" ? "series" : entry.type === "concert" ? "concert" : "movie";
+  const type = entry.type === "series" ? "series" : entry.type === "concert" ? "concert" : "movie";
   return {
     ...entry,
     type,
@@ -811,18 +745,16 @@ function openAnalyticsUser(uid) {
 }
 
 async function loadAll() {
-  const [moviesSnap, seriesSnap, concertsSnap, cartoonsSnap, homeSnap] = await Promise.all([
+  const [moviesSnap, seriesSnap, concertsSnap, homeSnap] = await Promise.all([
     getDocs(collection(db, "movies")),
     getDocs(collection(db, "series")),
     getDocs(collection(db, "concerts")),
-    getDocs(collection(db, "cartoons")),
     getDoc(doc(db, "homeConfig", "main"))
   ]);
 
   state.movies = moviesSnap.docs.map(d => ({ id: d.id, ...d.data(), type: "movie", published: d.data().published !== false }));
   state.series = seriesSnap.docs.map(d => ({ id: d.id, ...d.data(), type: "series", published: d.data().published !== false }));
   state.concerts = concertsSnap.docs.map(d => ({ id: d.id, ...d.data(), type: "concert", published: d.data().published !== false }));
-  state.cartoons = cartoonsSnap.docs.map(d => ({ id: d.id, ...d.data(), type: "cartoon", published: d.data().published !== false }));
 
   if (homeSnap.exists()) {
     state.homeConfig = {
@@ -844,11 +776,10 @@ function setView(view) {
   Object.entries(views).forEach(([key, el]) => el.classList.toggle("active", key === view));
   document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
 
-  const titles = { home: "Home", movies: "Películas", series: "Series", concerts: "Conciertos", cartoons: "Cartoons", analytics: "Analytics" };
+  const titles = { home: "Home", movies: "Películas", series: "Series", concerts: "Conciertos", analytics: "Analytics" };
   pageTitle.textContent = titles[view] || "Home";
 
   if (view === "series") primaryAction.textContent = "Agregar serie";
-  else if (view === "cartoons") primaryAction.textContent = "Agregar cartoon";
   else if (view === "concerts") primaryAction.textContent = "Agregar concierto";
   else primaryAction.textContent = "Agregar película";
 
@@ -859,8 +790,6 @@ function setView(view) {
   $("pasteSeriesCodeBtn").classList.toggle("hidden", view !== "series");
   $("importConcertBtn").classList.toggle("hidden", view !== "concerts");
   $("pasteConcertCodeBtn").classList.toggle("hidden", view !== "concerts");
-  $("importCartoonBtn").classList.toggle("hidden", view !== "cartoons");
-  $("pasteCartoonCodeBtn").classList.toggle("hidden", view !== "cartoons");
   if (view === "analytics" && !state.analyticsLoaded) loadAnalytics();
   render();
 }
@@ -870,7 +799,6 @@ function render() {
   renderCards("moviesList", state.movies, "movie");
   renderCards("seriesList", state.series, "series");
   renderCards("concertsList", state.concerts, "concert");
-  renderCards("cartoonsList", state.cartoons, "cartoon");
   renderAnalytics();
 }
 
@@ -957,17 +885,17 @@ function renderCards(containerId, items, type) {
         <span class="badge ${item.published === false ? "" : "on"}">${item.published === false ? "Oculto" : "Publicado"}</span>
       </div>
     </article>
-  `).join("") || `<p class="helper">No hay ${type === "movie" ? "películas" : type === "series" ? "series" : type === "cartoon" ? "cartoons" : "conciertos"} todavía.</p>`;
+  `).join("") || `<p class="helper">No hay ${type === "movie" ? "películas" : type === "series" ? "series" : "conciertos"} todavía.</p>`;
 }
 
 function openEditor(type, item = null) {
   state.editingType = type;
   state.editingId = item?.id ?? null;
-  state.editingSeriesId = (type === "series" || type === "cartoon") && item ? item.id : null;
+  state.editingSeriesId = type === "series" && item ? item.id : null;
   state.editingEpisodeId = null;
 
   $("editorType").textContent = typeLabel(type);
-  $("editorTitle").textContent = item ? `Editar ${item.title || item.id}` : `Agregar ${type === "movie" ? "película" : type === "series" ? "serie" : type === "cartoon" ? "cartoon" : "concierto"}`;
+  $("editorTitle").textContent = item ? `Editar ${item.title || item.id}` : `Agregar ${type === "movie" ? "película" : type === "series" ? "serie" : "concierto"}`;
   $("docId").disabled = Boolean(item);
   $("docId").value = item?.id ?? "";
   $("title").value = item?.title ?? "";
@@ -984,7 +912,7 @@ function openEditor(type, item = null) {
   document.querySelectorAll(".movie-only").forEach(el => el.classList.toggle("hidden", !(type === "movie" || type === "concert")));
   $("durationField").classList.toggle("hidden", !(type === "movie" || type === "concert"));
 
-  const showEpisodes = (type === "series" || type === "cartoon") && Boolean(item);
+  const showEpisodes = type === "series" && Boolean(item);
   $("episodesPanel").classList.toggle("hidden", !showEpisodes);
   if (showEpisodes) loadEpisodes(item.id);
   else $("episodesList").innerHTML = "";
@@ -1048,7 +976,7 @@ async function saveHome() {
 
 async function loadEpisodes(seriesId, preferredSeason = null) {
   state.editingSeriesId = seriesId;
-  const snap = await getDocs(collection(db, collectionForType(state.editingType), seriesId, "episodes"));
+  const snap = await getDocs(collection(db, "series", seriesId, "episodes"));
   state.currentEpisodes = snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (Number(a.seasonNumber || 0) - Number(b.seasonNumber || 0)) || (Number(a.episodeNumber || 0) - Number(b.episodeNumber || 0)));
@@ -1160,7 +1088,7 @@ async function saveEpisode(e) {
     updatedAt: serverTimestamp(),
   };
   if (!state.editingEpisodeId) data.createdAt = serverTimestamp();
-  await setDoc(doc(db, collectionForType(state.editingType), seriesId, "episodes", id), data, { merge: true });
+  await setDoc(doc(db, "series", seriesId, "episodes", id), data, { merge: true });
   $("episodeDialog").close();
   showStatus("Episodio guardado");
   await loadEpisodes(seriesId, data.seasonNumber);
@@ -1170,7 +1098,7 @@ async function deleteEpisode() {
   if (!state.editingEpisodeId || !state.editingSeriesId) return;
   if (!confirm("¿Eliminar episodio?")) return;
   const season = Number($("seasonNumber").value || state.selectedSeason || 1);
-  await deleteDoc(doc(db, collectionForType(state.editingType), state.editingSeriesId, "episodes", state.editingEpisodeId));
+  await deleteDoc(doc(db, "series", state.editingSeriesId, "episodes", state.editingEpisodeId));
   $("episodeDialog").close();
   await loadEpisodes(state.editingSeriesId, season);
 }
@@ -1228,20 +1156,17 @@ function handleCardActivation(target) {
 }
 
 document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
-primaryAction.addEventListener("click", () => openEditor(state.view === "series" ? "series" : state.view === "cartoons" ? "cartoon" : state.view === "concerts" ? "concert" : "movie"));
+primaryAction.addEventListener("click", () => openEditor(state.view === "series" ? "series" : state.view === "concerts" ? "concert" : "movie"));
 $("importMovieBtn").addEventListener("click", () => $("importMovieInput").click());
 $("importMovieInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importMoviesFromJson(file); });
 $("importSeriesBtn").addEventListener("click", () => $("importSeriesInput").click());
 $("importSeriesInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importSeriesFromJson(file); });
 $("importConcertBtn").addEventListener("click", () => $("importConcertInput").click());
 $("importConcertInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importConcertsFromJson(file); });
-$("importCartoonBtn").addEventListener("click", () => $("importCartoonInput").click());
-$("importCartoonInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importCartoonsFromJson(file); });
 
 $("pasteMovieCodeBtn").addEventListener("click", () => openJsonCodeDialog("movie"));
 $("pasteSeriesCodeBtn").addEventListener("click", () => openJsonCodeDialog("series"));
 $("pasteConcertCodeBtn").addEventListener("click", () => openJsonCodeDialog("concert"));
-$("pasteCartoonCodeBtn").addEventListener("click", () => openJsonCodeDialog("cartoon"));
 $("pasteEpisodeCodeBtn").addEventListener("click", () => openJsonCodeDialog("episode"));
 $("jsonCodeForm").addEventListener("submit", submitJsonCode);
 $("closeJsonCodeDialog").addEventListener("click", () => $("jsonCodeDialog").close());
@@ -1253,7 +1178,6 @@ $("cancelJsonCodeBtn").addEventListener("click", () => $("jsonCodeDialog").close
 $("moviesList").addEventListener("click", (e) => handleCardActivation(e.target));
 $("seriesList").addEventListener("click", (e) => handleCardActivation(e.target));
 $("concertsList").addEventListener("click", (e) => handleCardActivation(e.target));
-$("cartoonsList").addEventListener("click", (e) => handleCardActivation(e.target));
 $("editorForm").addEventListener("submit", saveEditor);
 $("closeEditor").addEventListener("click", () => $("editorDialog").close());
 $("cancelBtn").addEventListener("click", () => $("editorDialog").close());
@@ -1294,7 +1218,7 @@ document.addEventListener("click", async (e) => {
 
   const epItem = e.target.closest(".episode-item");
   if (epItem) {
-    const snap = await getDoc(doc(db, collectionForType(state.editingType), state.editingSeriesId, "episodes", epItem.dataset.id));
+    const snap = await getDoc(doc(db, "series", state.editingSeriesId, "episodes", epItem.dataset.id));
     return openEpisodeEditor({ id: snap.id, ...snap.data() });
   }
 });
@@ -1371,6 +1295,3 @@ onAuthStateChanged(auth, async (user) => {
     showStatus(`Error Firebase: ${err.code || ""} ${err.message || err}`);
   });
 });
-
-
-

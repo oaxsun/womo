@@ -61,7 +61,7 @@
 <div id="loginScreen" class="login-screen">
   <img class="login-logo" src="assets/logo.svg" alt="Womo">
   <h1>Bienvenido a Womo</h1>
-  <p>Continúa viendo tus películas, series, conciertos y cartoons favoritos.</p>
+  <p>Continúa viendo tus películas, series y conciertos favoritos.</p>
 
   <form id="loginForm" class="login-form">
     <input id="loginEmail" type="email" placeholder="Correo electrónico" required>
@@ -123,21 +123,13 @@
         </div>
         <div class="poster-row" id="concertsRow"></div>
       </section>
-
-      <section class="content-row">
-        <div class="row-header">
-          <h2>Cartoons</h2>
-          <button type="button" data-view-all="cartoons">Ver más</button>
-        </div>
-        <div class="poster-row" id="cartoonsRow"></div>
-      </section>
     </section>
 
     <section class="page" id="searchPage">
       <div class="library-page">
         <div class="search-shell">
           <i data-lucide="search"></i>
-          <input id="searchInput" type="search" placeholder="Buscar películas, series, conciertos o cartoons" autocomplete="off" />
+          <input id="searchInput" type="search" placeholder="Buscar películas, series o conciertos" autocomplete="off" />
         </div>
 
         <section class="content-row search-results-section">
@@ -251,11 +243,11 @@
         </div>
         <div id="previewMeta" class="preview-meta"></div>
         <p id="previewDesc"></p>
-        <div class="preview-actions" id="previewActions"></div>
       </div>
     </div>
 
     <div class="preview-body">
+      <div class="preview-actions" id="previewActions"></div>
       <div id="previewExtra" class="preview-extra">
         <h3 id="previewExtraTitle">Recomendaciones</h3>
         <div id="previewRecs" class="preview-recs"></div>

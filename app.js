@@ -145,7 +145,7 @@ function upsertContinueItem(item, progress = null) {
 }
 
 let allItemsByContinueKey = new Map();
-let viewAllCollections = { continue: [], movies: [], series: [], concerts: [], cartoons: [], all: [] };
+let viewAllCollections = { continue: [], movies: [], series: [], concerts: [], all: [] };
 let currentViewAllKey = "movies";
 
 function buildContinueItems(fallbackList = []) {
@@ -312,7 +312,7 @@ function normalizeMovie(docSnap) {
     genre,
     description: data.synopsis || data.description || "",
     poster: data.posterUrl || data.poster || data.imageUrl || "",
-    hlsUrl: data.hlsUrl || data.videoUrl || data.url || "",
+    hlsUrl: data.hlsUrl || data.videoUrl || data.videoURL || data.streamUrl || data.playbackUrl || data.mp4Url || data.m3u8 || data.file || data.link || data.url || "",
     isFavorite: Boolean(data.isFavorite),
     createdAt: toMillis(data.createdAt),
     progress: data.progress || 0,
@@ -350,38 +350,6 @@ function normalizeSeries(docSnap) {
     published: data.published !== false,
     type: "series"
   };
-}
-
-function normalizeCartoon(docSnap) {
-  const data = docSnap.data();
-  const title = data.title || data.name || cleanTitleFromId(docSnap.id);
-  const genre = normalizeGenres(data.genres || data.genre);
-
-  return {
-    id: docSnap.id,
-    title,
-    duration: data.seasons ? `${data.seasons} temporada${data.seasons === 1 ? "" : "s"}` : "Cartoon",
-    year: data.year || "",
-    genre,
-    description: data.synopsis || data.description || "",
-    poster: data.posterUrl || data.poster || data.imageUrl || "",
-    isFavorite: Boolean(data.isFavorite),
-    createdAt: toMillis(data.createdAt),
-    progress: data.progress || 0,
-    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= 98),
-    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= 98),
-    published: data.published !== false,
-    type: "cartoon"
-  };
-}
-
-
-function isEpisodicType(type) {
-  return type === "series" || type === "cartoon";
-}
-
-function episodicCollectionForType(type) {
-  return type === "cartoon" ? "cartoons" : "series";
 }
 
 async function readCollection(name, normalizer) {
@@ -626,7 +594,6 @@ function viewAllMeta(key) {
     movies: { title: "Películas", eyebrow: "Catálogo", empty: "No hay películas disponibles por ahora." },
     series: { title: "Series", eyebrow: "Catálogo", empty: "No hay series disponibles por ahora." },
     concerts: { title: "Conciertos", eyebrow: "Catálogo", empty: "No hay conciertos disponibles por ahora." },
-    cartoons: { title: "Cartoons", eyebrow: "Catálogo", empty: "No hay cartoons disponibles por ahora." },
     all: { title: "Todo el catálogo", eyebrow: "Womo", empty: "No hay contenido disponible por ahora." }
   };
   return meta[key] || meta.all;
@@ -687,7 +654,7 @@ function searchMatches(item, query) {
     item.genre,
     item.genres,
     item.year,
-    item.type === "cartoon" ? "cartoons cartoon animacion animación" : item.type === "series" ? "series serie" : item.type === "concert" ? "concierto concert" : "pelicula movie"
+    item.type === "series" ? "series serie" : item.type === "concert" ? "concierto concert" : "pelicula movie"
   ].filter(Boolean).join(" ").toLowerCase();
 
   return haystack.includes(query);
@@ -1112,36 +1079,34 @@ function womoSkeletonCard() {
 }
 
 function womoBuildSkeletonHTML() {
-  const row = Array.from({ length: 6 }).map(womoSkeletonCard).join("");
+  const cards = Array.from({ length: 5 }).map(() => '<div class="womo-skeleton-card"></div>').join("");
+  const section = `
+    <section class="womo-skeleton-section">
+      <div class="womo-skeleton-row-head">
+        <div class="womo-skeleton-heading"></div>
+        <div class="womo-skeleton-more"></div>
+      </div>
+      <div class="womo-skeleton-row">${cards}</div>
+    </section>`;
+
   return `
-    <div id="womoSkeleton" class="womo-skeleton" aria-hidden="true">
-      <section class="womo-skeleton-hero">
-        <div class="womo-skeleton-hero-copy">
-          <div class="womo-skeleton-kicker shimmer"></div>
-          <div class="womo-skeleton-title shimmer"></div>
-          <div class="womo-skeleton-line shimmer"></div>
-          <div class="womo-skeleton-line short shimmer"></div>
-          <div class="womo-skeleton-actions">
-            <div class="womo-skeleton-pill shimmer"></div>
-            <div class="womo-skeleton-circle shimmer"></div>
+    <div id="womoSkeleton" class="womo-skeleton-screen" aria-hidden="true">
+      <div class="womo-skeleton-shell">
+        <section class="womo-skeleton-hero">
+          <div class="womo-skeleton-hero-poster"></div>
+          <div class="womo-skeleton-hero-info">
+            <div class="womo-skeleton-dots"></div>
+            <div class="womo-skeleton-title"></div>
+            <div class="womo-skeleton-meta"></div>
+            <div class="womo-skeleton-copy short"></div>
+            <div class="womo-skeleton-copy"></div>
+            <div class="womo-skeleton-button"></div>
           </div>
-        </div>
-      </section>
-
-      <section class="womo-skeleton-row-block">
-        <div class="womo-skeleton-row-title shimmer"></div>
-        <div class="womo-skeleton-strip">${row}</div>
-      </section>
-
-      <section class="womo-skeleton-row-block">
-        <div class="womo-skeleton-row-title shimmer"></div>
-        <div class="womo-skeleton-strip">${row}</div>
-      </section>
-
-      <section class="womo-skeleton-row-block">
-        <div class="womo-skeleton-row-title shimmer"></div>
-        <div class="womo-skeleton-strip">${row}</div>
-      </section>
+        </section>
+        ${section}
+        ${section}
+      </div>
+      <div class="womo-skeleton-mobile-nav"><span></span><span></span><span></span></div>
     </div>
   `;
 }
@@ -1186,33 +1151,29 @@ async function init() {
   setupNavigation();
   setupSettings();
 
-  const [moviesRaw, series, concertsRaw, cartoonsRaw] = await Promise.all([
+  const [moviesRaw, series, concertsRaw] = await Promise.all([
     readCollection("movies", normalizeMovie),
     readCollection("series", normalizeSeries),
-    readCollection("concerts", normalizeConcert),
-    readCollection("cartoons", normalizeCartoon)
+    readCollection("concerts", normalizeConcert)
   ]);
 
   const publishedMoviesRaw = moviesRaw.filter(item => item.published !== false);
   const publishedSeries = series.filter(item => item.published !== false);
   const publishedConcertsRaw = concertsRaw.filter(item => item.published !== false);
-  const publishedCartoons = cartoonsRaw.filter(item => item.published !== false);
 
   const movies = publishedMoviesRaw.filter(item => item.type !== "concert");
   const concerts = [...publishedMoviesRaw.filter(item => item.type === "concert"), ...publishedConcertsRaw];
-  const cartoons = publishedCartoons;
-  const allItems = [...movies, ...publishedSeries, ...concerts, ...cartoons].filter(item => item.poster);
+  const allItems = [...movies, ...publishedSeries, ...concerts].filter(item => item.poster);
   const sortedItems = allItems.sort((a, b) => b.createdAt - a.createdAt);
   allItemsByContinueKey = new Map(allItems.map(item => [`${item.type}:${item.id}`, item]));
   syncFavoriteUI();
-  const allByKey = new Map(allItems.map(item => [`${item.type}:${item.id}`, item]));
+  const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : item.type === "concert" ? "concert" : "movie"}:${item.id}`, item]));
   const configuredNewItems = await readHomeConfigNewItems(allByKey);
   heroItems = configuredNewItems.length ? configuredNewItems : sortedItems.slice(0, 5);
   heroIndex = 0;
 
   const movieItems = movies.filter(item => item.type === "movie");
   const concertItems = concerts;
-  const cartoonItems = cartoons;
   const continueItems = buildContinueItems(sortedItems);
 
   viewAllCollections = {
@@ -1220,16 +1181,14 @@ async function init() {
     movies: movieItems,
     series: publishedSeries,
     concerts: concertItems,
-    cartoons: cartoonItems,
     all: sortedItems
   };
 
   setHero(0);
   fillRow("continueRow", continueItems, true, true);
   fillRow("moviesRow", movieItems, false, true);
-  fillRow("seriesRow", publishedSeries, false, true);
+  fillRow("seriesRow", series, false, true);
   fillRow("concertsRow", concertItems, false, true);
-  fillRow("cartoonsRow", cartoonItems, false, true);
   womoHideSkeleton();
   setupRowEdgeScroll();
   renderSearchResults();
@@ -1255,7 +1214,7 @@ function getPreviewRecommendations(item) {
   const all = [...allItemsByContinueKey.values()]
     .filter(x => x && x.id !== item.id && x.poster);
 
-  if (isEpisodicType(item.type)) {
+  if (item.type === 'series') {
     const empty = [];
     empty.womoTitle = 'Recomendaciones';
     return empty;
@@ -1309,14 +1268,14 @@ function setCurrentPreviewItem(item) {
 
   // Critical: if the preview is not a series, clear the series state so the
   // series click handler cannot hijack movie/concert buttons.
-  if (!item || !isEpisodicType(item.type)) {
+  if (!item || item.type !== "series") {
     currentPreviewSeriesIdForEpisodes = null;
     currentPreviewEpisodesCache = [];
   }
 }
 
 function isCurrentPreviewSeries() {
-  return currentPreviewItem && isEpisodicType(currentPreviewItem.type);
+  return currentPreviewItem && currentPreviewItem.type === "series";
 }
 
 
@@ -1333,16 +1292,9 @@ function episodeKey(seriesId, season, episodeNumber, episodeId = "") {
   return `${seriesId}:S${season}:E${episodeNumber}:${episodeId}`;
 }
 
-function epIsCartoon(itemOrId) {
-  if (!itemOrId) return false;
-  if (typeof itemOrId === "object") return itemOrId.type === "cartoon";
-  const item = allItemsByContinueKey.get(`cartoon:${itemOrId}`);
-  return Boolean(item);
-}
-
 async function readSeriesEpisodes(seriesId) {
   try {
-    const snapshot = await db.collection(epIsCartoon(seriesId) ? "cartoons" : "series").doc(seriesId).collection("episodes").get();
+    const snapshot = await db.collection("series").doc(seriesId).collection("episodes").get();
     return snapshot.docs.map((doc, index) => {
       const data = doc.data() || {};
       const season = Number(data.season || data.seasonNumber || data.temporada || 1);
@@ -1355,7 +1307,7 @@ async function readSeriesEpisodes(seriesId) {
         season,
         episodeNumber,
         progress: Number(data.progress || 0),
-        hlsUrl: data.hlsUrl || data.videoUrl || data.url || ""
+        hlsUrl: data.hlsUrl || data.videoUrl || data.videoURL || data.streamUrl || data.playbackUrl || data.mp4Url || data.m3u8 || data.file || data.link || data.url || ""
       };
     }).sort((a, b) => (a.season - b.season) || (a.episodeNumber - b.episodeNumber));
   } catch (error) {
@@ -1446,7 +1398,7 @@ function setPreviewButtonModeForItem(item) {
   const restart = getPreviewRestartButton();
   if (!primary) return;
 
-  if (isEpisodicType(item.type)) {
+  if (item.type === "series") {
     syncSeriesPreviewPrimaryButton();
     return;
   }
@@ -1487,20 +1439,20 @@ function setPreviewButtonModeForItem(item) {
 }
 
 function setMovieConcertPreviewCompletedState(item) {
-  if (!item || isEpisodicType(item.type)) return;
+  if (!item || item.type === "series") return;
   setItemCompleted(item, true);
   item.progress = 0;
   setPreviewButtonModeForItem(item);
 }
 
 function setMovieConcertPreviewPlayableState(item) {
-  if (!item || isEpisodicType(item.type)) return;
+  if (!item || item.type === "series") return;
   setPreviewButtonModeForItem(item);
 }
 
 function syncPreviewButtonsForCompletion(item) {
   try {
-    if (!item || isEpisodicType(item.type)) return;
+    if (!item || item.type === "series") return;
     setMovieConcertPreviewCompletedState(item);
   } catch (_) {}
 }
@@ -1672,7 +1624,7 @@ const extra = document.getElementById('previewExtra');
           ` : ''}
         </div>
       `;
-      const seriesItem = allItemsByContinueKey.get(`series:${seriesId}`) || allItemsByContinueKey.get(`cartoon:${seriesId}`);
+      const seriesItem = allItemsByContinueKey.get(`series:${seriesId}`);
       if (seriesItem) item.addEventListener('click', () => openPlayer(seriesItem, { episode: ep }));
       list.appendChild(item);
     });
@@ -1700,22 +1652,75 @@ const extra = document.getElementById('previewExtra');
   syncSeriesPreviewPrimaryButton();
 }
 
+
+function getWomoPreviewPosterUrl(item) {
+  if (!item) return "";
+  const direct = item.poster || item.posterUrl || item.imageUrl || item.image || item.cover || item.coverUrl || item.backdrop || item.backdropUrl || item.thumbnail || item.thumb || "";
+  if (direct) return String(direct).trim();
+  try {
+    const key = `${item.type}:${item.id}`;
+    const catalogItem = allItemsByContinueKey && allItemsByContinueKey.get ? allItemsByContinueKey.get(key) : null;
+    if (catalogItem) {
+      return String(catalogItem.poster || catalogItem.posterUrl || catalogItem.imageUrl || catalogItem.image || catalogItem.cover || catalogItem.coverUrl || catalogItem.backdrop || catalogItem.backdropUrl || "").trim();
+    }
+  } catch (_) {}
+  return "";
+}
+
+function womoBindPreviewPosterFallback() {
+  const poster = document.getElementById('previewPoster');
+  const hero = document.querySelector('#previewModal .preview-hero');
+  if (!poster || poster.dataset.womoPosterFallbackBound === 'true') return;
+  poster.dataset.womoPosterFallbackBound = 'true';
+  poster.addEventListener('error', function(){
+    const bg = hero ? getComputedStyle(hero).getPropertyValue('--preview-poster-bg') : '';
+    if (!bg || bg.trim() === 'none') {
+      poster.style.display = 'none';
+      poster.classList.add('womo-preview-poster-missing');
+    }
+  });
+  poster.addEventListener('load', function(){
+    if (poster.naturalWidth > 0) {
+      poster.style.display = 'block';
+      poster.classList.remove('womo-preview-poster-missing');
+    }
+  });
+}
+
 async function openPreview(item) {
+  womoBindPreviewPosterFallback();
   setCurrentPreviewItem(item || arguments[0]);
   setCurrentPreviewItem(item || arguments[0]);
   setTimeout(() => applyCompletedPreviewState(item), 0);
   setTimeout(() => applyCompletedPreviewState(item), 0);
   const modal = document.getElementById('previewModal');
   const poster = document.getElementById('previewPoster');
-  const posterUrl = item.poster || item.posterUrl || '';
-  poster.src = posterUrl;
-  poster.alt = item.title || 'Poster';
+  const posterUrl = getWomoPreviewPosterUrl(item);
+  if (poster) {
+    poster.alt = item.title || 'Poster';
+    if (posterUrl) {
+      poster.src = posterUrl;
+      poster.style.display = 'block';
+      poster.classList.remove('womo-preview-poster-missing');
+    } else {
+      poster.removeAttribute('src');
+      poster.style.display = 'none';
+      poster.classList.add('womo-preview-poster-missing');
+    }
+  }
+
+  const previewHero = modal?.querySelector('.preview-hero');
+  if (previewHero) {
+    previewHero.style.setProperty('--preview-poster-bg', posterUrl ? `url("${String(posterUrl).replace(/"/g, '\"')}")` : 'none');
+    previewHero.classList.toggle('womo-preview-hero-has-poster', Boolean(posterUrl));
+  }
 
   const previewCard = modal?.querySelector('.preview-card');
   if (previewCard) {
-    previewCard.style.setProperty('--preview-bg', posterUrl ? `url("${String(posterUrl).replace(/"/g, '\\"')}")` : 'none');
+    previewCard.style.setProperty('--preview-bg', posterUrl ? `url("${String(posterUrl).replace(/"/g, '\"')}")` : 'none');
     previewCard.scrollTop = 0;
   }
+
 
   document.getElementById('previewTitle').textContent = item.title;
   const previewFavorite = document.getElementById('previewFavorite');
@@ -1738,7 +1743,7 @@ async function openPreview(item) {
   const recs = document.getElementById('previewRecs');
   recs.innerHTML = '';
 
-  if (isEpisodicType(item.type)) {
+  if (item.type === 'series') {
     const episodes = await readSeriesEpisodes(item.id);
     actions.innerHTML = `<button class="primary" data-preview-play>${getSeriesContinueLabel(item, episodes)}</button><button class="secondary" data-preview-shuffle>SHUFFLE</button>`;
     const currentSeason = state?.season || episodes[0]?.season || 1;
@@ -1747,15 +1752,39 @@ async function openPreview(item) {
     const playBtn = actions.querySelector('[data-preview-play]');
     const shuffleBtn = actions.querySelector('[data-preview-shuffle]');
     if (playBtn) playBtn.onclick = () => openPlayer(item, { episode: currentEpisode });
-    if (shuffleBtn) shuffleBtn.onclick = () => {
-      if (!episodes.length) return;
-      const randomEpisode = episodes[Math.floor(Math.random() * episodes.length)];
-      openPlayer(item, {
-        episode: randomEpisode,
-        shuffleMode: true,
-        saveProgress: false
-      });
-    };
+    if (shuffleBtn) {
+      shuffleBtn.setAttribute('type', 'button');
+      shuffleBtn.onclick = async (event) => {
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        try {
+          if (typeof womoStartShuffleSession === 'function') {
+            womoStartShuffleSession('series', item.id);
+          }
+          window.__womoNextShuffleScope = 'series';
+          const picked = typeof womoPickRandomShuffleEpisode === 'function'
+            ? await womoPickRandomShuffleEpisode()
+            : null;
+          const episodeToPlay = picked?.episode || (episodes.length ? episodes[Math.floor(Math.random() * episodes.length)] : null);
+          if (!episodeToPlay) return;
+          if (typeof womoSetShuffleNoProgress === 'function') womoSetShuffleNoProgress(true);
+          openPlayer(picked?.seriesItem || item, {
+            episode: episodeToPlay,
+            shuffleMode: true,
+            fromShuffle: true,
+            noProgress: true,
+            saveProgress: false,
+            shuffleScope: 'series',
+            shuffleSeriesId: item.id,
+            startAt: 0
+          });
+        } catch (error) {
+          console.warn('No se pudo iniciar shuffle de serie.', error);
+        }
+      };
+    }
     renderEpisodes(item.id, episodes);
   } else {
     actions.innerHTML = state
@@ -1817,15 +1846,16 @@ function getItemProgress(item) {
 }
 
 function savePlayerProgress() {
+  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
   if (window.__womoShuffleNoProgress || womoGlobalShuffleNoProgress) return;
-  if (currentPlayerContext?.saveProgress === false || currentPlayerContext?.shuffleMode) return;
+  if (currentPlayerContext?.saveProgress === false || currentPlayerContext?.shuffleMode || currentPlayerContext?.fromShuffle || currentPlayerContext?.noProgress) return;
   const video = document.getElementById('womoPlayer');
   if (!video || !currentPlayerContext || !video.duration || !isFinite(video.duration)) return;
 
   const progress = Math.max(0, Math.min(100, (video.currentTime / video.duration) * 100));
   const { item, episode } = currentPlayerContext;
 
-  if (isEpisodicType(item.type) && episode) {
+  if (item.type === 'series' && episode) {
     currentPlayerEpisode.progress = progress;
     currentPlayerItem.progress = progress;
     const entry = {
@@ -1914,7 +1944,7 @@ async function saveCompletedItemToCloud(item) {
     const userRef = getUserDocRef && getUserDocRef();
     if (!userRef) return;
 
-    const collectionName = item.type === "concert" ? "concerts" : item.type === "cartoon" ? "cartoons" : item.type === "series" ? "series" : "movies";
+    const collectionName = item.type === "concert" ? "concerts" : item.type === "series" ? "series" : "movies";
     await db.collection(collectionName).doc(item.id).set({
       completed: true,
       progress: 100,
@@ -2048,7 +2078,9 @@ function refreshCurrentPreviewEpisodes() {
 }
 
 function saveActiveEpisodeProgress(forceCompleted = false) {
+  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
   if (window.__womoShuffleNoProgress || womoGlobalShuffleNoProgress) return;
+  if (currentPlayerContext?.saveProgress === false || currentPlayerContext?.shuffleMode || currentPlayerContext?.fromShuffle || currentPlayerContext?.noProgress) return;
   try {
     const video = getWomoPlayerVideo();
     if (!video || !currentPlayerItem) return;
@@ -2128,14 +2160,21 @@ function bindWomoPlayerProgressEvents() {
   video.dataset.womoProgressBound = "true";
 
   video.addEventListener("timeupdate", () => {
+    if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
     saveActiveEpisodeProgress(false);
   });
 
   video.addEventListener("pause", () => {
+    if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
     saveActiveEpisodeProgress(false);
   });
 
   video.addEventListener("ended", () => {
+    if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) {
+      hideWomoPlayerOverlay();
+      refreshCurrentPreviewEpisodes();
+      return;
+    }
     saveActiveEpisodeProgress(true);
     hideWomoPlayerOverlay();
     refreshCurrentPreviewEpisodes();
@@ -2572,12 +2611,17 @@ function womoEnsureShuffleSkipOverlay() {
   const cancelBtn = overlay.querySelector("#womoShuffleSkipCancel");
 
   if (playBtn) {
-    playBtn.addEventListener("click", function(event) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    const triggerShuffleSkip = function(event) {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      }
       womoPlayUniversalShuffleSkip();
-    });
+    };
+    playBtn.addEventListener("pointerdown", triggerShuffleSkip, { passive:false });
+    playBtn.addEventListener("touchstart", triggerShuffleSkip, { passive:false });
+    playBtn.addEventListener("click", triggerShuffleSkip);
   }
 
   if (cancelBtn) {
@@ -2592,6 +2636,22 @@ function womoEnsureShuffleSkipOverlay() {
 
   return overlay;
 }
+
+
+(function womoInstallShuffleSkipDelegatedTapFix(){
+  if (window.__womoShuffleSkipDelegatedTapFix) return;
+  window.__womoShuffleSkipDelegatedTapFix = true;
+  ["pointerdown", "touchstart", "click"].forEach(function(type){
+    document.addEventListener(type, function(event){
+      const target = event.target && event.target.closest ? event.target.closest("#womoShuffleSkipPlay") : null;
+      if (!target) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      if (typeof womoPlayUniversalShuffleSkip === "function") womoPlayUniversalShuffleSkip();
+    }, { passive:false, capture:true });
+  });
+})();
 
 function womoUpdateShuffleSkipButtonText() {
   const playBtn = document.getElementById("womoShuffleSkipPlay");
@@ -2797,7 +2857,7 @@ function womoDetectLocalShuffleClick(event) {
   const preview = target.closest(".preview-modal, #previewModal, .preview, .content-preview, .details-modal, #detailsModal");
   const searchPage = target.closest("#searchPage");
 
-  if ((preview && !searchPage) || (typeof currentPreviewItem !== "undefined" && currentPreviewItem && isEpisodicType(currentPreviewItem.type) && !searchPage)) {
+  if ((preview && !searchPage) || (typeof currentPreviewItem !== "undefined" && currentPreviewItem && currentPreviewItem.type === "series" && !searchPage)) {
     window.__womoNextShuffleScope = "series";
   } else {
     window.__womoNextShuffleScope = "universal";
@@ -2829,16 +2889,20 @@ function womoShuffleCurrentPlaybackKey() {
 
 function womoIsShufflePlaybackActive() {
   try {
-    return Boolean(
-      window.__womoShuffleNoProgress ||
-      window.womoGlobalShuffleNoProgress ||
+    const contextLooksLikeShuffle = Boolean(
       currentPlayerContext?.shuffleMode ||
       currentPlayerContext?.fromShuffle ||
       currentPlayerContext?.noProgress ||
       currentPlayerContext?.saveProgress === false
     );
+
+    // Shuffle overlays only make sense for episode playback.
+    // If a stale global flag survived from a previous shuffle session, this prevents it from affecting movies/concerts.
+    if (!currentPlayerEpisode) return false;
+
+    return Boolean(contextLooksLikeShuffle);
   } catch (_) {
-    return Boolean(window.__womoShuffleNoProgress || window.womoGlobalShuffleNoProgress);
+    return false;
   }
 }
 
@@ -2952,20 +3016,20 @@ async function womoPickRandomShuffleEpisode() {
       : []
   );
 
-  let seriesList = allItems.filter(item => item && isEpisodicType(item.type));
+  let seriesList = allItems.filter(item => item && item.type === "series");
 
   if (!seriesList.length && typeof items !== "undefined" && Array.isArray(items)) {
-    seriesList = items.filter(item => item && isEpisodicType(item.type));
+    seriesList = items.filter(item => item && item.type === "series");
   }
 
   if (!seriesList.length && typeof contentItems !== "undefined" && Array.isArray(contentItems)) {
-    seriesList = contentItems.filter(item => item && isEpisodicType(item.type));
+    seriesList = contentItems.filter(item => item && item.type === "series");
   }
 
   if (!seriesList.length) return null;
 
   if (!womoShuffleSessionId) {
-    const scope = currentPlayerItem && isEpisodicType(currentPlayerItem.type) ? "series" : "universal";
+    const scope = currentPlayerItem && currentPlayerItem.type === "series" ? "series" : "universal";
     womoStartShuffleSession(scope, scope === "series" ? currentPlayerItem.id : "");
   }
 
@@ -2974,7 +3038,7 @@ async function womoPickRandomShuffleEpisode() {
     seriesList = seriesList.filter(item => item.id === seriesId);
 
     // If the series isn't in the loaded list, fall back to currentPlayerItem.
-    if (!seriesList.length && currentPlayerItem && isEpisodicType(currentPlayerItem.type)) {
+    if (!seriesList.length && currentPlayerItem && currentPlayerItem.type === "series") {
       seriesList = [currentPlayerItem];
     }
   } else {
@@ -3271,6 +3335,8 @@ function openPlayer(item, options = {}) {
 
   const overlay = document.getElementById('playerOverlay');
   const video = document.getElementById('womoPlayer');
+  document.body.classList.add('player-open');
+  overlay.classList.add('is-video-loading');
   womoResetMobileFullscreenAttempt(video);
   womoBindMobileNativeFullscreen(video);
   bindTsSeekGuard(video);
@@ -3278,6 +3344,15 @@ function openPlayer(item, options = {}) {
   video.disablePictureInPicture = true;
   const title = document.getElementById('playerTitle');
   const subtitle = document.getElementById('playerSubtitle');
+
+  const setPlayerLoading = (loading) => {
+    if (overlay) overlay.classList.toggle('is-video-loading', Boolean(loading));
+  };
+  video.onwaiting = () => setPlayerLoading(true);
+  video.onloadstart = () => setPlayerLoading(true);
+  video.onstalled = () => setPlayerLoading(true);
+  video.oncanplay = () => setPlayerLoading(false);
+  video.onplaying = () => setPlayerLoading(false);
 
   video.onerror = () => {
     console.warn("Womo video playback error detail", {
@@ -3287,12 +3362,36 @@ function openPlayer(item, options = {}) {
     });
   };
 
+  const isShufflePlayback = Boolean(options.shuffleMode || options.fromShuffle || options.noProgress || options.saveProgress === false);
+
   currentPlayerContext = {
     item,
     episode,
     saveProgress: options.saveProgress !== false,
-    shuffleMode: Boolean(options.shuffleMode)
+    shuffleMode: Boolean(options.shuffleMode),
+    fromShuffle: Boolean(options.fromShuffle),
+    noProgress: Boolean(options.noProgress)
   };
+
+  try {
+    if (overlay) overlay.dataset.shuffleNoProgress = isShufflePlayback ? "true" : "false";
+
+    if (isShufflePlayback) {
+      if (typeof womoSetShuffleNoProgress === "function") womoSetShuffleNoProgress(true);
+    } else {
+      // Hard reset any previous shuffle state before normal playback.
+      // This prevents the early "Siguiente" shuffle button from leaking into movies/concerts.
+      if (typeof womoSetShuffleNoProgress === "function") womoSetShuffleNoProgress(false);
+      if (typeof womoHideShuffleSkipOverlay === "function") womoHideShuffleSkipOverlay();
+      if (typeof womoHideShuffleNextOverlay === "function") womoHideShuffleNextOverlay();
+      if (typeof womoResetShuffleSession === "function") womoResetShuffleSession();
+      womoShuffleSkipShownKey = "";
+      womoShuffleNextDismissedKey = "";
+      womoShuffleNextPendingResult = null;
+      womoShuffleSkipSwitching = false;
+      womoShuffleNextSwitching = false;
+    }
+  } catch (_) {}
   savePlayEventToCloud(item, episode);
   title.textContent = item.title || "";
   subtitle.textContent = episode
@@ -3313,6 +3412,10 @@ function openPlayer(item, options = {}) {
     currentHls = new Hls();
     currentHls.loadSource(url);
     currentHls.attachMedia(video);
+    currentHls.on(Hls.Events.MANIFEST_PARSED, () => {
+      if (overlay) overlay.classList.remove('is-video-loading');
+      video.play().catch(() => {});
+    });
   } else if (isTsVideoUrl(url)) {
     // Safari can play MPEG-TS directly. Do not fetch/transmux first, because Archive links may fail CORS.
     video.src = url;
@@ -3359,6 +3462,12 @@ function openPlayer(item, options = {}) {
 }
 
 function closePlayer() {
+  try {
+    const videoFs = document.getElementById('womoPlayer');
+    if (videoFs && typeof videoFs.webkitExitFullscreen === 'function') videoFs.webkitExitFullscreen();
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+  } catch (_) {}
   womoHideShuffleSkipOverlay();
   womoResetShuffleSession();
   womoHideShuffleNextOverlay();
@@ -3367,12 +3476,16 @@ function closePlayer() {
   womoClearTsSeekTimer();
   womoCurrentPlaybackUrl = "";
   womoTsIsRecovering = false;
-  saveActiveEpisodeProgress(false);
-  saveActiveEpisodeProgress(false);
+  const isShuffleNoProgress = typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback();
+  if (!isShuffleNoProgress) {
+    saveActiveEpisodeProgress(false);
+    saveActiveEpisodeProgress(false);
+  }
   const overlay = document.getElementById('playerOverlay');
   const video = document.getElementById('womoPlayer');
 
-  savePlayerProgress();
+  if (!isShuffleNoProgress) savePlayerProgress();
+  try { if (overlay) overlay.dataset.shuffleNoProgress = "false"; } catch (_) {}
   clearInterval(playerSaveTimer);
   playerSaveTimer = null;
 
@@ -3385,7 +3498,8 @@ function closePlayer() {
   video.removeAttribute('src');
   video.load();
 
-  overlay.classList.remove('open', 'show-controls', 'controls-visible');
+  overlay.classList.remove('open', 'show-controls', 'controls-visible', 'is-video-loading');
+  document.body.classList.remove('player-open');
   overlay.setAttribute('aria-hidden', 'true');
   currentPlayerContext = null;
 
@@ -3416,9 +3530,10 @@ function setupPlayerControls() {
   video.addEventListener('pause', savePlayerProgress);
 
   video.addEventListener('ended', () => {
-    if (!currentPlayerContext || currentPlayerContext.saveProgress === false || currentPlayerContext.shuffleMode) return;
+    if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
+    if (!currentPlayerContext || currentPlayerContext.saveProgress === false || currentPlayerContext.shuffleMode || currentPlayerContext.fromShuffle || currentPlayerContext.noProgress) return;
     const { item, episode } = currentPlayerContext;
-    if (isEpisodicType(item.type) && episode) {
+    if (item.type === 'series' && episode) {
       const map = loadEpisodeProgress();
       map[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] = 100;
       localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
@@ -3431,14 +3546,21 @@ function setupPlayerControls() {
   let hideTimer = null;
   const showTopbar = () => {
     overlay.classList.add('controls-visible');
+    overlay.classList.add('show-controls');
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
-      if (!video.paused) overlay.classList.remove('controls-visible');
+      if (!video.paused) {
+        overlay.classList.remove('controls-visible');
+        overlay.classList.remove('show-controls');
+      }
     }, 1800);
   };
 
   const hideTopbar = () => {
-    if (!video.paused) overlay.classList.remove('controls-visible');
+    if (!video.paused) {
+      overlay.classList.remove('controls-visible');
+      overlay.classList.remove('show-controls');
+    }
   };
 
   overlay.addEventListener('mousemove', showTopbar);
@@ -3703,12 +3825,18 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 window.addEventListener("beforeunload", () => {
+  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
   saveActiveEpisodeProgress(false);
 });
 
 
 document.addEventListener("ended", (event) => {
   if (!event.target || event.target.tagName !== "VIDEO") return;
+  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) {
+    hideWomoPlayerOverlay();
+    refreshCurrentPreviewEpisodes();
+    return;
+  }
   saveActiveEpisodeProgress(true);
   hideWomoPlayerOverlay();
   refreshCurrentPreviewEpisodes();
@@ -3721,6 +3849,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 document.addEventListener("timeupdate", (event) => {
+  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
   const video = event.target;
   if (!video || video.tagName !== "VIDEO") return;
   const duration = Number(video.duration || 0);
@@ -3739,6 +3868,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
 document.addEventListener("ended", (event) => {
   if (!event.target || event.target.tagName !== "VIDEO") return;
+  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) {
+    hideWomoPlayerOverlay();
+    refreshCurrentPreviewEpisodes();
+    return;
+  }
   saveActiveEpisodeProgress(true);
   hideWomoPlayerOverlay();
   refreshCurrentPreviewEpisodes();
@@ -3806,7 +3940,7 @@ document.addEventListener("click", (event) => {
 
   if (!targetEpisode) return;
 
-  const seriesItem = currentPreviewItem && isEpisodicType(currentPreviewItem.type)
+  const seriesItem = currentPreviewItem && currentPreviewItem.type === "series"
     ? currentPreviewItem
     : allItemsByContinueKey.get(`series:${currentPreviewSeriesIdForEpisodes}`);
 
@@ -4003,7 +4137,7 @@ function womoGenreTokensFixed(item) {
   return rawValues
     .map(value => String(value).trim())
     .filter(Boolean)
-    .filter(value => !["movie", "series", "cartoon", "cartoons", "concert", "concierto", "pelicula", "película"].includes(value.toLowerCase()))
+    .filter(value => !["movie", "series", "concert", "concierto", "pelicula", "película"].includes(value.toLowerCase()))
     .map(value => value.charAt(0).toUpperCase() + value.slice(1));
 }
 
@@ -4163,7 +4297,7 @@ function womoGetRandomSeriesEpisode() {
     ? getAllCatalogItems()
     : Array.from(allItemsByContinueKey?.values?.() || []);
 
-  const series = items.filter(item => item && isEpisodicType(item.type));
+  const series = items.filter(item => item && item.type === "series");
   const candidates = [];
 
   series.forEach(show => {
@@ -4254,6 +4388,22 @@ function womoSetShuffleNoProgress(active) {
   try { womoGlobalShuffleNoProgress = Boolean(active); } catch (_) {}
 }
 
+function womoIsShuffleNoProgressPlayback() {
+  try {
+    if (window.__womoShuffleNoProgress || window.womoGlobalShuffleNoProgress) return true;
+    if (typeof womoGlobalShuffleNoProgress !== "undefined" && womoGlobalShuffleNoProgress) return true;
+    if (currentPlayerContext && (
+      currentPlayerContext.shuffleMode ||
+      currentPlayerContext.fromShuffle ||
+      currentPlayerContext.noProgress ||
+      currentPlayerContext.saveProgress === false
+    )) return true;
+    const overlay = document.getElementById("playerOverlay") || document.querySelector(".player-overlay");
+    if (overlay && overlay.dataset && overlay.dataset.shuffleNoProgress === "true") return true;
+  } catch (_) {}
+  return false;
+}
+
 function womoGetAllCatalogItemsForShuffle() {
   try {
     if (typeof getAllCatalogItems === "function") return getAllCatalogItems();
@@ -4310,7 +4460,7 @@ async function womoGetEpisodesForShuffle(show) {
 
 async function womoPickRandomSeriesEpisode() {
   const all = womoGetAllCatalogItemsForShuffle();
-  const series = all.filter(item => item && isEpisodicType(item.type));
+  const series = all.filter(item => item && item.type === "series");
 
   const candidates = [];
 
@@ -4343,6 +4493,7 @@ async function womoPlaySearchShuffle() {
 
     const { show, episode } = pick;
 
+    if (typeof womoStartShuffleSession === "function") womoStartShuffleSession("universal", "");
     womoSetShuffleNoProgress(true);
 
     if (typeof openPlayer === "function") {
@@ -5316,3 +5467,404 @@ setTimeout(() => window.womoHideSkeleton?.(), 1200);
   window.womoClosePreview = closePreview;
 })();
 
+
+
+/* Final player close + loader + mobile landscape guard */
+(function(){
+  if (window.__womoPlayerCloseFinalBound) return;
+  window.__womoPlayerCloseFinalBound = true;
+
+  document.addEventListener('click', function(event){
+    const close = event.target && event.target.closest && event.target.closest('#playerBack, .player-back, .player-close, [data-player-close]');
+    if (!close) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof closePlayer === 'function') closePlayer();
+  }, true);
+
+  window.addEventListener('orientationchange', function(){
+    const overlay = document.getElementById('playerOverlay');
+    const video = document.getElementById('womoPlayer');
+    if (overlay && overlay.classList.contains('open') && video) {
+      setTimeout(function(){
+        try { womoTryMobileNativeFullscreen(video); } catch (_) {}
+        try { womoLockMobileLandscape(); } catch (_) {}
+      }, 180);
+    }
+  });
+})();
+
+
+/* 2026-06-29 strict player loader, reliable close, mobile landscape force */
+(function(){
+  if (window.__womoStrictPlayerPatch2706) return;
+  window.__womoStrictPlayerPatch2706 = true;
+
+  function overlay(){ return document.getElementById('playerOverlay') || document.querySelector('.player-overlay'); }
+  function video(){ return document.getElementById('womoPlayer') || document.querySelector('#playerOverlay video, .player-overlay video'); }
+
+  function showStrictLoader(){
+    const o = overlay();
+    const v = video();
+    if (o) {
+      o.classList.add('womo-strict-video-loading');
+      o.classList.add('is-video-loading');
+    }
+    if (v) {
+      try { v.controls = false; } catch (_) {}
+      try { v.setAttribute('controlsList', 'nodownload noplaybackrate'); } catch (_) {}
+      try { v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); } catch (_) {}
+    }
+  }
+
+  function hideStrictLoader(){
+    const o = overlay();
+    const v = video();
+    if (o) {
+      o.classList.remove('womo-strict-video-loading');
+      o.classList.remove('is-video-loading');
+    }
+    if (v) {
+      try { v.controls = true; } catch (_) {}
+    }
+  }
+
+  function forceMobileLandscapeShell(){
+    const o = overlay();
+    const v = video();
+    if (!o || !v) return;
+    if (typeof womoIsMobileViewport === 'function' && !womoIsMobileViewport()) return;
+    document.body.classList.add('womo-mobile-landscape-player');
+    try { v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); } catch (_) {}
+    try { if (typeof womoLockMobileLandscape === 'function') womoLockMobileLandscape(); } catch (_) {}
+  }
+
+  // Do not enter native iOS fullscreen automatically. It can stay portrait and ignores our UI.
+  // We keep the custom player shell and rotate the video visually when the device is portrait.
+  window.womoTryMobileNativeFullscreen = function(v){
+    forceMobileLandscapeShell();
+    try { if (typeof womoPrepareVideoForLandscape === 'function') womoPrepareVideoForLandscape(v || video()); } catch (_) {}
+    try { if (typeof womoLockMobileLandscape === 'function') womoLockMobileLandscape(); } catch (_) {}
+  };
+
+  function reallyClosePlayer(){
+    try { hideStrictLoader(); } catch (_) {}
+    try { document.body.classList.remove('womo-mobile-landscape-player'); } catch (_) {}
+    try { if (typeof womoUnlockMobileOrientation === 'function') womoUnlockMobileOrientation(); } catch (_) {}
+
+    const v = video();
+    try { if (v && typeof v.webkitExitFullscreen === 'function') v.webkitExitFullscreen(); } catch (_) {}
+    try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); } catch (_) {}
+    try { if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (_) {}
+
+    if (typeof closePlayer === 'function') {
+      try { closePlayer(); } catch (error) { console.warn('Womo closePlayer fallback used.', error); }
+    }
+
+    const o = overlay();
+    if (v) {
+      try { v.pause(); } catch (_) {}
+      try { v.removeAttribute('src'); v.load(); } catch (_) {}
+    }
+    if (o) {
+      o.classList.remove('open','active','show','show-controls','controls-visible','is-video-loading','womo-strict-video-loading');
+      o.classList.add('hidden');
+      o.setAttribute('aria-hidden','true');
+      o.style.display = 'none';
+    }
+    document.body.classList.remove('player-open','womo-mobile-landscape-player');
+  }
+
+  function bindCloseButton(){
+    const btn = document.getElementById('playerBack') || document.querySelector('.player-back, .player-close, [data-player-close]');
+    if (!btn || btn.dataset.womoStrictCloseBound === 'true') return;
+    btn.dataset.womoStrictCloseBound = 'true';
+    btn.setAttribute('type','button');
+    btn.setAttribute('data-player-close','true');
+    ['pointerdown','touchstart','click'].forEach(function(eventName){
+      btn.addEventListener(eventName, function(event){
+        event.preventDefault();
+        event.stopPropagation();
+        reallyClosePlayer();
+      }, { capture:true });
+    });
+  }
+
+  function bindStrictVideoEvents(){
+    const v = video();
+    if (!v) return;
+    bindCloseButton();
+    forceMobileLandscapeShell();
+    showStrictLoader();
+
+    if (v.dataset.womoStrictLoaderBound !== 'true') {
+      v.dataset.womoStrictLoaderBound = 'true';
+      v.addEventListener('loadstart', showStrictLoader);
+      v.addEventListener('waiting', showStrictLoader);
+      v.addEventListener('stalled', showStrictLoader);
+      v.addEventListener('seeking', showStrictLoader);
+      v.addEventListener('playing', hideStrictLoader);
+      v.addEventListener('timeupdate', function(){
+        if (Number(v.currentTime || 0) > 0 || v.readyState >= 3) hideStrictLoader();
+      });
+      v.addEventListener('canplay', function(){
+        // Keep loader until actual playback starts. Enable controls only if autoplay was blocked.
+        setTimeout(function(){
+          if (v.paused && !v.ended) {
+            try { v.controls = true; } catch (_) {}
+          }
+        }, 1600);
+      });
+      v.addEventListener('error', function(){
+        const o = overlay();
+        if (o) o.classList.remove('womo-strict-video-loading','is-video-loading');
+        try { v.controls = true; } catch (_) {}
+      });
+    }
+  }
+
+  const originalOpenPlayer = typeof openPlayer === 'function' ? openPlayer : null;
+  if (originalOpenPlayer) {
+    openPlayer = function(item, options){
+      const result = originalOpenPlayer.apply(this, arguments);
+      showStrictLoader();
+      bindStrictVideoEvents();
+      forceMobileLandscapeShell();
+      setTimeout(function(){ showStrictLoader(); bindStrictVideoEvents(); forceMobileLandscapeShell(); }, 30);
+      setTimeout(function(){ bindStrictVideoEvents(); forceMobileLandscapeShell(); }, 180);
+      return result;
+    };
+  }
+
+  document.addEventListener('click', function(event){
+    const target = event.target && event.target.closest ? event.target.closest('#playerBack, .player-back, .player-close, [data-player-close]') : null;
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    reallyClosePlayer();
+  }, true);
+
+  document.addEventListener('keydown', function(event){
+    if (event.key !== 'Escape') return;
+    const o = overlay();
+    if (o && (o.classList.contains('open') || document.body.classList.contains('player-open'))) {
+      event.preventDefault();
+      reallyClosePlayer();
+    }
+  }, true);
+
+  document.addEventListener('DOMContentLoaded', function(){
+    bindCloseButton();
+    setTimeout(bindCloseButton, 500);
+  });
+
+  window.addEventListener('orientationchange', function(){
+    setTimeout(function(){
+      const o = overlay();
+      if (o && o.classList.contains('open')) forceMobileLandscapeShell();
+    }, 120);
+  });
+})();
+
+
+/* 2026-06-29 preview series shuffle hard fix */
+(function(){
+  if (window.__womoPreviewSeriesShuffleHardFix) return;
+  window.__womoPreviewSeriesShuffleHardFix = true;
+
+  document.addEventListener('click', async function(event){
+    const btn = event.target && event.target.closest ? event.target.closest('[data-preview-shuffle]') : null;
+    if (!btn) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const item = window.currentPreviewItem || currentPreviewItem || null;
+    if (!item || item.type !== 'series') return;
+
+    try {
+      if (typeof womoStartShuffleSession === 'function') womoStartShuffleSession('series', item.id);
+      window.__womoNextShuffleScope = 'series';
+
+      let picked = null;
+      if (typeof womoPickRandomShuffleEpisode === 'function') picked = await womoPickRandomShuffleEpisode();
+      let episode = picked && picked.episode ? picked.episode : null;
+
+      if (!episode && typeof readSeriesEpisodes === 'function') {
+        const episodes = await readSeriesEpisodes(item.id);
+        const playable = (episodes || []).filter(function(ep){
+          return Boolean(ep && (ep.hlsUrl || ep.videoUrl || ep.videoURL || ep.url || ep.streamUrl || ep.playbackUrl));
+        });
+        episode = playable.length ? playable[Math.floor(Math.random() * playable.length)] : null;
+      }
+
+      if (!episode) return;
+      openPlayer((picked && picked.seriesItem) || item, {
+        episode: episode,
+        startAt: 0,
+        saveProgress: false,
+        shuffleMode: true,
+        fromShuffle: true,
+        noProgress: true,
+        shuffleScope: 'series',
+        shuffleSeriesId: item.id
+      });
+    } catch (error) {
+      console.warn('Womo preview series shuffle failed.', error);
+    }
+  }, true);
+})();
+
+/* 2026-06-29 shuffle next hard fix: robust next-button handling for universal/local shuffle */
+(function(){
+  if (window.__womoShuffleNextHardFixBound) return;
+  window.__womoShuffleNextHardFixBound = true;
+
+  function isShuffleNextButton(target) {
+    if (!target || !target.closest) return false;
+    return Boolean(target.closest('#womoShuffleNextPlay, #womoShuffleSkipPlay'));
+  }
+
+  function runShuffleNextFromButton(target) {
+    const btn = target && target.closest ? target.closest('#womoShuffleNextPlay, #womoShuffleSkipPlay') : null;
+    if (!btn) return;
+
+    if (btn.id === 'womoShuffleSkipPlay') {
+      if (typeof womoPlayUniversalShuffleSkip === 'function') womoPlayUniversalShuffleSkip();
+      return;
+    }
+
+    if (btn.id === 'womoShuffleNextPlay') {
+      if (typeof womoPlayNextShuffleEpisode === 'function') womoPlayNextShuffleEpisode();
+    }
+  }
+
+  ['pointerdown', 'touchstart', 'click'].forEach(function(type){
+    document.addEventListener(type, function(event){
+      if (!isShuffleNextButton(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      runShuffleNextFromButton(event.target);
+    }, true);
+  });
+
+  // Keep the buttons above the rotated mobile player and native video layer.
+  function reinforceShuffleNextLayer() {
+    ['womoShuffleNextOverlay', 'womoShuffleSkipOverlay'].forEach(function(id){
+      const overlay = document.getElementById(id);
+      if (!overlay) return;
+      overlay.style.pointerEvents = 'auto';
+      overlay.style.zIndex = '2147483030';
+      const btn = overlay.querySelector('button');
+      if (btn) {
+        btn.style.pointerEvents = 'auto';
+        btn.style.touchAction = 'manipulation';
+      }
+    });
+  }
+
+  setInterval(reinforceShuffleNextLayer, 600);
+})();
+
+
+/* 2026-06-29 final fixes: preview poster fallback + shuffle button lower-right + seek resume */
+(function(){
+  if (window.__womoFinalDeskMobilePlayerFixes) return;
+  window.__womoFinalDeskMobilePlayerFixes = true;
+
+  function getPlayerVideo(){
+    return document.getElementById('womoPlayer') || document.querySelector('#playerOverlay video, .player-overlay video');
+  }
+  function getPlayerOverlay(){
+    return document.getElementById('playerOverlay') || document.querySelector('.player-overlay');
+  }
+
+  function bindSeekResume(){
+    const video = getPlayerVideo();
+    if (!video || video.dataset.womoSeekResumeBound === 'true') return;
+    video.dataset.womoSeekResumeBound = 'true';
+
+    let shouldResumeAfterSeek = false;
+    let seekWatchdog = null;
+
+    function playerIsOpen(){
+      const overlay = getPlayerOverlay();
+      return Boolean(overlay && (overlay.classList.contains('open') || document.body.classList.contains('player-open')));
+    }
+
+    function clearWatchdog(){
+      if (seekWatchdog) {
+        clearTimeout(seekWatchdog);
+        seekWatchdog = null;
+      }
+    }
+
+    function tryResume(reason){
+      if (!playerIsOpen()) return;
+      if (!shouldResumeAfterSeek) return;
+      if (!video.src && !video.currentSrc) return;
+      if (video.ended) return;
+      try {
+        const playPromise = video.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(function(error){
+            // If autoplay is blocked, leave native controls enabled instead of freezing behind the loader.
+            try { video.controls = true; } catch (_) {}
+            console.warn('Womo seek resume blocked:', reason, error);
+          });
+        }
+      } catch (error) {
+        try { video.controls = true; } catch (_) {}
+      }
+    }
+
+    video.addEventListener('seeking', function(){
+      shouldResumeAfterSeek = !video.paused && !video.ended;
+      clearWatchdog();
+      seekWatchdog = setTimeout(function(){
+        if (shouldResumeAfterSeek && playerIsOpen() && (video.paused || video.readyState < 2)) {
+          tryResume('seek-watchdog');
+        }
+      }, 1200);
+    });
+
+    video.addEventListener('seeked', function(){
+      clearWatchdog();
+      setTimeout(function(){ tryResume('seeked'); }, 80);
+      setTimeout(function(){ tryResume('seeked-late'); }, 420);
+    });
+
+    ['canplay','canplaythrough','loadeddata'].forEach(function(eventName){
+      video.addEventListener(eventName, function(){
+        setTimeout(function(){ tryResume(eventName); }, 60);
+      });
+    });
+
+    video.addEventListener('playing', function(){
+      clearWatchdog();
+      shouldResumeAfterSeek = false;
+    });
+
+    video.addEventListener('pause', function(){
+      // A real user pause after the seek should cancel auto-resume.
+      setTimeout(function(){
+        if (!video.seeking) shouldResumeAfterSeek = false;
+      }, 500);
+    });
+  }
+
+  const originalOpenPlayer = typeof openPlayer === 'function' ? openPlayer : null;
+  if (originalOpenPlayer) {
+    openPlayer = function(){
+      const result = originalOpenPlayer.apply(this, arguments);
+      setTimeout(bindSeekResume, 0);
+      setTimeout(bindSeekResume, 200);
+      return result;
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    try { womoBindPreviewPosterFallback(); } catch (_) {}
+    bindSeekResume();
+  });
+})();
