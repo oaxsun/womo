@@ -8008,3 +8008,1067 @@ button:has(.womo-shuffle-btn-icon),
   }
 }
 
+
+
+/* 2026-06-29 final modal/player fixes */
+@media (min-width:761px){
+  .top-settings-btn{ display:none !important; }
+}
+
+/* Preview: poster first, overlay carries info at its bottom edge; buttons live below overlay */
+#previewModal .preview-card,
+.preview-modal .preview-card{
+  background:#181818 !important;
+}
+
+#previewModal .preview-hero,
+.preview-modal .preview-hero{
+  position:relative !important;
+  overflow:hidden !important;
+}
+
+#previewModal .preview-hero::after,
+.preview-modal .preview-hero::after{
+  z-index:1 !important;
+  background:
+    linear-gradient(180deg, rgba(24,24,24,0) 30%, rgba(24,24,24,.58) 62%, #181818 100%),
+    linear-gradient(90deg, rgba(24,24,24,.28) 0%, rgba(24,24,24,0) 50%) !important;
+}
+
+#previewModal .preview-hero-content,
+.preview-modal .preview-hero-content{
+  position:absolute !important;
+  left:25px !important;
+  right:25px !important;
+  bottom:0 !important;
+  z-index:2 !important;
+  transform:translateY(0) !important;
+  padding-bottom:18px !important;
+  background:transparent !important;
+}
+
+#previewModal .preview-body,
+.preview-modal .preview-body{
+  padding-top:22px !important;
+}
+
+#previewModal .preview-actions,
+.preview-modal .preview-actions{
+  width:100% !important;
+  margin:0 auto 70px !important;
+  padding:0 25px !important;
+  box-sizing:border-box !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:center !important;
+  gap:12px !important;
+}
+
+#previewModal .preview-actions button,
+.preview-modal .preview-actions button{
+  width:min(326px, 100%) !important;
+}
+
+#previewModal .preview-extra,
+.preview-modal .preview-extra{
+  width:100% !important;
+  max-width:390px !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  box-sizing:border-box !important;
+}
+
+#previewExtra .season-block,
+#previewExtra .season-tabs,
+#previewExtra .episode-list{
+  width:min(390px, calc(100vw - 40px)) !important;
+  max-width:min(390px, calc(100vw - 40px)) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  align-self:center !important;
+  box-sizing:border-box !important;
+}
+
+#previewExtra .episode-item{
+  width:100% !important;
+  max-width:100% !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  align-self:center !important;
+  box-sizing:border-box !important;
+}
+
+@media (max-width:760px){
+  #previewModal .preview-hero,
+  .preview-modal .preview-hero{
+    height:470px !important;
+    min-height:470px !important;
+    max-height:470px !important;
+  }
+
+  #previewModal .preview-hero-content,
+  .preview-modal .preview-hero-content{
+    left:25px !important;
+    right:25px !important;
+    bottom:0 !important;
+    padding-bottom:26px !important;
+  }
+
+  #previewModal .preview-body,
+  .preview-modal .preview-body{
+    padding:22px 18px 34px !important;
+  }
+
+  #previewModal .preview-actions,
+  .preview-modal .preview-actions{
+    padding:0 !important;
+    margin:0 auto 70px !important;
+  }
+
+  #previewModal .preview-actions button,
+  .preview-modal .preview-actions button{
+    width:min(326px, calc(100vw - 64px)) !important;
+    min-height:54px !important;
+  }
+}
+
+/* Current Womo skeleton must win over the older global skeleton styles */
+#womoSkeleton.womo-skeleton-screen{
+  position:fixed !important;
+  inset:0 !important;
+  z-index:4500 !important;
+  background:#181818 !important;
+  overflow:hidden !important;
+  opacity:1 !important;
+  visibility:visible !important;
+  pointer-events:none !important;
+  transition:opacity .28s ease, visibility .28s ease !important;
+}
+
+#womoSkeleton.womo-skeleton-screen.is-hidden,
+#womoSkeleton.womo-skeleton-screen.womo-skeleton-exit{
+  opacity:0 !important;
+  visibility:hidden !important;
+}
+
+#womoSkeleton.womo-skeleton-screen .womo-skeleton-shell{
+  height:100vh !important;
+  margin-left:86px !important;
+  padding:44px clamp(28px, 6vw, 156px) 70px !important;
+  box-sizing:border-box !important;
+  overflow:hidden !important;
+}
+
+#womoSkeleton.womo-skeleton-screen .womo-skeleton-hero,
+#womoSkeleton.womo-skeleton-screen .womo-skeleton-section{
+  width:var(--womo-visible-row-width, 996px) !important;
+  max-width:var(--womo-visible-row-width, 996px) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+
+#womoSkeleton.womo-skeleton-screen .womo-skeleton-hero{
+  height:270px !important;
+  min-height:270px !important;
+  max-height:270px !important;
+  margin-bottom:56px !important;
+  border-radius:18px !important;
+  background:#1A1A1A !important;
+  display:grid !important;
+  grid-template-columns:180px 1fr !important;
+  column-gap:50px !important;
+  overflow:hidden !important;
+}
+
+#womoSkeleton.womo-skeleton-screen .womo-skeleton-row{
+  display:grid !important;
+  grid-template-columns:repeat(5, 180px) !important;
+  gap:24px !important;
+  width:var(--womo-visible-row-width, 996px) !important;
+  max-width:var(--womo-visible-row-width, 996px) !important;
+  overflow:hidden !important;
+}
+
+#womoSkeleton.womo-skeleton-screen .womo-skeleton-card{
+  width:180px !important;
+  min-width:180px !important;
+  height:270px !important;
+  min-height:270px !important;
+  border-radius:12px !important;
+}
+
+@media (max-width:760px){
+  #womoSkeleton.womo-skeleton-screen .womo-skeleton-shell{
+    margin-left:0 !important;
+    height:100svh !important;
+    padding:0 0 calc(72px + 44px + env(safe-area-inset-bottom)) !important;
+  }
+
+  #womoSkeleton.womo-skeleton-screen .womo-skeleton-hero{
+    width:100vw !important;
+    max-width:none !important;
+    height:calc(100svh - env(safe-area-inset-top)) !important;
+    min-height:calc(100svh - env(safe-area-inset-top)) !important;
+    max-height:none !important;
+    margin:0 0 34px !important;
+    border-radius:0 !important;
+    display:block !important;
+  }
+
+  #womoSkeleton.womo-skeleton-screen .womo-skeleton-section{
+    width:100% !important;
+    max-width:none !important;
+    margin:0 0 44px !important;
+    padding:0 20px !important;
+  }
+
+  #womoSkeleton.womo-skeleton-screen .womo-skeleton-row{
+    width:calc(100% + 40px) !important;
+    max-width:none !important;
+    display:flex !important;
+    flex-wrap:nowrap !important;
+    gap:20px !important;
+    margin:0 -20px !important;
+    padding:0 20px 10px !important;
+  }
+
+  #womoSkeleton.womo-skeleton-screen .womo-skeleton-card{
+    flex:0 0 132px !important;
+    width:132px !important;
+    min-width:132px !important;
+    height:198px !important;
+    min-height:198px !important;
+  }
+}
+
+/* Player loader and reliable close target */
+#playerOverlay.is-video-loading::before{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:44px;
+  height:44px;
+  margin:-22px 0 0 -22px;
+  border-radius:50%;
+  border:3px solid rgba(255,255,255,.22);
+  border-top-color:var(--accent, #d7ff00);
+  z-index:12;
+  animation:womoPlayerSpin .8s linear infinite;
+  pointer-events:none;
+}
+
+@keyframes womoPlayerSpin{ to{ transform:rotate(360deg); } }
+
+#playerBack,
+.player-back{
+  pointer-events:auto !important;
+  cursor:pointer !important;
+  z-index:100000 !important;
+}
+
+#playerOverlay.open .player-topbar,
+#playerOverlay.controls-visible .player-topbar{
+  pointer-events:auto !important;
+}
+
+body.player-open{
+  background:#000 !important;
+  overflow:hidden !important;
+}
+
+@media (max-width:760px) and (orientation: portrait){
+  body.player-open #playerOverlay.open{
+    position:fixed !important;
+    inset:0 !important;
+    width:100vw !important;
+    height:100svh !important;
+    background:#000 !important;
+    overflow:hidden !important;
+  }
+
+  body.player-open #womoPlayer{
+    position:absolute !important;
+    left:50% !important;
+    top:50% !important;
+    width:100svh !important;
+    height:100vw !important;
+    max-width:none !important;
+    max-height:none !important;
+    transform:translate(-50%, -50%) rotate(90deg) !important;
+    transform-origin:center center !important;
+    object-fit:contain !important;
+    background:#000 !important;
+  }
+
+  body.player-open #playerOverlay .player-topbar{
+    transform:rotate(90deg) !important;
+    transform-origin:left top !important;
+    left:calc(100vw - 18px) !important;
+    top:18px !important;
+    width:100svh !important;
+  }
+}
+
+/* 2026-06-29 strict player loading and mobile landscape force */
+#playerOverlay.womo-strict-video-loading::before{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:48px;
+  height:48px;
+  margin:-24px 0 0 -24px;
+  border-radius:50%;
+  border:3px solid rgba(255,255,255,.24);
+  border-top-color:var(--accent, #d7ff00);
+  z-index:2147483000;
+  animation:womoPlayerSpin .78s linear infinite;
+  pointer-events:none;
+}
+
+#playerOverlay.womo-strict-video-loading::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:#000;
+  z-index:2147482990;
+  pointer-events:none;
+}
+
+#playerOverlay.womo-strict-video-loading .player-topbar,
+#playerOverlay.womo-strict-video-loading #playerBack{
+  z-index:2147483010 !important;
+}
+
+#playerOverlay.womo-strict-video-loading #womoPlayer{
+  opacity:0;
+}
+
+#playerOverlay #playerBack,
+#playerOverlay .player-back{
+  position:fixed !important;
+  top:calc(env(safe-area-inset-top, 0px) + 16px) !important;
+  left:calc(env(safe-area-inset-left, 0px) + 16px) !important;
+  z-index:2147483020 !important;
+  pointer-events:auto !important;
+  touch-action:manipulation !important;
+}
+
+@media (max-width:760px){
+  body.player-open.womo-mobile-landscape-player{
+    background:#000 !important;
+    overflow:hidden !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #playerOverlay.open,
+  body.player-open.womo-mobile-landscape-player #playerOverlay{
+    position:fixed !important;
+    inset:0 !important;
+    width:100vw !important;
+    height:100svh !important;
+    display:block !important;
+    background:#000 !important;
+    overflow:hidden !important;
+    z-index:2147482500 !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoPlayer{
+    position:absolute !important;
+    background:#000 !important;
+    object-fit:contain !important;
+  }
+}
+
+@media (max-width:760px) and (orientation: portrait){
+  body.player-open.womo-mobile-landscape-player #womoPlayer{
+    left:50% !important;
+    top:50% !important;
+    width:100svh !important;
+    height:100vw !important;
+    max-width:none !important;
+    max-height:none !important;
+    transform:translate(-50%, -50%) rotate(90deg) !important;
+    transform-origin:center center !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #playerOverlay .player-topbar{
+    transform:none !important;
+    left:0 !important;
+    top:0 !important;
+    width:100vw !important;
+    z-index:2147483010 !important;
+    pointer-events:none !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #playerBack,
+  body.player-open.womo-mobile-landscape-player .player-back{
+    transform:none !important;
+    pointer-events:auto !important;
+  }
+}
+
+@media (max-width:760px) and (orientation: landscape){
+  body.player-open.womo-mobile-landscape-player #womoPlayer{
+    inset:0 !important;
+    width:100vw !important;
+    height:100svh !important;
+    transform:none !important;
+  }
+}
+
+/* 2026-06-29 recommended-size + player topbar alignment + mobile landscape topbar fix */
+#previewModal .preview-extra,
+.preview-modal .preview-extra{
+  max-width:520px !important;
+}
+
+#previewModal .preview-recs,
+.preview-modal .preview-recs,
+#previewRecs.preview-recs{
+  display:flex !important;
+  gap:18px !important;
+  overflow-x:auto !important;
+  padding:2px 2px 14px !important;
+  scrollbar-width:none !important;
+}
+
+#previewModal .preview-recs img,
+.preview-modal .preview-recs img,
+#previewRecs.preview-recs img{
+  flex:0 0 auto !important;
+  width:148px !important;
+  height:222px !important;
+  border-radius:12px !important;
+  object-fit:cover !important;
+  background:#d9d9d9 !important;
+}
+
+.player-topbar{
+  align-items:center !important;
+  gap:12px !important;
+  min-width:0 !important;
+  box-sizing:border-box !important;
+}
+
+.player-topbar > div{
+  min-width:0 !important;
+  flex:1 1 auto !important;
+  padding-right:16px !important;
+  box-sizing:border-box !important;
+}
+
+.player-back{
+  flex:0 0 38px !important;
+  z-index:2147483020 !important;
+}
+
+.player-title,
+.player-subtitle{
+  display:block !important;
+  max-width:100% !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+}
+
+@media (max-width:760px){
+  #previewModal .preview-extra,
+  .preview-modal .preview-extra{
+    max-width:none !important;
+    width:100% !important;
+  }
+
+  #previewModal .preview-recs img,
+  .preview-modal .preview-recs img,
+  #previewRecs.preview-recs img{
+    width:136px !important;
+    height:204px !important;
+    border-radius:12px !important;
+  }
+}
+
+@media (max-width:760px) and (orientation:portrait){
+  body.player-open.womo-mobile-landscape-player #playerOverlay .player-topbar{
+    position:fixed !important;
+    top:calc(env(safe-area-inset-top, 0px) + 12px) !important;
+    left:calc(100vw - 12px) !important;
+    right:auto !important;
+    width:calc(100svh - 24px) !important;
+    height:56px !important;
+    padding:0 !important;
+    display:flex !important;
+    align-items:center !important;
+    gap:10px !important;
+    transform:rotate(90deg) !important;
+    transform-origin:top left !important;
+    opacity:1 !important;
+    pointer-events:none !important;
+    z-index:2147483020 !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #playerOverlay .player-topbar > div{
+    min-width:0 !important;
+    flex:1 1 auto !important;
+    padding-right:18px !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #playerBack,
+  body.player-open.womo-mobile-landscape-player .player-back{
+    position:relative !important;
+    top:auto !important;
+    left:auto !important;
+    width:40px !important;
+    height:40px !important;
+    flex:0 0 40px !important;
+    transform:none !important;
+    pointer-events:auto !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player .player-title{
+    font-size:15px !important;
+    line-height:1.1 !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player .player-subtitle{
+    font-size:11px !important;
+    line-height:1.2 !important;
+  }
+}
+
+/* 2026-06-29 player info alignment + mobile episode width fix */
+#playerOverlay .player-topbar,
+.player-overlay .player-topbar{
+  display:flex !important;
+  align-items:center !important;
+  gap:15px !important;
+  padding:0 !important;
+}
+
+#playerOverlay #playerBack,
+#playerOverlay .player-back,
+.player-overlay #playerBack,
+.player-overlay .player-back{
+  position:relative !important;
+  top:auto !important;
+  left:auto !important;
+  right:auto !important;
+  bottom:auto !important;
+  flex:0 0 38px !important;
+  width:38px !important;
+  height:38px !important;
+  transform:none !important;
+}
+
+#playerOverlay .player-topbar > div,
+.player-overlay .player-topbar > div{
+  min-width:0 !important;
+  flex:1 1 auto !important;
+  padding-right:16px !important;
+  margin:0 !important;
+}
+
+#playerOverlay .player-title,
+#playerOverlay .player-subtitle,
+.player-overlay .player-title,
+.player-overlay .player-subtitle{
+  margin-left:0 !important;
+  padding-left:0 !important;
+  text-align:left !important;
+}
+
+@media (max-width:760px) and (orientation:portrait){
+  body.player-open.womo-mobile-landscape-player #playerOverlay .player-topbar{
+    gap:15px !important;
+    padding:0 !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #playerOverlay #playerBack,
+  body.player-open.womo-mobile-landscape-player #playerOverlay .player-back{
+    position:relative !important;
+    top:auto !important;
+    left:auto !important;
+    right:auto !important;
+    bottom:auto !important;
+    flex:0 0 40px !important;
+    width:40px !important;
+    height:40px !important;
+    transform:none !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #playerOverlay .player-topbar > div{
+    margin:0 !important;
+    padding:0 18px 0 0 !important;
+    min-width:0 !important;
+  }
+}
+
+@media (max-width:760px){
+  #previewModal .preview-extra,
+  .preview-modal .preview-extra{
+    width:calc(100vw - 36px) !important;
+    max-width:520px !important;
+    margin-left:auto !important;
+    margin-right:auto !important;
+    padding-left:0 !important;
+    padding-right:0 !important;
+    box-sizing:border-box !important;
+  }
+
+  #previewModal #previewExtraTitle,
+  .preview-modal #previewExtraTitle,
+  #previewExtra h3{
+    width:100% !important;
+    max-width:100% !important;
+    margin-left:auto !important;
+    margin-right:auto !important;
+    text-align:left !important;
+    box-sizing:border-box !important;
+  }
+
+  #previewExtra .season-block,
+  #previewExtra .season-tabs,
+  #previewExtra .episode-list{
+    width:100% !important;
+    max-width:100% !important;
+    margin-left:auto !important;
+    margin-right:auto !important;
+    align-self:center !important;
+    box-sizing:border-box !important;
+  }
+
+  #previewExtra .episode-item{
+    width:100% !important;
+    max-width:100% !important;
+    min-height:74px !important;
+    margin-left:auto !important;
+    margin-right:auto !important;
+    box-sizing:border-box !important;
+  }
+}
+
+/* 2026-06-29 mobile landscape shuffle-next overlay fix */
+#womoShuffleNextOverlay,
+#womoShuffleSkipOverlay{
+  pointer-events:auto !important;
+  z-index:2147483030 !important;
+}
+
+#womoShuffleNextPlay,
+#womoShuffleSkipPlay{
+  pointer-events:auto !important;
+  touch-action:manipulation !important;
+  position:relative !important;
+  z-index:2147483031 !important;
+}
+
+@media (max-width:760px) and (orientation:portrait){
+  body.player-open.womo-mobile-landscape-player #womoShuffleNextOverlay,
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipOverlay{
+    position:fixed !important;
+    left:calc(100vw - 24px) !important;
+    right:auto !important;
+    top:calc(100svh - 126px) !important;
+    bottom:auto !important;
+    width:min(390px, calc(100svh - 48px)) !important;
+    max-width:calc(100svh - 48px) !important;
+    transform:rotate(90deg) !important;
+    transform-origin:top left !important;
+    z-index:2147483030 !important;
+    pointer-events:auto !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipOverlay{
+    top:calc(100svh - 88px) !important;
+    left:calc(100vw - 24px) !important;
+    width:auto !important;
+    max-width:none !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleNextPlay,
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipPlay,
+  body.player-open.womo-mobile-landscape-player #womoShuffleNextCancel{
+    pointer-events:auto !important;
+    touch-action:manipulation !important;
+  }
+}
+
+/* 2026-06-29 final patch: preview poster fallback, mobile shuffle next position, seek loader stability */
+#previewModal .preview-hero,
+.preview-modal .preview-hero{
+  background-color:#111 !important;
+  background-image:var(--preview-poster-bg) !important;
+  background-size:cover !important;
+  background-position:center center !important;
+}
+
+#previewModal .preview-hero::before,
+.preview-modal .preview-hero::before{
+  content:"" !important;
+  position:absolute !important;
+  inset:0 !important;
+  background-image:var(--preview-poster-bg) !important;
+  background-size:cover !important;
+  background-position:center center !important;
+  opacity:1 !important;
+  z-index:0 !important;
+  pointer-events:none !important;
+}
+
+#previewModal .preview-hero-poster,
+#previewModal #previewPoster,
+.preview-modal .preview-hero-poster{
+  position:relative !important;
+  z-index:1 !important;
+  opacity:1 !important;
+  visibility:visible !important;
+  background:transparent !important;
+}
+
+#previewModal .preview-hero-content,
+.preview-modal .preview-hero-content,
+#previewModal .preview-fav-btn,
+#previewModal .preview-close{
+  z-index:3 !important;
+}
+
+#previewModal .preview-hero::after,
+.preview-modal .preview-hero::after{
+  z-index:2 !important;
+}
+
+@media (max-width:760px) and (orientation:portrait){
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipOverlay{
+    position:fixed !important;
+    left:auto !important;
+    top:auto !important;
+    right:calc(env(safe-area-inset-right, 0px) + 22px) !important;
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 22px) !important;
+    width:auto !important;
+    max-width:none !important;
+    padding:0 !important;
+    background:transparent !important;
+    border:0 !important;
+    box-shadow:none !important;
+    backdrop-filter:none !important;
+    transform:rotate(90deg) translateY(-100%) !important;
+    transform-origin:bottom right !important;
+    z-index:2147483035 !important;
+    pointer-events:auto !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipPlay{
+    min-width:132px !important;
+    height:46px !important;
+    border-radius:999px !important;
+    pointer-events:auto !important;
+    touch-action:manipulation !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleNextOverlay{
+    position:fixed !important;
+    left:auto !important;
+    top:auto !important;
+    right:calc(env(safe-area-inset-right, 0px) + 22px) !important;
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 22px) !important;
+    transform:rotate(90deg) translateY(-100%) !important;
+    transform-origin:bottom right !important;
+    width:min(390px, calc(100svh - 48px)) !important;
+    max-width:calc(100svh - 48px) !important;
+    z-index:2147483035 !important;
+    pointer-events:auto !important;
+  }
+}
+
+/* 2026-06-29 hotfix: mobile shuffle next button visible in visual landscape bottom-right */
+@media (max-width:760px) and (orientation:portrait){
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipOverlay{
+    position:fixed !important;
+    left:calc(100vw - 22px) !important;
+    top:calc(100svh - 154px) !important;
+    right:auto !important;
+    bottom:auto !important;
+    width:132px !important;
+    height:46px !important;
+    min-width:132px !important;
+    max-width:132px !important;
+    padding:0 !important;
+    margin:0 !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    background:transparent !important;
+    border:0 !important;
+    box-shadow:none !important;
+    backdrop-filter:none !important;
+    transform:rotate(90deg) !important;
+    transform-origin:top left !important;
+    opacity:1;
+    z-index:2147483630 !important;
+    pointer-events:auto !important;
+    overflow:visible !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipOverlay.hidden{
+    display:none !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipOverlay.womo-shuffle-fade-out{
+    animation:womoShuffleMobileSkipOpacity 10s linear forwards !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipPlay{
+    width:132px !important;
+    min-width:132px !important;
+    height:46px !important;
+    padding:0 18px !important;
+    border-radius:999px !important;
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:8px !important;
+    pointer-events:auto !important;
+    touch-action:manipulation !important;
+    z-index:2147483631 !important;
+    opacity:1 !important;
+    visibility:visible !important;
+  }
+}
+
+@keyframes womoShuffleMobileSkipOpacity{
+  0%{ opacity:1; }
+  70%{ opacity:1; }
+  100%{ opacity:0; }
+}
+
+/* 2026-06-29 mobile visual-landscape shuffle overlays final position fix */
+@media (max-width:760px) and (orientation:portrait){
+  /* The player is visually rotated to landscape. In that coordinate system,
+     the landscape bottom maps to the physical left side of the portrait screen. */
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipOverlay:not(.hidden){
+    position:fixed !important;
+    left:calc(env(safe-area-inset-left, 0px) + 68px) !important;
+    top:calc(100svh - 154px - env(safe-area-inset-bottom, 0px)) !important;
+    right:auto !important;
+    bottom:auto !important;
+    width:132px !important;
+    height:46px !important;
+    min-width:132px !important;
+    max-width:132px !important;
+    padding:0 !important;
+    margin:0 !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    background:transparent !important;
+    border:0 !important;
+    box-shadow:none !important;
+    backdrop-filter:none !important;
+    transform:rotate(90deg) !important;
+    transform-origin:top left !important;
+    opacity:1 !important;
+    visibility:visible !important;
+    pointer-events:auto !important;
+    overflow:visible !important;
+    z-index:2147483640 !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipOverlay.hidden{
+    display:none !important;
+    visibility:hidden !important;
+    opacity:0 !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleSkipPlay{
+    width:132px !important;
+    min-width:132px !important;
+    height:46px !important;
+    display:inline-flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:8px !important;
+    opacity:1 !important;
+    visibility:visible !important;
+    pointer-events:auto !important;
+    touch-action:manipulation !important;
+    z-index:2147483641 !important;
+  }
+
+  /* End-of-episode shuffle overlay must also appear in visual landscape,
+     in the lower-right area like the desktop/Netflix-style overlay. */
+  body.player-open.womo-mobile-landscape-player #womoShuffleNextOverlay:not(.hidden){
+    position:fixed !important;
+    left:calc(env(safe-area-inset-left, 0px) + 122px) !important;
+    top:calc(100svh - min(390px, calc(100svh - 48px)) - 22px - env(safe-area-inset-bottom, 0px)) !important;
+    right:auto !important;
+    bottom:auto !important;
+    width:min(390px, calc(100svh - 48px)) !important;
+    max-width:calc(100svh - 48px) !important;
+    padding:14px !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:space-between !important;
+    gap:14px !important;
+    transform:rotate(90deg) !important;
+    transform-origin:top left !important;
+    opacity:1 !important;
+    visibility:visible !important;
+    pointer-events:auto !important;
+    z-index:2147483638 !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleNextOverlay.hidden{
+    display:none !important;
+    visibility:hidden !important;
+    opacity:0 !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #womoShuffleNextPlay,
+  body.player-open.womo-mobile-landscape-player #womoShuffleNextCancel{
+    opacity:1 !important;
+    visibility:visible !important;
+    pointer-events:auto !important;
+    touch-action:manipulation !important;
+  }
+}
+
+
+/* 2026-06-29 player topbar hide sync fix
+   Keep back button + title aligned with the native/custom player controls visibility. */
+#playerOverlay.open .player-topbar,
+.player-overlay.open .player-topbar{
+  opacity:0 !important;
+  pointer-events:none !important;
+  transform:translateY(-10px) !important;
+  transition:opacity .18s ease, transform .18s ease !important;
+}
+
+#playerOverlay.open.controls-visible .player-topbar,
+#playerOverlay.open.show-controls .player-topbar,
+.player-overlay.open.controls-visible .player-topbar,
+.player-overlay.open.show-controls .player-topbar{
+  opacity:1 !important;
+  pointer-events:auto !important;
+  transform:translateY(0) !important;
+}
+
+@media (max-width:760px) and (orientation:portrait){
+  body.player-open.womo-mobile-landscape-player #playerOverlay.open .player-topbar{
+    opacity:0 !important;
+    pointer-events:none !important;
+    transform:rotate(90deg) translateY(-10px) !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #playerOverlay.open.controls-visible .player-topbar,
+  body.player-open.womo-mobile-landscape-player #playerOverlay.open.show-controls .player-topbar{
+    opacity:1 !important;
+    pointer-events:auto !important;
+    transform:rotate(90deg) translateY(0) !important;
+  }
+
+  body.player-open.womo-mobile-landscape-player #playerOverlay.open:not(.controls-visible):not(.show-controls) #playerBack,
+  body.player-open.womo-mobile-landscape-player #playerOverlay.open:not(.controls-visible):not(.show-controls) .player-back{
+    pointer-events:none !important;
+  }
+}
+
+/* 2026-06-29 final mobile-only search shuffle centering fix
+   Keep all functionality untouched: only centers the empty-search label/button on mobile. */
+@media (max-width:760px){
+  #searchPage .search-results-section{
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:center !important;
+  }
+
+  #searchShuffleEmpty.search-shuffle-empty{
+    width:100% !important;
+    max-width:calc(100vw - 36px) !important;
+    margin-left:auto !important;
+    margin-right:auto !important;
+    align-self:center !important;
+    justify-self:center !important;
+    left:auto !important;
+    right:auto !important;
+    transform:none !important;
+    text-align:center !important;
+    place-items:center !important;
+  }
+
+  #searchShuffleEmpty.search-shuffle-empty p,
+  #shufflePlayBtn.shuffle-play-btn{
+    margin-left:auto !important;
+    margin-right:auto !important;
+    text-align:center !important;
+    align-self:center !important;
+  }
+}
+
+/* 2026-06-29 true mobile search shuffle centering
+   Center by layout: make the mobile search section use the full viewport width,
+   then center the empty shuffle block inside that real full-width parent. */
+@media (max-width:760px){
+  #searchPage{
+    width:100vw !important;
+    max-width:100vw !important;
+    box-sizing:border-box !important;
+    padding-left:0 !important;
+    padding-right:0 !important;
+  }
+
+  #searchPage .library-page{
+    width:100vw !important;
+    max-width:none !important;
+    margin-left:0 !important;
+    margin-right:0 !important;
+    padding-left:18px !important;
+    padding-right:18px !important;
+    box-sizing:border-box !important;
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:center !important;
+  }
+
+  #searchPage .search-shell{
+    width:calc(100vw - 36px) !important;
+    max-width:none !important;
+    margin-left:auto !important;
+    margin-right:auto !important;
+    box-sizing:border-box !important;
+  }
+
+  #searchPage .search-results-section{
+    width:100% !important;
+    max-width:none !important;
+    margin-left:0 !important;
+    margin-right:0 !important;
+    padding-left:0 !important;
+    padding-right:0 !important;
+    box-sizing:border-box !important;
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:center !important;
+    justify-content:flex-start !important;
+  }
+
+  #searchShuffleEmpty.search-shuffle-empty{
+    width:auto !important;
+    max-width:100% !important;
+    margin:34px auto 0 !important;
+    padding:0 !important;
+    display:inline-flex !important;
+    flex-direction:column !important;
+    align-items:center !important;
+    justify-content:center !important;
+    text-align:center !important;
+    align-self:center !important;
+  }
+
+  #searchShuffleEmpty.search-shuffle-empty p,
+  #shufflePlayBtn.shuffle-play-btn{
+    margin-left:auto !important;
+    margin-right:auto !important;
+    align-self:center !important;
+    text-align:center !important;
+  }
+}
