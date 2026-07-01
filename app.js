@@ -2153,6 +2153,29 @@ function saveActiveEpisodeProgress(forceCompleted = false) {
   }
 }
 
+
+function womoIsPlayerCurrentlyOpen() {
+  const overlay = getWomoPlayerOverlay && getWomoPlayerOverlay();
+  return Boolean(overlay && (overlay.classList.contains("open") || document.body.classList.contains("player-open")));
+}
+
+function womoIsRealVideoEnded(video) {
+  if (!video) return false;
+  const duration = Number(video.duration || 0);
+  const current = Number(video.currentTime || 0);
+  const openedAt = Number(window.__womoPlayerOpenedAt || 0);
+  const elapsed = openedAt ? Date.now() - openedAt : 999999;
+
+  // Some HLS/native players can emit a transient ended event shortly after playback starts.
+  // Only treat it as a real ending when the playhead is actually at the end.
+  if (!duration || !Number.isFinite(duration) || duration <= 0) return false;
+  if (!current || !Number.isFinite(current) || current <= 0) return false;
+  if (elapsed < 2500 && current < Math.max(8, duration - 2)) return false;
+
+  const endTolerance = Math.max(2, Math.min(8, duration * 0.015));
+  return current >= duration - endTolerance;
+}
+
 function bindWomoPlayerProgressEvents() {
   const video = getWomoPlayerVideo();
   if (!video || video.dataset.womoProgressBound === "true") return;
@@ -2170,6 +2193,10 @@ function bindWomoPlayerProgressEvents() {
   });
 
   video.addEventListener("ended", () => {
+    if (!womoIsRealVideoEnded(video)) {
+      console.warn("Womo ignoró un ended temprano del video.", { currentTime: video.currentTime, duration: video.duration });
+      return;
+    }
     if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) {
       hideWomoPlayerOverlay();
       refreshCurrentPreviewEpisodes();
@@ -3311,6 +3338,7 @@ function womoDecorateShuffleButtons() {
 })();
 
 function openPlayer(item, options = {}) {
+  window.__womoPlayerOpenedAt = Date.now();
   currentPlayerItem = item;
   currentPlayerEpisode = options?.episode || null;
   if (options && (options.shuffleMode || options.fromShuffle || options.noProgress || options.saveProgress === false)) {
@@ -3416,6 +3444,25 @@ function openPlayer(item, options = {}) {
       if (overlay) overlay.classList.remove('is-video-loading');
       video.play().catch(() => {});
     });
+    currentHls.on(Hls.Events.ERROR, (event, data) => {
+      if (!data || !data.fatal) return;
+      console.warn("Womo HLS fatal error; intentando recuperar sin recargar la página.", data);
+      try {
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          currentHls.startLoad();
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          currentHls.recoverMediaError();
+        } else {
+          currentHls.destroy();
+          currentHls = null;
+          video.src = url;
+          video.load();
+          video.play().catch(() => {});
+        }
+      } catch (error) {
+        console.warn("No se pudo recuperar HLS automáticamente.", error);
+      }
+    });
   } else if (isTsVideoUrl(url)) {
     // Safari can play MPEG-TS directly. Do not fetch/transmux first, because Archive links may fail CORS.
     video.src = url;
@@ -3475,6 +3522,7 @@ function closePlayer() {
   womoClearForcedPlayerVisibleState();
   womoClearTsSeekTimer();
   womoCurrentPlaybackUrl = "";
+  window.__womoPlayerOpenedAt = 0;
   womoTsIsRecovering = false;
   const isShuffleNoProgress = typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback();
   if (!isShuffleNoProgress) {
@@ -3832,6 +3880,13 @@ window.addEventListener("beforeunload", () => {
 
 document.addEventListener("ended", (event) => {
   if (!event.target || event.target.tagName !== "VIDEO") return;
+  const video = event.target;
+  if (womoIsPlayerCurrentlyOpen() && !womoIsRealVideoEnded(video)) {
+    console.warn("Womo bloqueó cierre por ended temprano.", { currentTime: video.currentTime, duration: video.duration });
+    event.stopPropagation();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    return;
+  }
   if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) {
     hideWomoPlayerOverlay();
     refreshCurrentPreviewEpisodes();
@@ -3868,6 +3923,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
 document.addEventListener("ended", (event) => {
   if (!event.target || event.target.tagName !== "VIDEO") return;
+  const video = event.target;
+  if (womoIsPlayerCurrentlyOpen() && !womoIsRealVideoEnded(video)) {
+    console.warn("Womo bloqueó cierre por ended temprano.", { currentTime: video.currentTime, duration: video.duration });
+    event.stopPropagation();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    return;
+  }
   if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) {
     hideWomoPlayerOverlay();
     refreshCurrentPreviewEpisodes();
