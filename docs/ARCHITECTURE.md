@@ -91,3 +91,12 @@ Version `home-genre-sections-v1` keeps playback in `src/core/womo-core.js` uncha
 - The main Películas row remains limited to 10 real titles but repeats visually for an infinite carousel effect.
 
 Playback, HLS, progress, favorites, shuffle, and auto-next should not be modified for visual Home experiments.
+
+
+## Versionado visible
+
+La versión visible de Womo Web aparece al final de Configuración.
+Formato: `L.DDMM.HHMM`, donde `L` es la versión de lanzamiento, `DDMM` es la fecha de actualización y `HHMM` es la hora de actualización.
+Versión inicial visible: `1.0207.1828`.
+
+Cada ZIP nuevo generado para Womo Web debe actualizar este valor cuando incluya cambios en la app.

@@ -164,7 +164,7 @@ function buildContinueItems(fallbackList = []) {
 function refreshContinueRow() {
   const items = allItemsByContinueKey.size ? buildContinueItems([...allItemsByContinueKey.values()]) : [];
   viewAllCollections.continue = items;
-  fillRow("continueRow", items, true, true);
+  fillRow("continueRow", items, true, true, { loop: true });
   if (currentViewAllKey === "continue") renderViewAll();
   setupRowEdgeScroll();
 }
@@ -179,8 +179,26 @@ const HERO_TIMER_DURATION = 7000;
 let heroDragDeltaX = 0;
 let heroIsDragging = false;
 
+function buildDefaultNewItems(allItems) {
+  const sortedByType = type => (allItems || [])
+    .filter(item => item?.type === type)
+    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+
+  const movies = sortedByType("movie");
+  const series = sortedByType("series");
+  const concerts = sortedByType("concert");
+  const ordered = [movies[0], series[0], concerts[0], movies[1], series[1]].filter(Boolean);
+  const used = new Set(ordered.map(item => `${item.type}:${item.id}`));
+  const fillers = [...(allItems || [])]
+    .filter(item => !used.has(`${item.type}:${item.id}`))
+    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+
+  return [...ordered, ...fillers].slice(0, 5);
+}
+
 async function readHomeConfigMain(allByKey) {
-  const fallback = { newItems: [], visibleGenres: [] };
+  const allItems = Array.from(allByKey.values());
+  const fallback = { newItems: buildDefaultNewItems(allItems), visibleGenres: [] };
   try {
     const doc = await db.collection("homeConfig").doc("main").get();
     if (!doc.exists) return fallback;
@@ -189,10 +207,13 @@ async function readHomeConfigMain(allByKey) {
     const sections = data.sections || {};
     const newSection = sections.new || sections.news || sections.hero || {};
     const selectedItems = Array.isArray(newSection.selectedItems) ? newSection.selectedItems : [];
-    const newItems = selectedItems
-      .map(ref => allByKey.get(`${ref.type}:${ref.id}`))
-      .filter(Boolean)
-      .slice(0, Number(newSection.limit || 5));
+    const newMode = newSection.mode || "recent";
+    const newItems = newMode === "manual"
+      ? selectedItems
+          .map(ref => allByKey.get(`${ref.type}:${ref.id}`))
+          .filter(Boolean)
+          .slice(0, 5)
+      : buildDefaultNewItems(allItems);
 
     const rawGenreSections = data.genreSections || data.homeGenres || {};
     const visibleGenres = Object.entries(rawGenreSections)
@@ -562,12 +583,9 @@ function fillRow(id, data, progress = false, hideWhenEmpty = false, options = {}
     ? renderData.map(item => posterCard(item, progress)).join("")
     : `<div class="row-empty">Sin contenido por ahora.</div>`;
 
-  if (shouldLoop) {
-    requestAnimationFrame(() => womoPrepareLoopingRow(row));
-  }
-
   row.querySelectorAll(".poster-card").forEach(card => {
     card.addEventListener("click", () => {
+      if (Number(row.dataset.suppressClickUntil || 0) > Date.now()) return;
       const key = `${card.dataset.type}:${card.dataset.id}`;
       const item = allItemsByContinueKey.get(key);
       if (item) openPreview(item);
@@ -589,10 +607,9 @@ function stopEdgeScroll() {
 }
 
 function womoPrepareLoopingRow(row) {
+  // Do not move the row on page load. Looping must only be felt after
+  // real user interaction, otherwise desktop/mobile can look like autoplay.
   if (!row || row.dataset.loop !== "true") return;
-  const third = row.scrollWidth / 3;
-  if (!third || row.dataset.loopReady === "true") return;
-  row.scrollLeft = third;
   row.dataset.loopReady = "true";
 }
 
@@ -600,11 +617,23 @@ function womoMaintainLoopingRow(row) {
   if (!row || row.dataset.loop !== "true") return;
   const third = row.scrollWidth / 3;
   if (!third) return;
-  if (row.scrollLeft < third * 0.35) {
+
+  const previousBehavior = row.style.scrollBehavior;
+  row.style.scrollBehavior = "auto";
+
+  if (row.scrollLeft < third * 0.15 && row.dataset.loopTouched === "true") {
     row.scrollLeft += third;
-  } else if (row.scrollLeft > third * 1.65) {
+  } else if (row.scrollLeft > third * 1.85) {
     row.scrollLeft -= third;
   }
+
+  row.style.scrollBehavior = previousBehavior;
+}
+
+function womoMarkRowInteraction(row) {
+  if (!row) return;
+  row.dataset.loopTouched = "true";
+  womoPrepareLoopingRow(row);
 }
 
 function runEdgeScroll() {
@@ -613,7 +642,9 @@ function runEdgeScroll() {
     return;
   }
 
-  activeScrollRow.scrollLeft += scrollDirection * 8;
+  womoMarkRowInteraction(activeScrollRow);
+  activeScrollRow.scrollLeft += scrollDirection * 2;
+  womoMaintainLoopingRow(activeScrollRow);
   edgeScrollFrame = requestAnimationFrame(runEdgeScroll);
 }
 
@@ -622,6 +653,47 @@ function setupRowEdgeScroll() {
     if (row.dataset.edgeScrollReady === "true") return;
     row.dataset.edgeScrollReady = "true";
     row.addEventListener("scroll", () => womoMaintainLoopingRow(row));
+
+    let touchDrag = null;
+
+    row.addEventListener("pointerdown", event => {
+      if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+      womoMarkRowInteraction(row);
+      touchDrag = {
+        id: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        scrollLeft: row.scrollLeft,
+        dragging: false
+      };
+      try { row.setPointerCapture(event.pointerId); } catch (error) {}
+    });
+
+    row.addEventListener("pointermove", event => {
+      if (!touchDrag || touchDrag.id !== event.pointerId) return;
+      const dx = event.clientX - touchDrag.startX;
+      const dy = event.clientY - touchDrag.startY;
+
+      if (!touchDrag.dragging && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        touchDrag.dragging = true;
+      }
+
+      if (!touchDrag.dragging) return;
+      event.preventDefault();
+      row.dataset.suppressClickUntil = String(Date.now() + 450);
+      row.scrollLeft = touchDrag.scrollLeft - dx;
+      womoMaintainLoopingRow(row);
+    });
+
+    function endTouchDrag(event) {
+      if (!touchDrag || touchDrag.id !== event.pointerId) return;
+      if (touchDrag.dragging) row.dataset.suppressClickUntil = String(Date.now() + 450);
+      touchDrag = null;
+    }
+
+    row.addEventListener("pointerup", endTouchDrag);
+    row.addEventListener("pointercancel", endTouchDrag);
+
     row.addEventListener("mousemove", event => {
       const rect = row.getBoundingClientRect();
       const edgeSize = 120;
@@ -641,6 +713,7 @@ function setupRowEdgeScroll() {
         return;
       }
 
+      womoMarkRowInteraction(row);
       activeScrollRow = row;
       scrollDirection = nextDirection;
 
@@ -988,7 +1061,7 @@ function clearLocalMemoryState() {
 
   syncFavoriteUI();
   renderFavorites();
-  fillRow("continueRow", [], true, true);
+  fillRow("continueRow", [], true, true, { loop: true });
 
   document.querySelectorAll(".progress span, .episode-progress span").forEach(span => {
     span.style.setProperty("--value", "0%");
@@ -1048,7 +1121,7 @@ async function clearUserMemory() {
     }
 
     // Refresh UI as if this user had never watched anything.
-    fillRow("continueRow", [], true, true);
+    fillRow("continueRow", [], true, true, { loop: true });
     refreshContinueRow();
     renderSearchResults();
     renderFavorites();
@@ -1264,7 +1337,7 @@ async function init() {
   syncFavoriteUI();
   const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : item.type === "concert" ? "concert" : "movie"}:${item.id}`, item]));
   const homeConfig = await readHomeConfigMain(allByKey);
-  heroItems = homeConfig.newItems.length ? homeConfig.newItems : sortedItems.slice(0, 5);
+  heroItems = homeConfig.newItems.length ? homeConfig.newItems : buildDefaultNewItems(sortedItems);
   heroIndex = 0;
 
   const movieItems = movies.filter(item => item.type === "movie");
@@ -1280,7 +1353,7 @@ async function init() {
   };
 
   setHero(0);
-  fillRow("continueRow", continueItems, true, true);
+  fillRow("continueRow", continueItems, true, true, { loop: true });
   fillRow("moviesRow", movieItems, false, true, { loop: true });
   fillRow("seriesRow", publishedSeries, false, true);
   womoBuildHomeGenreSections([...movieItems, ...publishedSeries], homeConfig.visibleGenres);
@@ -2006,7 +2079,7 @@ function refreshContinueWatchingRow() {
       const catalogItem = allItemsByContinueKey.get(`${entry.type}:${entry.id}`);
       return catalogItem ? { ...catalogItem, progress: entry.progress || catalogItem.progress || 0 } : null;
     }).filter(Boolean);
-    fillRow("continueRow", items, true, true);
+    fillRow("continueRow", items, true, true, { loop: true });
   } catch (_) {}
 }
 

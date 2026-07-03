@@ -190,8 +190,8 @@ function getSectionConfig(sectionKey) {
     state.homeConfig.sections[sectionKey] = clone(defaultHomeConfig.sections[sectionKey]);
   }
   const config = state.homeConfig.sections[sectionKey];
-  config.limit = 10;
-  config.selectedItems = Array.isArray(config.selectedItems) ? config.selectedItems.map(normalizeSelectedItem) : [];
+  config.limit = getSectionLimit(sectionKey);
+  config.selectedItems = Array.isArray(config.selectedItems) ? config.selectedItems.map(normalizeSelectedItem).slice(0, getSectionLimit(sectionKey)) : [];
   config.mode = config.mode || "recent";
   return config;
 }
@@ -213,6 +213,20 @@ function sortByPopularity(items) {
   });
 }
 
+function getSectionLimit(sectionKey) {
+  return sectionKey === "new" ? 5 : 10;
+}
+
+function buildNewSectionPreview() {
+  const newestMovies = sortByRecent(state.movies).slice(0, 2);
+  const newestSeries = sortByRecent(state.series).slice(0, 2);
+  const newestConcerts = sortByRecent(state.concerts).slice(0, 1);
+  const ordered = [newestMovies[0], newestSeries[0], newestConcerts[0], newestMovies[1], newestSeries[1]].filter(Boolean);
+  const used = new Set(ordered.map(item => `${item.type}:${item.id}`));
+  const fillers = sortByRecent(getAllContent()).filter(item => !used.has(`${item.type}:${item.id}`));
+  return [...ordered, ...fillers].slice(0, 5);
+}
+
 function getRawContentForSection(sectionKey) {
   if (sectionKey === "movies") return state.movies;
   if (sectionKey === "series") return state.series;
@@ -227,26 +241,28 @@ function getNewSectionKeys() {
 
 function getContentForSection(sectionKey, options = {}) {
   let source = getRawContentForSection(sectionKey);
-  if (!options.ignoreExclusion && sectionKey !== "new") {
-    const newKeys = getNewSectionKeys();
-    source = source.filter(item => !newKeys.has(`${item.type}:${item.id}`));
-  }
   return source;
 }
 
 function getPreviewItems(sectionKey, options = {}) {
   const config = getSectionConfig(sectionKey);
   const source = getContentForSection(sectionKey, options);
+  const limit = getSectionLimit(sectionKey);
+
+  if (sectionKey === "new" && config.mode === "recent") {
+    return buildNewSectionPreview();
+  }
+
   if (config.mode === "manual") {
     const allowedKeys = new Set(source.map(item => `${item.type}:${item.id}`));
     return config.selectedItems
       .filter(ref => allowedKeys.has(refKey(ref)))
       .map(findContentItem)
       .filter(Boolean)
-      .slice(0, 10);
+      .slice(0, limit);
   }
-  if (config.mode === "popular") return sortByPopularity(source).slice(0, 10);
-  return sortByRecent(source).slice(0, 10);
+  if (config.mode === "popular") return sortByPopularity(source).slice(0, limit);
+  return sortByRecent(source).slice(0, limit);
 }
 
 function normalizeMovieFromJson(rawMovie, index = 0) {
@@ -897,16 +913,15 @@ function renderSearchResults(sectionKey) {
 
   const config = getSectionConfig(sectionKey);
   const selectedKeys = new Set(config.selectedItems.map(refKey));
-  const newKeys = sectionKey !== "new" ? getNewSectionKeys() : new Set();
+  const limit = getSectionLimit(sectionKey);
   const source = getContentForSection(sectionKey)
     .filter(item => (item.title || item.id).toLowerCase().includes(query))
     .slice(0, 8);
 
   resultsEl.innerHTML = source.map(item => {
     const key = `${item.type}:${item.id}`;
-    const inNew = newKeys.has(key);
-    const disabled = selectedKeys.has(key) || config.selectedItems.length >= 10 || inNew;
-    const reason = inNew ? "Ya está en Lo nuevo" : selectedKeys.has(key) ? "Ya agregado" : config.selectedItems.length >= 10 ? "Límite 10" : "+";
+    const disabled = selectedKeys.has(key) || config.selectedItems.length >= limit;
+    const reason = selectedKeys.has(key) ? "Ya agregado" : config.selectedItems.length >= limit ? `Límite ${limit}` : "+";
     return `
       <div class="search-result ${disabled ? "is-disabled" : ""}">
         <img src="${item.posterUrl || ""}" alt="" />
@@ -927,10 +942,11 @@ function renderSelectedItems(sectionKey) {
   const config = getSectionConfig(sectionKey);
   const previewItems = getPreviewItems(sectionKey);
   const label = config.mode === "manual" ? "Manual" : config.mode === "popular" ? "Preview por popularidad" : "Preview por recientes";
-  const help = sectionKey !== "new" ? `<div class="selection-note">El contenido que ya está en Lo nuevo se excluye automáticamente de Películas, Series y Conciertos para evitar repetidos.</div>` : "";
+  const limit = getSectionLimit(sectionKey);
+  const help = sectionKey === "new" ? `<div class="selection-note">Lo nuevo muestra 5: película más reciente, serie más reciente, concierto reciente, segunda película y segunda serie. Estos títulos también pueden aparecer en otras secciones.</div>` : "";
 
   selectedEl.innerHTML = `
-    <div class="selected-summary">${label} · ${previewItems.length}/10 elementos</div>
+    <div class="selected-summary">${label} · ${previewItems.length}/${limit} elementos</div>
     ${help}
     ${previewItems.length ? `<div class="selected-list" data-sort-list="${sectionKey}">${previewItems.map((item, index) => `
       <div class="selected-item" ${config.mode === "manual" ? `draggable="true" data-drag-section="${sectionKey}" data-index="${index}" data-id="${item.id}" data-type="${item.type}"` : ""}>
@@ -1030,8 +1046,8 @@ async function saveHome() {
     const config = getSectionConfig(sectionKey);
     cleanSections[sectionKey] = {
       mode: config.mode,
-      limit: 10,
-      selectedItems: getPreviewItems(sectionKey).map(normalizeSelectedItem).slice(0, 10)
+      limit: getSectionLimit(sectionKey),
+      selectedItems: getPreviewItems(sectionKey).map(normalizeSelectedItem).slice(0, getSectionLimit(sectionKey))
     };
   });
 
@@ -1182,11 +1198,8 @@ async function deleteEpisode() {
 function addHomeItem(sectionKey, id, type) {
   const config = getSectionConfig(sectionKey);
   const key = `${type}:${id}`;
-  if (sectionKey !== "new" && getNewSectionKeys().has(key)) {
-    showStatus("Ese contenido ya está en Lo nuevo");
-    return;
-  }
-  if (config.selectedItems.length >= 10) return showStatus("Máximo 10 elementos por sección");
+  const limit = getSectionLimit(sectionKey);
+  if (config.selectedItems.length >= limit) return showStatus(`Máximo ${limit} elementos por sección`);
   const exists = config.selectedItems.some(item => item.id === id && item.type === type);
   if (!exists) config.selectedItems.push({ id, type });
   renderHome();

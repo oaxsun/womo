@@ -9130,3 +9130,28 @@ body.player-open{
     background:#0b0b0b !important;
   }
 }
+
+/* Womo Home carousel interaction fix: no autoplay-looking smooth jump, touch works on iPad/tablet */
+.poster-row{
+  scroll-behavior:auto !important;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:contain;
+  touch-action:pan-x pan-y;
+}
+.poster-row.is-touch-dragging,
+.poster-row.is-touch-dragging .poster-card{
+  cursor:grabbing !important;
+}
+
+
+/* App version label in Settings */
+.app-version-note{
+  margin: 18px auto 0;
+  padding: 10px 0 4px;
+  font-size: 12px;
+  line-height: 1.2;
+  letter-spacing: .04em;
+  color: rgba(255,255,255,.34);
+  text-align: center;
+  user-select: none;
+}
