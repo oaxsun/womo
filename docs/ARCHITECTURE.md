@@ -97,6 +97,6 @@ Playback, HLS, progress, favorites, shuffle, and auto-next should not be modifie
 
 La versión visible de Womo Web aparece al final de Configuración.
 Formato: `L.DDMM.HHMM`, donde `L` es la versión de lanzamiento, `DDMM` es la fecha de actualización y `HHMM` es la hora de actualización.
-Versión inicial visible: `1.0207.1828`.
+Versión inicial visible: `1.0207.1828`. Versión actual de este paquete: `1.0207.1853`.
 
 Cada ZIP nuevo generado para Womo Web debe actualizar este valor cuando incluya cambios en la app.

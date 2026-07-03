@@ -642,6 +642,22 @@ function hideContinueViewAllButtons() {
   });
 }
 
+function womoIsTouchCarouselDevice() {
+  const hasTouch = Boolean(
+    (navigator && Number(navigator.maxTouchPoints || 0) > 0) ||
+    (typeof window !== "undefined" && "ontouchstart" in window)
+  );
+
+  const isNarrow = Boolean(window.matchMedia && window.matchMedia("(max-width: 768px)").matches);
+  const isTabletTouch = Boolean(hasTouch && window.matchMedia && window.matchMedia("(max-width: 1180px)").matches);
+  const coarsePointer = Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+  const noHover = Boolean(window.matchMedia && window.matchMedia("(hover: none)").matches);
+
+  // Mobile/tablet must use native horizontal scrolling. Loop cloning can feel
+  // sticky on touch devices and was especially noticeable in Películas.
+  return Boolean(isNarrow || isTabletTouch || coarsePointer || noHover);
+}
+
 function fillRow(id, data, progress = false, hideWhenEmpty = false, options = {}) {
   const rowLimit = 10;
   updateViewAllButtonsVisibility(id, Array.isArray(data) ? data.length : 0);
@@ -654,11 +670,15 @@ function fillRow(id, data, progress = false, hideWhenEmpty = false, options = {}
   }
 
   const visibleData = Array.isArray(data) ? data.slice(0, rowLimit) : [];
-  const shouldLoop = Boolean(options.loop) && visibleData.length > 1;
+  const allowLoop = !womoIsTouchCarouselDevice();
+  // Desktop loop rule: every Home carousel with more than 6 real titles loops.
+  // Touch/mobile keeps native horizontal scroll to avoid jank.
+  const shouldLoop = options.loop !== false && allowLoop && visibleData.length > 6;
   const renderData = shouldLoop ? [...visibleData, ...visibleData, ...visibleData] : visibleData;
 
   row.dataset.loop = shouldLoop ? "true" : "false";
   row.dataset.loopReady = "false";
+  row.dataset.loopDisabledForTouch = !allowLoop ? "true" : "false";
   row.innerHTML = renderData.length
     ? renderData.map(item => posterCard(item, progress)).join("")
     : `<div class="row-empty">Sin contenido por ahora.</div>`;
@@ -729,16 +749,19 @@ function runEdgeScroll() {
 }
 
 function setupRowEdgeScroll() {
+  const touchCarouselDevice = womoIsTouchCarouselDevice();
   document.querySelectorAll(".poster-row").forEach(row => {
     if (row.dataset.edgeScrollReady === "true") return;
     row.dataset.edgeScrollReady = "true";
-    row.addEventListener("scroll", () => womoMaintainLoopingRow(row));
+    row.addEventListener("scroll", () => {
+      if (!touchCarouselDevice) womoMaintainLoopingRow(row);
+    });
 
     let touchDrag = null;
 
     row.addEventListener("pointerdown", event => {
       if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
-      womoMarkRowInteraction(row);
+      if (!touchCarouselDevice) womoMarkRowInteraction(row);
       touchDrag = {
         id: event.pointerId,
         startX: event.clientX,
@@ -774,37 +797,39 @@ function setupRowEdgeScroll() {
     row.addEventListener("pointerup", endTouchDrag);
     row.addEventListener("pointercancel", endTouchDrag);
 
-    row.addEventListener("mousemove", event => {
-      const rect = row.getBoundingClientRect();
-      const edgeSize = 120;
-      const x = event.clientX - rect.left;
-      const maxScroll = row.scrollWidth - row.clientWidth;
+    if (!touchCarouselDevice) {
+      row.addEventListener("mousemove", event => {
+        const rect = row.getBoundingClientRect();
+        const edgeSize = 120;
+        const x = event.clientX - rect.left;
+        const maxScroll = row.scrollWidth - row.clientWidth;
 
-      let nextDirection = 0;
+        let nextDirection = 0;
 
-      if (x > rect.width - edgeSize && row.scrollLeft < maxScroll - 2) {
-        nextDirection = 1;
-      } else if (x < edgeSize && row.scrollLeft > 2) {
-        nextDirection = -1;
-      }
+        if (x > rect.width - edgeSize && row.scrollLeft < maxScroll - 2) {
+          nextDirection = 1;
+        } else if (x < edgeSize && row.scrollLeft > 2) {
+          nextDirection = -1;
+        }
 
-      if (nextDirection === 0) {
+        if (nextDirection === 0) {
+          if (activeScrollRow === row) stopEdgeScroll();
+          return;
+        }
+
+        womoMarkRowInteraction(row);
+        activeScrollRow = row;
+        scrollDirection = nextDirection;
+
+        if (!edgeScrollFrame) {
+          edgeScrollFrame = requestAnimationFrame(runEdgeScroll);
+        }
+      });
+
+      row.addEventListener("mouseleave", () => {
         if (activeScrollRow === row) stopEdgeScroll();
-        return;
-      }
-
-      womoMarkRowInteraction(row);
-      activeScrollRow = row;
-      scrollDirection = nextDirection;
-
-      if (!edgeScrollFrame) {
-        edgeScrollFrame = requestAnimationFrame(runEdgeScroll);
-      }
-    });
-
-    row.addEventListener("mouseleave", () => {
-      if (activeScrollRow === row) stopEdgeScroll();
-    });
+      });
+    }
   });
 }
 
