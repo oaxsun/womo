@@ -118,6 +118,30 @@ function saveContinueState(items) {
   localStorage.setItem(CONTINUE_KEY, JSON.stringify(items.slice(0, 30)));
 }
 
+let womoLastContinueCloudSaveAt = 0;
+let womoContinueRefreshPending = false;
+let womoLastPlaybackUiSyncAt = 0;
+
+function womoShouldDeferPlaybackUiWork() {
+  return typeof womoIsPlayerCurrentlyOpen === "function" && womoIsPlayerCurrentlyOpen();
+}
+
+function womoRequestContinueRefresh() {
+  if (womoShouldDeferPlaybackUiWork()) {
+    womoContinueRefreshPending = true;
+    return;
+  }
+  refreshContinueRow();
+}
+
+function womoFlushDeferredPlaybackUiWork() {
+  if (!womoContinueRefreshPending) return;
+  womoContinueRefreshPending = false;
+  try { refreshContinueRow(); } catch (_) {}
+  try { refreshContinueWatchingRow(); } catch (_) {}
+  try { refreshCurrentPreviewEpisodes(); } catch (_) {}
+}
+
 function upsertContinueItem(item, progress = null) {
   if (window.__womoShuffleNoProgress || window.womoGlobalShuffleNoProgress) return;
   if (item && (isItemCompleted(item) || Number(progress || item.progress || 0) >= 98)) {
@@ -135,8 +159,13 @@ function upsertContinueItem(item, progress = null) {
   const state = loadContinueState().filter(entry => !(entry.id === item.id && entry.type === item.type));
   state.unshift(newEntry);
   saveContinueState(state);
-  saveContinueEntryToCloud(newEntry);
-  refreshContinueRow();
+  const now = Date.now();
+  const progressNumber = Number(newEntry.progress || 0);
+  if (!womoShouldDeferPlaybackUiWork() || progressNumber >= 98 || now - womoLastContinueCloudSaveAt > 15000) {
+    womoLastContinueCloudSaveAt = now;
+    saveContinueEntryToCloud(newEntry);
+  }
+  womoRequestContinueRefresh();
   try {
     if (currentPlayerItem?.type === "series" && currentPlayerEpisode && currentPreviewItem?.id === currentPlayerItem.id) {
       setSeriesPreviewButtonForEpisode(currentPlayerEpisode);
@@ -2414,8 +2443,12 @@ function saveActiveEpisodeProgress(forceCompleted = false) {
         ? getEpisodeAfter(currentPlayerItem.id, currentPlayerEpisode)
         : getFirstUnfinishedEpisode();
 
-      refreshCurrentPreviewEpisodes();
-      setSeriesPreviewButtonForEpisode(nextEpisode);
+      if (forceCompleted || !womoShouldDeferPlaybackUiWork()) {
+        refreshCurrentPreviewEpisodes();
+        setSeriesPreviewButtonForEpisode(nextEpisode);
+      } else {
+        womoContinueRefreshPending = true;
+      }
 
       return;
     }
@@ -2430,8 +2463,12 @@ function saveActiveEpisodeProgress(forceCompleted = false) {
     currentPlayerItem.completed = false;
     currentPlayerItem.progress = progress;
     upsertContinueItem(currentPlayerItem, progress);
-    refreshContinueWatchingRow();
-    setMovieConcertPreviewPlayableState(currentPlayerItem);
+    if (forceCompleted || !womoShouldDeferPlaybackUiWork()) {
+      refreshContinueWatchingRow();
+      setMovieConcertPreviewPlayableState(currentPlayerItem);
+    } else {
+      womoContinueRefreshPending = true;
+    }
   } catch (error) {
     console.warn("No se pudo guardar el progreso.", error);
   }
@@ -3836,6 +3873,7 @@ function closePlayer() {
   currentPlayerContext = null;
 
   refreshContinueRow();
+  womoFlushDeferredPlaybackUiWork();
 }
 
 function setupPlayerControls() {
@@ -4177,19 +4215,11 @@ document.addEventListener("ended", (event) => {
   if (!event.target || event.target.tagName !== "VIDEO") return;
   const video = event.target;
   if (womoIsPlayerCurrentlyOpen() && !womoIsRealVideoEnded(video)) {
-    console.warn("Womo bloqueó cierre por ended temprano.", { currentTime: video.currentTime, duration: video.duration });
+    console.warn("Womo bloqueó un ended temprano de iOS/Safari.", { currentTime: video.currentTime, duration: video.duration });
     event.stopPropagation();
     if (event.stopImmediatePropagation) event.stopImmediatePropagation();
     return;
   }
-  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) {
-    hideWomoPlayerOverlay();
-    refreshCurrentPreviewEpisodes();
-    return;
-  }
-  saveActiveEpisodeProgress(true);
-  hideWomoPlayerOverlay();
-  refreshCurrentPreviewEpisodes();
 }, true);
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -4220,19 +4250,11 @@ document.addEventListener("ended", (event) => {
   if (!event.target || event.target.tagName !== "VIDEO") return;
   const video = event.target;
   if (womoIsPlayerCurrentlyOpen() && !womoIsRealVideoEnded(video)) {
-    console.warn("Womo bloqueó cierre por ended temprano.", { currentTime: video.currentTime, duration: video.duration });
+    console.warn("Womo bloqueó un ended temprano de iOS/Safari.", { currentTime: video.currentTime, duration: video.duration });
     event.stopPropagation();
     if (event.stopImmediatePropagation) event.stopImmediatePropagation();
     return;
   }
-  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) {
-    hideWomoPlayerOverlay();
-    refreshCurrentPreviewEpisodes();
-    return;
-  }
-  saveActiveEpisodeProgress(true);
-  hideWomoPlayerOverlay();
-  refreshCurrentPreviewEpisodes();
 }, true);
 
 document.addEventListener("DOMContentLoaded", () => {

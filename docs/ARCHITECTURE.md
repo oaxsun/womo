@@ -97,7 +97,7 @@ Playback, HLS, progress, favorites, shuffle, and auto-next should not be modifie
 
 La versión visible de Womo Web aparece al final de Configuración.
 Formato: `L.DDMM.HHMM`, donde `L` es la versión de lanzamiento, `DDMM` es la fecha de actualización y `HHMM` es la hora de actualización.
-Versión inicial visible: `1.0207.1828`. Versión actual de este paquete: `1.0207.1910`.
+Versión inicial visible: `1.0207.1828`. Versión actual de este paquete: `1.0207.1918`.
 
 Cada ZIP nuevo generado para Womo Web debe actualizar este valor cuando incluya cambios en la app.
 
@@ -107,6 +107,14 @@ Cada ZIP nuevo generado para Womo Web debe actualizar este valor cuando incluya 
 El orden de Películas, Series, Conciertos y géneros dinámicos se controla desde el Admin arrastrando bloques. El Admin guarda ese orden como valores numéricos internos en `homeConfig/main`, pero el usuario ya no necesita escribir números manualmente.
 
 
-## Cambio Admin 1.0207.1910
+## Cambio Admin 1.0207.1918
 
 Bloque duplicado de géneros en Admin eliminado. La activación y orden de Películas, Series, Conciertos y géneros dinámicos queda centralizada en `Orden de Home / Secciones dinámicas`.
+
+
+## Cambio iOS Playback Stability 1.0207.1918
+
+- Se redujo trabajo de DOM durante reproduccion activa en iPhone/iPad.
+- El progreso se sigue guardando, pero el refresco de Continuar viendo, episodios y botones se difiere hasta cerrar o terminar el player.
+- Los eventos `ended` tempranos de Safari/iOS ya no ejecutan cierres globales duplicados.
+- Se mantiene intacta la logica de reproduccion, HLS, favoritos, shuffle y auto-next.
