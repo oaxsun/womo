@@ -567,3 +567,30 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
   font-size: 12px;
   font-style: normal;
 }
+
+/* Home dynamic section ordering */
+.section-order-list {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.section-order-control {
+  grid-template-columns: 42px 1fr 72px;
+  grid-template-rows: auto auto;
+}
+
+.section-order-control .section-order-input {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  width: 64px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  text-align: center;
+  font-weight: 700;
+}
+
+.section-order-control .section-order-input:focus {
+  outline: 1px solid rgba(235,255,0,.7);
+}

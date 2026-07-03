@@ -43,13 +43,14 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 
 const HOME_SECTION_KEYS = ["new", "movies", "series", "concerts"];
+const DYNAMIC_HOME_SECTION_KEYS = ["movies", "series", "concerts"];
 
 const defaultHomeConfig = {
   sections: {
     new: { mode: "recent", limit: 10, selectedItems: [] },
-    movies: { mode: "recent", limit: 10, selectedItems: [] },
-    series: { mode: "recent", limit: 10, selectedItems: [] },
-    concerts: { mode: "recent", limit: 10, selectedItems: [] }
+    movies: { mode: "recent", limit: 10, selectedItems: [], visible: true, order: 10 },
+    series: { mode: "recent", limit: 10, selectedItems: [], visible: true, order: 20 },
+    concerts: { mode: "recent", limit: 10, selectedItems: [], visible: true, order: 90 }
   },
   genreSections: {}
 };
@@ -130,7 +131,7 @@ function itemGenres(item) {
 
 function getDetectedHomeGenres() {
   const bySlug = new Map();
-  [...state.movies, ...state.series].forEach(item => {
+  state.movies.forEach(item => {
     itemGenres(item).forEach(name => {
       const slug = genreSlug(name);
       if (!bySlug.has(slug)) bySlug.set(slug, name);
@@ -142,14 +143,47 @@ function getDetectedHomeGenres() {
 function getGenreSectionState(name) {
   if (!state.homeConfig.genreSections) state.homeConfig.genreSections = {};
   const existing = state.homeConfig.genreSections[name];
-  if (existing === true) return { visible: true };
-  if (existing && typeof existing === "object") return { visible: Boolean(existing.visible ?? existing.enabled ?? existing.showInHome) };
-  return { visible: false };
+  if (existing === true) return { visible: true, order: getDefaultGenreOrder(name) };
+  if (existing && typeof existing === "object") {
+    return {
+      visible: Boolean(existing.visible ?? existing.enabled ?? existing.showInHome),
+      order: Number.isFinite(Number(existing.order)) ? Number(existing.order) : getDefaultGenreOrder(name)
+    };
+  }
+  return { visible: false, order: getDefaultGenreOrder(name) };
+}
+
+function getDefaultGenreOrder(name) {
+  const index = getDetectedHomeGenres().findIndex(genre => genreSlug(genre) === genreSlug(name));
+  return 30 + Math.max(index, 0);
 }
 
 function setGenreSectionVisible(name, visible) {
   if (!state.homeConfig.genreSections) state.homeConfig.genreSections = {};
-  state.homeConfig.genreSections[name] = { visible: Boolean(visible) };
+  const current = getGenreSectionState(name);
+  state.homeConfig.genreSections[name] = { ...current, visible: Boolean(visible) };
+}
+
+function setGenreSectionOrder(name, order) {
+  if (!state.homeConfig.genreSections) state.homeConfig.genreSections = {};
+  const current = getGenreSectionState(name);
+  state.homeConfig.genreSections[name] = { ...current, order: Number(order) || getDefaultGenreOrder(name) };
+}
+
+function getDynamicSectionConfig(sectionKey) {
+  const cfg = getSectionConfig(sectionKey);
+  const defaults = defaultHomeConfig.sections[sectionKey] || { visible: true, order: 50 };
+  cfg.visible = cfg.visible !== false;
+  cfg.order = Number.isFinite(Number(cfg.order)) ? Number(cfg.order) : Number(defaults.order || 50);
+  return cfg;
+}
+
+function setDynamicSectionVisible(sectionKey, visible) {
+  getDynamicSectionConfig(sectionKey).visible = Boolean(visible);
+}
+
+function setDynamicSectionOrder(sectionKey, order) {
+  getDynamicSectionConfig(sectionKey).order = Number(order) || Number(defaultHomeConfig.sections[sectionKey]?.order || 50);
 }
 
 function refKey(ref) {
@@ -193,6 +227,10 @@ function getSectionConfig(sectionKey) {
   config.limit = getSectionLimit(sectionKey);
   config.selectedItems = Array.isArray(config.selectedItems) ? config.selectedItems.map(normalizeSelectedItem).slice(0, getSectionLimit(sectionKey)) : [];
   config.mode = config.mode || "recent";
+  if (DYNAMIC_HOME_SECTION_KEYS.includes(sectionKey)) {
+    config.visible = config.visible !== false;
+    config.order = Number.isFinite(Number(config.order)) ? Number(config.order) : Number(defaultHomeConfig.sections[sectionKey]?.order || 50);
+  }
   return config;
 }
 
@@ -866,6 +904,7 @@ function render() {
 }
 
 function renderHome() {
+  renderHomeSectionControls();
   renderGenreToggles();
   HOME_SECTION_KEYS.forEach(sectionKey => {
     const config = getSectionConfig(sectionKey);
@@ -878,6 +917,25 @@ function renderHome() {
   });
 }
 
+
+function renderHomeSectionControls() {
+  const box = $("homeSectionControls");
+  if (!box) return;
+  const labels = { movies: "Películas", series: "Series", concerts: "Conciertos" };
+  box.innerHTML = DYNAMIC_HOME_SECTION_KEYS.map(sectionKey => {
+    const config = getDynamicSectionConfig(sectionKey);
+    return `
+      <label class="genre-toggle section-order-control">
+        <input type="checkbox" data-home-section-visible="${sectionKey}" ${config.visible ? "checked" : ""} />
+        <span class="toggle-ui"></span>
+        <strong>${labels[sectionKey]}</strong>
+        <em>Máximo 10 títulos</em>
+        <input class="section-order-input" type="number" min="1" max="999" step="1" value="${config.order}" data-home-section-order="${sectionKey}" aria-label="Orden ${labels[sectionKey]}" />
+      </label>
+    `;
+  }).join("");
+}
+
 function renderGenreToggles() {
   const box = $("homeGenreToggles");
   if (!box) return;
@@ -888,13 +946,14 @@ function renderGenreToggles() {
   }
   box.innerHTML = genres.map(name => {
     const stateForGenre = getGenreSectionState(name);
-    const count = [...state.movies, ...state.series].filter(item => itemGenres(item).some(g => genreSlug(g) === genreSlug(name))).length;
+    const count = state.movies.filter(item => itemGenres(item).some(g => genreSlug(g) === genreSlug(name))).length;
     return `
-      <label class="genre-toggle">
+      <label class="genre-toggle section-order-control">
         <input type="checkbox" data-home-genre="${name.replace(/"/g, '&quot;')}" ${stateForGenre.visible ? "checked" : ""} />
         <span class="toggle-ui"></span>
         <strong>${name}</strong>
-        <em>${count} títulos</em>
+        <em>${count} películas</em>
+        <input class="section-order-input" type="number" min="1" max="999" step="1" value="${stateForGenre.order}" data-home-genre-order="${name.replace(/"/g, '&quot;')}" aria-label="Orden ${name.replace(/"/g, '&quot;')}" />
       </label>
     `;
   }).join("");
@@ -1049,11 +1108,17 @@ async function saveHome() {
       limit: getSectionLimit(sectionKey),
       selectedItems: getPreviewItems(sectionKey).map(normalizeSelectedItem).slice(0, getSectionLimit(sectionKey))
     };
+    if (DYNAMIC_HOME_SECTION_KEYS.includes(sectionKey)) {
+      const dynamicConfig = getDynamicSectionConfig(sectionKey);
+      cleanSections[sectionKey].visible = dynamicConfig.visible;
+      cleanSections[sectionKey].order = dynamicConfig.order;
+    }
   });
 
   const cleanGenreSections = {};
   getDetectedHomeGenres().forEach(name => {
-    cleanGenreSections[name] = { visible: getGenreSectionState(name).visible };
+    const genreState = getGenreSectionState(name);
+    cleanGenreSections[name] = { visible: genreState.visible, order: genreState.order };
   });
 
   await setDoc(doc(db, "homeConfig", "main"), {
@@ -1298,10 +1363,30 @@ document.querySelectorAll("[data-home-search]").forEach(input => {
 
 
 document.addEventListener("change", (e) => {
+  const sectionVisible = e.target.closest("[data-home-section-visible]");
+  if (sectionVisible) {
+    setDynamicSectionVisible(sectionVisible.dataset.homeSectionVisible, sectionVisible.checked);
+    renderHomeSectionControls();
+    return;
+  }
+
   const genreInput = e.target.closest("[data-home-genre]");
   if (genreInput) {
     setGenreSectionVisible(genreInput.dataset.homeGenre, genreInput.checked);
     renderGenreToggles();
+  }
+});
+
+document.addEventListener("input", (e) => {
+  const sectionOrder = e.target.closest("[data-home-section-order]");
+  if (sectionOrder) {
+    setDynamicSectionOrder(sectionOrder.dataset.homeSectionOrder, sectionOrder.value);
+    return;
+  }
+
+  const genreOrder = e.target.closest("[data-home-genre-order]");
+  if (genreOrder) {
+    setGenreSectionOrder(genreOrder.dataset.homeGenreOrder, genreOrder.value);
   }
 });
 

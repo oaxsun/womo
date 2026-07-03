@@ -9155,3 +9155,9 @@ body.player-open{
   text-align: center;
   user-select: none;
 }
+
+/* Dynamic Home sections */
+.dynamic-home-sections,
+.genre-home-sections {
+  display: contents;
+}

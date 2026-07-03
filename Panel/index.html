@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Admin</title>
-  <link rel="stylesheet" href="/Panel/panel-admin.css?v=27" />
+  <link rel="stylesheet" href="/Panel/panel-admin.css?v=28" />
 </head>
 <body>
   <section id="loginScreen" class="login-screen">
@@ -70,12 +70,20 @@
           </div>
           <button id="saveHomeBtn" class="primary-btn small">Guardar Home</button>
         </div>
-        <p class="helper">Selecciona qué aparece en Lo nuevo, Películas, Series y Conciertos. Lo nuevo muestra 5 títulos; las demás secciones mantienen máximo 10.</p>
+        <p class="helper">Selecciona qué aparece en Lo nuevo y controla qué secciones dinámicas se muestran en Home. Lo nuevo muestra 5 títulos; las demás secciones mantienen máximo 10.</p>
+        <div class="genre-toggle-panel">
+          <div>
+            <p class="eyebrow">Orden de Home</p>
+            <h3>Secciones dinámicas</h3>
+            <p class="helper">Activa o apaga Películas, Series, Conciertos y géneros. Usa el número para ordenar cómo aparecen después de Continuar viendo.</p>
+          </div>
+          <div id="homeSectionControls" class="genre-toggle-list section-order-list"></div>
+        </div>
         <div class="genre-toggle-panel">
           <div>
             <p class="eyebrow">Géneros en Home</p>
-            <h3>Secciones dinámicas</h3>
-            <p class="helper">Los géneros se detectan automáticamente desde Películas y Series. Activa aquí las secciones que quieres mostrar entre Series y Conciertos.</p>
+            <h3>Secciones dinámicas por película</h3>
+            <p class="helper">Los géneros se detectan automáticamente desde Películas. Las series solo aparecen en la sección Series.</p>
           </div>
           <div id="homeGenreToggles" class="genre-toggle-list"></div>
         </div>
@@ -381,6 +389,6 @@
     <div id="analyticsUserBody" class="analytics-detail"></div>
   </dialog>
 
-  <script type="module" src="/Panel/panel-admin.js?v=27"></script>
+  <script type="module" src="/Panel/panel-admin.js?v=28"></script>
 </body>
 </html>

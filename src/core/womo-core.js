@@ -196,9 +196,34 @@ function buildDefaultNewItems(allItems) {
   return [...ordered, ...fillers].slice(0, 5);
 }
 
+const DEFAULT_HOME_SECTION_CONFIG = {
+  movies: { visible: true, order: 10 },
+  series: { visible: true, order: 20 },
+  concerts: { visible: true, order: 90 }
+};
+let dynamicViewAllMeta = {};
+
+function womoSectionVisible(value, fallback = true) {
+  if (value === false) return false;
+  if (value === true) return true;
+  if (value && typeof value === "object") {
+    return Boolean(value.visible ?? value.enabled ?? value.showInHome ?? fallback);
+  }
+  return fallback;
+}
+
+function womoSectionOrder(value, fallback = 50) {
+  if (value && typeof value === "object" && Number.isFinite(Number(value.order))) return Number(value.order);
+  return fallback;
+}
+
 async function readHomeConfigMain(allByKey) {
   const allItems = Array.from(allByKey.values());
-  const fallback = { newItems: buildDefaultNewItems(allItems), visibleGenres: [] };
+  const fallback = {
+    newItems: buildDefaultNewItems(allItems),
+    visibleGenres: [],
+    dynamicSections: cloneHomeDynamicSections(DEFAULT_HOME_SECTION_CONFIG)
+  };
   try {
     const doc = await db.collection("homeConfig").doc("main").get();
     if (!doc.exists) return fallback;
@@ -215,17 +240,33 @@ async function readHomeConfigMain(allByKey) {
           .slice(0, 5)
       : buildDefaultNewItems(allItems);
 
+    const dynamicSections = {};
+    Object.entries(DEFAULT_HOME_SECTION_CONFIG).forEach(([key, defaults]) => {
+      const cfg = sections[key] || {};
+      dynamicSections[key] = {
+        visible: womoSectionVisible(cfg, defaults.visible),
+        order: womoSectionOrder(cfg, defaults.order)
+      };
+    });
+
     const rawGenreSections = data.genreSections || data.homeGenres || {};
     const visibleGenres = Object.entries(rawGenreSections)
-      .filter(([, value]) => value === true || value?.visible === true || value?.enabled === true || value?.showInHome === true)
-      .map(([name]) => String(name || "").trim())
-      .filter(Boolean);
+      .filter(([, value]) => womoSectionVisible(value, false))
+      .map(([name, value]) => ({
+        name: String(name || "").trim(),
+        order: womoSectionOrder(value, 50)
+      }))
+      .filter(entry => entry.name);
 
-    return { newItems, visibleGenres };
+    return { newItems, visibleGenres, dynamicSections };
   } catch (error) {
     console.warn("No se pudo leer homeConfig/main.", error);
     return fallback;
   }
+}
+
+function cloneHomeDynamicSections(value) {
+  return JSON.parse(JSON.stringify(value || {}));
 }
 
 function womoGenreDisplayName(value) {
@@ -252,36 +293,75 @@ function womoGenreList(item) {
 
 function womoBuildHomeGenreSections(items, visibleGenres) {
   const container = document.getElementById("genreHomeSections");
-  if (!container) return;
+  if (!container) return [];
 
-  const allowed = Array.isArray(visibleGenres) ? visibleGenres.map(womoGenreDisplayName).filter(Boolean) : [];
+  const allowed = Array.isArray(visibleGenres) ? visibleGenres : [];
   if (!allowed.length) {
     container.innerHTML = "";
-    return;
+    return [];
   }
 
-  const contentPool = (items || []).filter(item => item && item.poster && item.type !== "concert");
+  const contentPool = (items || []).filter(item => item && item.poster && item.type === "movie");
   const genreEntries = allowed
-    .map(name => {
+    .map(entry => {
+      const name = womoGenreDisplayName(typeof entry === "string" ? entry : entry.name);
+      const order = Number.isFinite(Number(entry?.order)) ? Number(entry.order) : 50;
       const slug = womoGenreSlug(name);
       const list = contentPool
         .filter(item => womoGenreList(item).some(genre => womoGenreSlug(genre) === slug))
-        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
-        .slice(0, 10);
-      return { name, slug, list };
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+      return { name, slug, order, list };
     })
-    .filter(entry => entry.list.length);
+    .filter(entry => entry.name && entry.list.length);
 
   container.innerHTML = genreEntries.map(entry => `
-    <section class="content-row genre-content-row" data-genre-section="${entry.slug}">
+    <section class="content-row genre-content-row" data-home-section-key="genre:${entry.slug}" data-genre-section="${entry.slug}">
       <div class="row-header">
         <h2>${entry.name}</h2>
+        <button type="button" data-view-all="genre-${entry.slug}">Ver más</button>
       </div>
       <div class="poster-row" id="genreRow-${entry.slug}"></div>
     </section>
   `).join("");
 
-  genreEntries.forEach(entry => fillRow(`genreRow-${entry.slug}`, entry.list, false, true));
+  genreEntries.forEach(entry => {
+    const key = `genre-${entry.slug}`;
+    const limited = entry.list.slice(0, 10);
+    viewAllCollections[key] = entry.list;
+    dynamicViewAllMeta[key] = { title: entry.name, eyebrow: "Sección", empty: `No hay títulos en ${entry.name}.` };
+    fillRow(`genreRow-${entry.slug}`, limited, false, true);
+  });
+
+  bindViewAllButtons(container);
+  return genreEntries;
+}
+
+function applyDynamicHomeSectionOrder(homeConfig, genreEntries = []) {
+  const root = document.getElementById("dynamicHomeSections");
+  if (!root) return;
+  const entries = [];
+  const dynamic = homeConfig?.dynamicSections || DEFAULT_HOME_SECTION_CONFIG;
+  const coreMap = {
+    movies: document.getElementById("moviesHomeSection"),
+    series: document.getElementById("seriesHomeSection"),
+    concerts: document.getElementById("concertsHomeSection")
+  };
+
+  Object.entries(coreMap).forEach(([key, el]) => {
+    if (!el) return;
+    const defaults = DEFAULT_HOME_SECTION_CONFIG[key] || { visible: true, order: 50 };
+    const cfg = dynamic[key] || defaults;
+    const visible = womoSectionVisible(cfg, defaults.visible);
+    el.classList.toggle("hidden", !visible);
+    if (visible) entries.push({ el, order: womoSectionOrder(cfg, defaults.order) });
+  });
+
+  genreEntries.forEach(entry => {
+    const el = root.querySelector(`[data-genre-section="${entry.slug}"]`);
+    if (el) entries.push({ el, order: Number(entry.order || 50) });
+  });
+
+  entries.sort((a, b) => a.order - b.order).forEach(entry => root.appendChild(entry.el));
 }
 
 function stopHeroTimer() {
@@ -757,6 +837,7 @@ function normalizeViewAllItems(key) {
 }
 
 function viewAllMeta(key) {
+  if (dynamicViewAllMeta[key]) return dynamicViewAllMeta[key];
   const meta = {
     continue: { title: "Continuar viendo", eyebrow: "Tu actividad", empty: "No tienes contenido en progreso." },
     movies: { title: "Películas", eyebrow: "Catálogo", empty: "No hay películas disponibles por ahora." },
@@ -804,7 +885,6 @@ function renderViewAll() {
 }
 
 function openViewAll(key) {
-  setTimeout(() => womoPrepareViewAllMockupFixed(items), 0);
   currentViewAllKey = key || "all";
   const input = document.getElementById("viewAllSearch");
   const sort = document.getElementById("viewAllSort");
@@ -812,6 +892,7 @@ function openViewAll(key) {
   if (sort) sort.value = "recent";
   changePage("viewAll");
   renderViewAll();
+  try { setTimeout(() => womoPrepareViewAllMockupFixed(normalizeViewAllItems(currentViewAllKey)), 0); } catch (_) {}
   if (window.lucide) lucide.createIcons();
 }
 
@@ -874,14 +955,23 @@ function changePage(page) {
 }
 
 
-function decorateViewAllButtons() {
-  document.querySelectorAll("[data-view-all]").forEach(button => {
+function decorateViewAllButtons(scope = document) {
+  scope.querySelectorAll("[data-view-all]").forEach(button => {
     button.textContent = "Ver más";
   });
 }
 
+function bindViewAllButtons(scope = document) {
+  decorateViewAllButtons(scope);
+  scope.querySelectorAll("[data-view-all]").forEach(button => {
+    if (button.dataset.ready === "true") return;
+    button.dataset.ready = "true";
+    button.addEventListener("click", () => openViewAll(button.dataset.viewAll));
+  });
+}
+
 function setupNavigation() {
-  decorateViewAllButtons();
+  bindViewAllButtons();
   document.querySelectorAll(".nav-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       changePage(btn.dataset.page);
@@ -915,11 +1005,7 @@ function setupNavigation() {
     viewAllBack.addEventListener("click", () => changePage("home"));
   }
 
-  document.querySelectorAll("[data-view-all]").forEach(button => {
-    if (button.dataset.ready === "true") return;
-    button.dataset.ready = "true";
-    button.addEventListener("click", () => openViewAll(button.dataset.viewAll));
-  });
+  bindViewAllButtons();
 
   document.addEventListener("click", event => {
     const favoriteButton = event.target.closest('[data-action="favorite"]');
@@ -1344,6 +1430,7 @@ async function init() {
   const concertItems = concerts;
   const continueItems = buildContinueItems(sortedItems);
 
+  dynamicViewAllMeta = {};
   viewAllCollections = {
     continue: continueItems,
     movies: movieItems,
@@ -1356,8 +1443,9 @@ async function init() {
   fillRow("continueRow", continueItems, true, true, { loop: true });
   fillRow("moviesRow", movieItems, false, true, { loop: true });
   fillRow("seriesRow", publishedSeries, false, true);
-  womoBuildHomeGenreSections([...movieItems, ...publishedSeries], homeConfig.visibleGenres);
+  const genreEntries = womoBuildHomeGenreSections(movieItems, homeConfig.visibleGenres);
   fillRow("concertsRow", concertItems, false, true);
+  applyDynamicHomeSectionOrder(homeConfig, genreEntries);
   womoHideSkeleton();
   setupRowEdgeScroll();
   renderSearchResults();
