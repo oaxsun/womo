@@ -928,20 +928,23 @@ function openAnalyticsUser(uid) {
       <div class="analytics-kpi"><strong>${user.continueWatching.length}</strong><span>En progreso</span></div>
       <div class="analytics-kpi"><strong>${user.completed.length}</strong><span>Finalizados</span></div>
     </div>
-    <div class="analytics-columns analytics-columns-three">
-      <div>
-        <h3>Favoritos</h3>
-        <ul class="analytics-list-plain">${favoriteHtml}</ul>
-      </div>
-      <div>
-        <h3>Historial</h3>
-        <ul class="analytics-history">${historyHtml}</ul>
-      </div>
-      <div>
-        <h3>Continuar viendo</h3>
-        <ul class="analytics-list-plain">${continueHtml}</ul>
-      </div>
+    <div class="analytics-user-tabs" role="tablist" aria-label="Actividad del usuario">
+      <button class="analytics-user-tab active" type="button" data-user-detail-tab="history" role="tab" aria-selected="true">Historial</button>
+      <button class="analytics-user-tab" type="button" data-user-detail-tab="favorites" role="tab" aria-selected="false">Favoritos</button>
+      <button class="analytics-user-tab" type="button" data-user-detail-tab="continue" role="tab" aria-selected="false">Continuar viendo</button>
     </div>
+    <section class="analytics-user-tab-panel active" data-user-detail-panel="history" role="tabpanel">
+      <h3>Historial</h3>
+      <ul class="analytics-history analytics-user-list">${historyHtml}</ul>
+    </section>
+    <section class="analytics-user-tab-panel" data-user-detail-panel="favorites" role="tabpanel">
+      <h3>Favoritos</h3>
+      <ul class="analytics-list-plain analytics-user-list">${favoriteHtml}</ul>
+    </section>
+    <section class="analytics-user-tab-panel" data-user-detail-panel="continue" role="tabpanel">
+      <h3>Continuar viendo</h3>
+      <ul class="analytics-list-plain analytics-user-list">${continueHtml}</ul>
+    </section>
   `;
   $("analyticsUserDialog").showModal();
 }
@@ -1619,6 +1622,21 @@ $("closeAnalyticsTitle")?.addEventListener("click", () => $("analyticsTitleDialo
 $("closeAnalyticsUser")?.addEventListener("click", () => $("analyticsUserDialog")?.close());
 
 document.addEventListener("click", async (e) => {
+  const detailTab = e.target.closest("[data-user-detail-tab]");
+  if (detailTab) {
+    const tabName = detailTab.dataset.userDetailTab;
+    const body = $("analyticsUserBody");
+    body?.querySelectorAll("[data-user-detail-tab]").forEach(btn => {
+      const isActive = btn.dataset.userDetailTab === tabName;
+      btn.classList.toggle("active", isActive);
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    body?.querySelectorAll("[data-user-detail-panel]").forEach(panel => {
+      panel.classList.toggle("active", panel.dataset.userDetailPanel === tabName);
+    });
+    return;
+  }
+
   const addBtn = e.target.closest("[data-add-home]");
   if (addBtn) return addHomeItem(addBtn.dataset.addHome, addBtn.dataset.id, addBtn.dataset.type);
 

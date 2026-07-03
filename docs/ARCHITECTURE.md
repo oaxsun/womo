@@ -97,7 +97,7 @@ Playback, HLS, progress, favorites, shuffle, and auto-next should not be modifie
 
 La versión visible de Womo Web aparece al final de Configuración.
 Formato: `L.DDMM.HHMM`, donde `L` es la versión de lanzamiento, `DDMM` es la fecha de actualización y `HHMM` es la hora de actualización.
-Versión inicial visible: `1.0207.1828`. Versión actual de este paquete: `1.0207.1918`.
+Versión inicial visible: `1.0207.1828`. Versión actual de este paquete: `1.0207.1933`.
 
 Cada ZIP nuevo generado para Womo Web debe actualizar este valor cuando incluya cambios en la app.
 
@@ -118,3 +118,8 @@ Bloque duplicado de géneros en Admin eliminado. La activación y orden de Pelí
 - El progreso se sigue guardando, pero el refresco de Continuar viendo, episodios y botones se difiere hasta cerrar o terminar el player.
 - Los eventos `ended` tempranos de Safari/iOS ya no ejecutan cierres globales duplicados.
 - Se mantiene intacta la logica de reproduccion, HLS, favoritos, shuffle y auto-next.
+
+
+## Cambio Admin User Tabs 1.0207.1933
+- El detalle de usuario en Analytics ahora usa tabs para separar Historial, Favoritos y Continuar viendo.
+- La lectura de datos se mantiene igual; solo cambia la presentación para evitar listas amontonadas.
