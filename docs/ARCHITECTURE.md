@@ -97,7 +97,7 @@ Playback, HLS, progress, favorites, shuffle, and auto-next should not be modifie
 
 La versión visible de Womo Web aparece al final de Configuración.
 Formato: `L.DDMM.HHMM`, donde `L` es la versión de lanzamiento, `DDMM` es la fecha de actualización y `HHMM` es la hora de actualización.
-Versión inicial visible: `1.0207.1828`. Versión actual de este paquete: `1.0207.1858`.
+Versión inicial visible: `1.0207.1828`. Versión actual de este paquete: `1.0207.1910`.
 
 Cada ZIP nuevo generado para Womo Web debe actualizar este valor cuando incluya cambios en la app.
 
@@ -105,3 +105,8 @@ Cada ZIP nuevo generado para Womo Web debe actualizar este valor cuando incluya 
 ## Orden visual de Home en Admin
 
 El orden de Películas, Series, Conciertos y géneros dinámicos se controla desde el Admin arrastrando bloques. El Admin guarda ese orden como valores numéricos internos en `homeConfig/main`, pero el usuario ya no necesita escribir números manualmente.
+
+
+## Cambio Admin 1.0207.1910
+
+Bloque duplicado de géneros en Admin eliminado. La activación y orden de Películas, Series, Conciertos y géneros dinámicos queda centralizada en `Orden de Home / Secciones dinámicas`.
