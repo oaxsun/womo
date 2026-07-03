@@ -918,22 +918,87 @@ function renderHome() {
 }
 
 
+function getSortableHomeSectionEntries() {
+  const labels = { movies: "Películas", series: "Series", concerts: "Conciertos" };
+  const baseSections = DYNAMIC_HOME_SECTION_KEYS.map(sectionKey => {
+    const config = getDynamicSectionConfig(sectionKey);
+    return {
+      id: `section:${sectionKey}`,
+      type: "section",
+      key: sectionKey,
+      title: labels[sectionKey],
+      subtitle: "Máximo 10 títulos",
+      visible: config.visible,
+      order: config.order
+    };
+  });
+
+  const genreSections = getDetectedHomeGenres().map(name => {
+    const genreState = getGenreSectionState(name);
+    const count = state.movies.filter(item => itemGenres(item).some(g => genreSlug(g) === genreSlug(name))).length;
+    return {
+      id: `genre:${genreSlug(name)}`,
+      type: "genre",
+      key: name,
+      title: name,
+      subtitle: `${count} película${count === 1 ? "" : "s"}`,
+      visible: genreState.visible,
+      order: genreState.order
+    };
+  });
+
+  return [...baseSections, ...genreSections].sort((a, b) => {
+    const byOrder = Number(a.order || 999) - Number(b.order || 999);
+    if (byOrder) return byOrder;
+    return a.title.localeCompare(b.title, "es");
+  });
+}
+
 function renderHomeSectionControls() {
   const box = $("homeSectionControls");
   if (!box) return;
-  const labels = { movies: "Películas", series: "Series", concerts: "Conciertos" };
-  box.innerHTML = DYNAMIC_HOME_SECTION_KEYS.map(sectionKey => {
-    const config = getDynamicSectionConfig(sectionKey);
-    return `
-      <label class="genre-toggle section-order-control">
-        <input type="checkbox" data-home-section-visible="${sectionKey}" ${config.visible ? "checked" : ""} />
+  const entries = getSortableHomeSectionEntries();
+  if (!entries.length) {
+    box.innerHTML = `<p class="helper">Todavía no hay secciones dinámicas detectadas.</p>`;
+    return;
+  }
+  box.innerHTML = entries.map(entry => `
+    <div class="home-order-card ${entry.visible ? "is-visible" : "is-hidden"}" draggable="true" data-home-order-card="${entry.id}" data-home-order-type="${entry.type}" data-home-order-key="${String(entry.key).replace(/"/g, '&quot;')}">
+      <span class="drag-handle" aria-hidden="true">☰</span>
+      <label class="mini-toggle" title="Mostrar en Home">
+        <input type="checkbox" ${entry.type === "section" ? `data-home-section-visible="${entry.key}"` : `data-home-genre="${String(entry.key).replace(/"/g, '&quot;')}"`} ${entry.visible ? "checked" : ""} />
         <span class="toggle-ui"></span>
-        <strong>${labels[sectionKey]}</strong>
-        <em>Máximo 10 títulos</em>
-        <input class="section-order-input" type="number" min="1" max="999" step="1" value="${config.order}" data-home-section-order="${sectionKey}" aria-label="Orden ${labels[sectionKey]}" />
       </label>
-    `;
-  }).join("");
+      <div class="home-order-copy">
+        <strong>${entry.title}</strong>
+        <em>${entry.subtitle}</em>
+      </div>
+    </div>
+  `).join("");
+}
+
+function applyHomeSectionDragOrder() {
+  const cards = Array.from(document.querySelectorAll("[data-home-order-card]"));
+  cards.forEach((card, index) => {
+    const order = (index + 1) * 10;
+    if (card.dataset.homeOrderType === "section") {
+      setDynamicSectionOrder(card.dataset.homeOrderKey, order);
+    } else if (card.dataset.homeOrderType === "genre") {
+      setGenreSectionOrder(card.dataset.homeOrderKey, order);
+    }
+  });
+}
+
+function getDragAfterElement(container, y) {
+  const draggableElements = [...container.querySelectorAll("[data-home-order-card]:not(.dragging)")];
+  return draggableElements.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) {
+      return { offset, element: child };
+    }
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
 function renderGenreToggles() {
@@ -948,12 +1013,11 @@ function renderGenreToggles() {
     const stateForGenre = getGenreSectionState(name);
     const count = state.movies.filter(item => itemGenres(item).some(g => genreSlug(g) === genreSlug(name))).length;
     return `
-      <label class="genre-toggle section-order-control">
+      <label class="genre-toggle">
         <input type="checkbox" data-home-genre="${name.replace(/"/g, '&quot;')}" ${stateForGenre.visible ? "checked" : ""} />
         <span class="toggle-ui"></span>
         <strong>${name}</strong>
-        <em>${count} películas</em>
-        <input class="section-order-input" type="number" min="1" max="999" step="1" value="${stateForGenre.order}" data-home-genre-order="${name.replace(/"/g, '&quot;')}" aria-label="Orden ${name.replace(/"/g, '&quot;')}" />
+        <em>${count} película${count === 1 ? "" : "s"}</em>
       </label>
     `;
   }).join("");
@@ -1373,6 +1437,7 @@ document.addEventListener("change", (e) => {
   const genreInput = e.target.closest("[data-home-genre]");
   if (genreInput) {
     setGenreSectionVisible(genreInput.dataset.homeGenre, genreInput.checked);
+    renderHomeSectionControls();
     renderGenreToggles();
   }
 });
@@ -1388,6 +1453,43 @@ document.addEventListener("input", (e) => {
   if (genreOrder) {
     setGenreSectionOrder(genreOrder.dataset.homeGenreOrder, genreOrder.value);
   }
+});
+
+document.addEventListener("dragstart", (e) => {
+  const card = e.target.closest("[data-home-order-card]");
+  if (!card) return;
+  card.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", card.dataset.homeOrderCard || "");
+});
+
+document.addEventListener("dragover", (e) => {
+  const list = e.target.closest("#homeSectionControls");
+  if (!list) return;
+  e.preventDefault();
+  const dragging = list.querySelector(".dragging");
+  if (!dragging) return;
+  const afterElement = getDragAfterElement(list, e.clientY);
+  if (!afterElement) {
+    list.appendChild(dragging);
+  } else {
+    list.insertBefore(dragging, afterElement);
+  }
+});
+
+document.addEventListener("drop", (e) => {
+  const list = e.target.closest("#homeSectionControls");
+  if (!list) return;
+  e.preventDefault();
+  applyHomeSectionDragOrder();
+});
+
+document.addEventListener("dragend", (e) => {
+  const card = e.target.closest("[data-home-order-card]");
+  if (!card) return;
+  card.classList.remove("dragging");
+  applyHomeSectionDragOrder();
+  renderHomeSectionControls();
 });
 
 document.addEventListener("click", async (e) => {

@@ -594,3 +594,106 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
 .section-order-control .section-order-input:focus {
   outline: 1px solid rgba(235,255,0,.7);
 }
+
+/* Drag ordering for Home dynamic sections */
+.section-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.home-order-card {
+  display: grid;
+  grid-template-columns: 34px 46px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 16px;
+  background: rgba(0,0,0,.24);
+  cursor: grab;
+  user-select: none;
+}
+
+.home-order-card:active {
+  cursor: grabbing;
+}
+
+.home-order-card.dragging {
+  opacity: .5;
+  border-color: rgba(235,255,0,.65);
+}
+
+.home-order-card.is-hidden .home-order-copy {
+  opacity: .48;
+}
+
+.drag-handle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  color: rgba(255,255,255,.55);
+  background: rgba(255,255,255,.06);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.mini-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.mini-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mini-toggle .toggle-ui {
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.18);
+  position: relative;
+  transition: background .2s ease;
+}
+
+.mini-toggle .toggle-ui::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  top: 3px;
+  left: 3px;
+  background: #fff;
+  transition: transform .2s ease;
+}
+
+.mini-toggle input:checked + .toggle-ui {
+  background: #EBFF00;
+}
+
+.mini-toggle input:checked + .toggle-ui::after {
+  transform: translateX(16px);
+  background: #101010;
+}
+
+.home-order-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.home-order-copy strong {
+  font-size: 14px;
+}
+
+.home-order-copy em {
+  color: rgba(255,255,255,.58);
+  font-size: 12px;
+  font-style: normal;
+}
