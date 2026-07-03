@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Admin</title>
-  <link rel="stylesheet" href="/Panel/panel-admin.css?v=24" />
+  <link rel="stylesheet" href="/Panel/panel-admin.css?v=25" />
 </head>
 <body>
   <section id="loginScreen" class="login-screen">
@@ -71,6 +71,14 @@
           <button id="saveHomeBtn" class="primary-btn small">Guardar Home</button>
         </div>
         <p class="helper">Selecciona qué aparece en Lo nuevo, Películas, Series y Conciertos. Cada sección está limitada a 10 elementos.</p>
+        <div class="genre-toggle-panel">
+          <div>
+            <p class="eyebrow">Géneros en Home</p>
+            <h3>Secciones dinámicas</h3>
+            <p class="helper">Los géneros se detectan automáticamente desde Películas y Series. Activa solo los que quieres mostrar entre Series y Conciertos.</p>
+          </div>
+          <div id="homeGenreToggles" class="genre-toggle-list"></div>
+        </div>
         <div class="home-sections">
           <article class="home-config">
             <div class="home-config-head">
@@ -373,6 +381,6 @@
     <div id="analyticsUserBody" class="analytics-detail"></div>
   </dialog>
 
-  <script type="module" src="/Panel/panel-admin.js?v=24"></script>
+  <script type="module" src="/Panel/panel-admin.js?v=25"></script>
 </body>
 </html>

@@ -486,3 +486,79 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
   justify-content:flex-end;
 }
 
+
+/* Home genre toggles */
+.genre-toggle-panel {
+  margin: 18px 0 24px;
+  padding: 18px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 22px;
+  background: rgba(255,255,255,.035);
+}
+
+.genre-toggle-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.genre-toggle {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px;
+  background: rgba(0,0,0,.22);
+  cursor: pointer;
+}
+
+.genre-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.genre-toggle .toggle-ui {
+  grid-row: 1 / span 2;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.18);
+  position: relative;
+  transition: background .2s ease;
+}
+
+.genre-toggle .toggle-ui::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  top: 3px;
+  left: 3px;
+  background: #fff;
+  transition: transform .2s ease;
+}
+
+.genre-toggle input:checked + .toggle-ui {
+  background: #EBFF00;
+}
+
+.genre-toggle input:checked + .toggle-ui::after {
+  transform: translateX(16px);
+  background: #101010;
+}
+
+.genre-toggle strong {
+  font-size: 14px;
+}
+
+.genre-toggle em {
+  color: rgba(255,255,255,.58);
+  font-size: 12px;
+  font-style: normal;
+}

@@ -50,7 +50,8 @@ const defaultHomeConfig = {
     movies: { mode: "recent", limit: 10, selectedItems: [] },
     series: { mode: "recent", limit: 10, selectedItems: [] },
     concerts: { mode: "recent", limit: 10, selectedItems: [] }
-  }
+  },
+  genreSections: {}
 };
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -107,6 +108,48 @@ function formatGenresForInput(value) {
 
 function getAllContent() {
   return [...state.movies, ...state.series, ...state.concerts];
+}
+
+function genreDisplayName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function genreSlug(value) {
+  return genreDisplayName(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "") || "genre";
+}
+
+function itemGenres(item) {
+  const raw = Array.isArray(item?.genres) ? item.genres : splitGenres(item?.genre || item?.genres || "");
+  return raw.map(genreDisplayName).filter(Boolean);
+}
+
+function getDetectedHomeGenres() {
+  const bySlug = new Map();
+  [...state.movies, ...state.series].forEach(item => {
+    itemGenres(item).forEach(name => {
+      const slug = genreSlug(name);
+      if (!bySlug.has(slug)) bySlug.set(slug, name);
+    });
+  });
+  return Array.from(bySlug.values()).sort((a, b) => a.localeCompare(b, "es"));
+}
+
+function getGenreSectionState(name) {
+  if (!state.homeConfig.genreSections) state.homeConfig.genreSections = {};
+  const existing = state.homeConfig.genreSections[name];
+  if (existing === true) return { visible: true };
+  if (existing && typeof existing === "object") return { visible: Boolean(existing.visible ?? existing.enabled ?? existing.showInHome) };
+  return { visible: false };
+}
+
+function setGenreSectionVisible(name, visible) {
+  if (!state.homeConfig.genreSections) state.homeConfig.genreSections = {};
+  state.homeConfig.genreSections[name] = { visible: Boolean(visible) };
 }
 
 function refKey(ref) {
@@ -763,6 +806,10 @@ async function loadAll() {
       sections: {
         ...clone(defaultHomeConfig.sections),
         ...(homeSnap.data().sections || {})
+      },
+      genreSections: {
+        ...clone(defaultHomeConfig.genreSections),
+        ...(homeSnap.data().genreSections || homeSnap.data().homeGenres || {})
       }
     };
   } else {
@@ -803,6 +850,7 @@ function render() {
 }
 
 function renderHome() {
+  renderGenreToggles();
   HOME_SECTION_KEYS.forEach(sectionKey => {
     const config = getSectionConfig(sectionKey);
     const modeSelect = document.querySelector(`[data-home-mode="${sectionKey}"]`);
@@ -812,6 +860,28 @@ function renderHome() {
     renderSearchResults(sectionKey);
     renderSelectedItems(sectionKey);
   });
+}
+
+function renderGenreToggles() {
+  const box = $("homeGenreToggles");
+  if (!box) return;
+  const genres = getDetectedHomeGenres();
+  if (!genres.length) {
+    box.innerHTML = `<p class="helper">Todavía no hay géneros detectados en Películas o Series.</p>`;
+    return;
+  }
+  box.innerHTML = genres.map(name => {
+    const stateForGenre = getGenreSectionState(name);
+    const count = [...state.movies, ...state.series].filter(item => itemGenres(item).some(g => genreSlug(g) === genreSlug(name))).length;
+    return `
+      <label class="genre-toggle">
+        <input type="checkbox" data-home-genre="${name.replace(/"/g, '&quot;')}" ${stateForGenre.visible ? "checked" : ""} />
+        <span class="toggle-ui"></span>
+        <strong>${name}</strong>
+        <em>${count} títulos</em>
+      </label>
+    `;
+  }).join("");
 }
 
 function renderSearchResults(sectionKey) {
@@ -965,8 +1035,14 @@ async function saveHome() {
     };
   });
 
+  const cleanGenreSections = {};
+  getDetectedHomeGenres().forEach(name => {
+    cleanGenreSections[name] = { visible: getGenreSectionState(name).visible };
+  });
+
   await setDoc(doc(db, "homeConfig", "main"), {
     sections: cleanSections,
+    genreSections: cleanGenreSections,
     updatedAt: serverTimestamp()
   }, { merge: true });
 
@@ -1205,6 +1281,15 @@ document.querySelectorAll("[data-home-mode]").forEach(select => {
 
 document.querySelectorAll("[data-home-search]").forEach(input => {
   input.addEventListener("input", () => renderSearchResults(input.dataset.homeSearch));
+});
+
+
+document.addEventListener("change", (e) => {
+  const genreInput = e.target.closest("[data-home-genre]");
+  if (genreInput) {
+    setGenreSectionVisible(genreInput.dataset.homeGenre, genreInput.checked);
+    renderGenreToggles();
+  }
 });
 
 document.addEventListener("click", async (e) => {

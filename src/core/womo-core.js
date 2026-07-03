@@ -179,23 +179,88 @@ const HERO_TIMER_DURATION = 7000;
 let heroDragDeltaX = 0;
 let heroIsDragging = false;
 
-async function readHomeConfigNewItems(allByKey) {
+async function readHomeConfigMain(allByKey) {
+  const fallback = { newItems: [], visibleGenres: [] };
   try {
     const doc = await db.collection("homeConfig").doc("main").get();
-    if (!doc.exists) return [];
+    if (!doc.exists) return fallback;
 
-    const sections = doc.data().sections || {};
+    const data = doc.data() || {};
+    const sections = data.sections || {};
     const newSection = sections.new || sections.news || sections.hero || {};
     const selectedItems = Array.isArray(newSection.selectedItems) ? newSection.selectedItems : [];
-
-    return selectedItems
+    const newItems = selectedItems
       .map(ref => allByKey.get(`${ref.type}:${ref.id}`))
       .filter(Boolean)
       .slice(0, Number(newSection.limit || 5));
+
+    const rawGenreSections = data.genreSections || data.homeGenres || {};
+    const visibleGenres = Object.entries(rawGenreSections)
+      .filter(([, value]) => value === true || value?.visible === true || value?.enabled === true || value?.showInHome === true)
+      .map(([name]) => String(name || "").trim())
+      .filter(Boolean);
+
+    return { newItems, visibleGenres };
   } catch (error) {
     console.warn("No se pudo leer homeConfig/main.", error);
-    return [];
+    return fallback;
   }
+}
+
+function womoGenreDisplayName(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function womoGenreSlug(value) {
+  return womoGenreDisplayName(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "") || "genre";
+}
+
+function womoGenreList(item) {
+  const raw = Array.isArray(item?.genres) ? item.genres : String(item?.genre || item?.genres || "").split(",");
+  return raw
+    .map(womoGenreDisplayName)
+    .filter(Boolean);
+}
+
+function womoBuildHomeGenreSections(items, visibleGenres) {
+  const container = document.getElementById("genreHomeSections");
+  if (!container) return;
+
+  const allowed = Array.isArray(visibleGenres) ? visibleGenres.map(womoGenreDisplayName).filter(Boolean) : [];
+  if (!allowed.length) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const contentPool = (items || []).filter(item => item && item.poster && item.type !== "concert");
+  const genreEntries = allowed
+    .map(name => {
+      const slug = womoGenreSlug(name);
+      const list = contentPool
+        .filter(item => womoGenreList(item).some(genre => womoGenreSlug(genre) === slug))
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+        .slice(0, 10);
+      return { name, slug, list };
+    })
+    .filter(entry => entry.list.length);
+
+  container.innerHTML = genreEntries.map(entry => `
+    <section class="content-row genre-content-row" data-genre-section="${entry.slug}">
+      <div class="row-header">
+        <h2>${entry.name}</h2>
+      </div>
+      <div class="poster-row" id="genreRow-${entry.slug}"></div>
+    </section>
+  `).join("");
+
+  genreEntries.forEach(entry => fillRow(`genreRow-${entry.slug}`, entry.list, false, true));
 }
 
 function stopHeroTimer() {
@@ -476,7 +541,7 @@ function hideContinueViewAllButtons() {
   });
 }
 
-function fillRow(id, data, progress = false, hideWhenEmpty = false) {
+function fillRow(id, data, progress = false, hideWhenEmpty = false, options = {}) {
   const rowLimit = 10;
   updateViewAllButtonsVisibility(id, Array.isArray(data) ? data.length : 0);
   const row = document.getElementById(id);
@@ -488,10 +553,18 @@ function fillRow(id, data, progress = false, hideWhenEmpty = false) {
   }
 
   const visibleData = Array.isArray(data) ? data.slice(0, rowLimit) : [];
+  const shouldLoop = Boolean(options.loop) && visibleData.length > 1;
+  const renderData = shouldLoop ? [...visibleData, ...visibleData, ...visibleData] : visibleData;
 
-  row.innerHTML = visibleData.length
-    ? visibleData.map(item => posterCard(item, progress)).join("")
+  row.dataset.loop = shouldLoop ? "true" : "false";
+  row.dataset.loopReady = "false";
+  row.innerHTML = renderData.length
+    ? renderData.map(item => posterCard(item, progress)).join("")
     : `<div class="row-empty">Sin contenido por ahora.</div>`;
+
+  if (shouldLoop) {
+    requestAnimationFrame(() => womoPrepareLoopingRow(row));
+  }
 
   row.querySelectorAll(".poster-card").forEach(card => {
     card.addEventListener("click", () => {
@@ -515,6 +588,25 @@ function stopEdgeScroll() {
   }
 }
 
+function womoPrepareLoopingRow(row) {
+  if (!row || row.dataset.loop !== "true") return;
+  const third = row.scrollWidth / 3;
+  if (!third || row.dataset.loopReady === "true") return;
+  row.scrollLeft = third;
+  row.dataset.loopReady = "true";
+}
+
+function womoMaintainLoopingRow(row) {
+  if (!row || row.dataset.loop !== "true") return;
+  const third = row.scrollWidth / 3;
+  if (!third) return;
+  if (row.scrollLeft < third * 0.35) {
+    row.scrollLeft += third;
+  } else if (row.scrollLeft > third * 1.65) {
+    row.scrollLeft -= third;
+  }
+}
+
 function runEdgeScroll() {
   if (!activeScrollRow || scrollDirection === 0) {
     stopEdgeScroll();
@@ -527,6 +619,9 @@ function runEdgeScroll() {
 
 function setupRowEdgeScroll() {
   document.querySelectorAll(".poster-row").forEach(row => {
+    if (row.dataset.edgeScrollReady === "true") return;
+    row.dataset.edgeScrollReady = "true";
+    row.addEventListener("scroll", () => womoMaintainLoopingRow(row));
     row.addEventListener("mousemove", event => {
       const rect = row.getBoundingClientRect();
       const edgeSize = 120;
@@ -1168,8 +1263,8 @@ async function init() {
   allItemsByContinueKey = new Map(allItems.map(item => [`${item.type}:${item.id}`, item]));
   syncFavoriteUI();
   const allByKey = new Map(allItems.map(item => [`${item.type === "series" ? "series" : item.type === "concert" ? "concert" : "movie"}:${item.id}`, item]));
-  const configuredNewItems = await readHomeConfigNewItems(allByKey);
-  heroItems = configuredNewItems.length ? configuredNewItems : sortedItems.slice(0, 5);
+  const homeConfig = await readHomeConfigMain(allByKey);
+  heroItems = homeConfig.newItems.length ? homeConfig.newItems : sortedItems.slice(0, 5);
   heroIndex = 0;
 
   const movieItems = movies.filter(item => item.type === "movie");
@@ -1186,8 +1281,9 @@ async function init() {
 
   setHero(0);
   fillRow("continueRow", continueItems, true, true);
-  fillRow("moviesRow", movieItems, false, true);
-  fillRow("seriesRow", series, false, true);
+  fillRow("moviesRow", movieItems, false, true, { loop: true });
+  fillRow("seriesRow", publishedSeries, false, true);
+  womoBuildHomeGenreSections([...movieItems, ...publishedSeries], homeConfig.visibleGenres);
   fillRow("concertsRow", concertItems, false, true);
   womoHideSkeleton();
   setupRowEdgeScroll();

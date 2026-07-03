@@ -79,3 +79,15 @@ Cuando esta versión quede validada en navegador:
    - `preview-modal.js`
    - `player-ui.js`
 3. Dejar `src/core/` solo con datos, estado, player y persistencia.
+
+## Home genre sections
+
+Version `home-genre-sections-v1` keeps playback in `src/core/womo-core.js` unchanged and adds only Home rendering/admin configuration behavior:
+
+- `homeConfig/main.genreSections` stores detected genre toggles as `{ "Horror": { "visible": true } }`.
+- The Admin detects genres from Movies and Series automatically.
+- Enabled genres render in Home after Series and before Conciertos.
+- Each genre row is limited to 10 titles.
+- The main Películas row remains limited to 10 real titles but repeats visually for an infinite carousel effect.
+
+Playback, HLS, progress, favorites, shuffle, and auto-next should not be modified for visual Home experiments.
