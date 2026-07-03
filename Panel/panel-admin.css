@@ -697,3 +697,34 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
   font-size: 12px;
   font-style: normal;
 }
+
+/* Analytics users detail */
+.analytics-columns.analytics-columns-three{
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.analytics-list-plain li span,
+.analytics-history li span{
+  min-width: 0;
+}
+.analytics-list-plain li small,
+.analytics-history li small{
+  display: block;
+  color: rgba(255,255,255,.45);
+  font-size: 11px;
+  margin-top: 3px;
+}
+.analytics-list-plain li em,
+.analytics-history li em{
+  color: rgba(255,255,255,.45);
+  font-size: 11px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.analytics-history li{
+  gap: 10px;
+}
+@media (max-width: 1100px){
+  .analytics-columns.analytics-columns-three{
+    grid-template-columns: 1fr;
+  }
+}

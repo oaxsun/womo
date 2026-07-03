@@ -72,6 +72,7 @@ const state = {
   drag: null,
   analyticsTab: "titles",
   analyticsLoaded: false,
+  analyticsLoading: false,
   analyticsUsers: [],
   analyticsTitles: []
 };
@@ -570,6 +571,55 @@ function contentKey(type, id) {
   return `${type}:${id}`;
 }
 
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function normalizeAnalyticsType(value) {
+  const raw = String(value || "").toLowerCase();
+  if (["series", "serie", "show", "tv"].includes(raw)) return "series";
+  if (["concert", "concerts", "concierto"].includes(raw)) return "concert";
+  return "movie";
+}
+
+function getDateValue(value) {
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : Number(value) || 0;
+  }
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000;
+  return 0;
+}
+
+function formatAnalyticsDate(value) {
+  const millis = getDateValue(value);
+  if (!millis) return "—";
+  try {
+    return new Intl.DateTimeFormat("es-MX", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(new Date(millis));
+  } catch (_) {
+    return "—";
+  }
+}
+
+function sortByRecentDate(list) {
+  return [...(list || [])].sort((a, b) => getDateValue(b.lastPlayedAt || b.lastWatchedAt || b.addedAt || b.updatedAt) - getDateValue(a.lastPlayedAt || a.lastWatchedAt || a.addedAt || a.updatedAt));
+}
+
 function titleForAnalytics(ref) {
   const item = findContentItem(ref);
   return item?.title || ref.title || ref.id || "Sin título";
@@ -597,135 +647,159 @@ async function readUserSubcollection(userId, subcollectionName) {
 }
 
 function normalizeAnalyticsEntry(entry) {
-  const type = entry.type === "series" ? "series" : entry.type === "concert" ? "concert" : "movie";
+  const type = normalizeAnalyticsType(entry.type || entry.contentType || entry.kind);
   return {
     ...entry,
     type,
-    id: entry.id || entry.contentId || entry.titleId || "",
-    playCount: Number(entry.playCount || entry.count || entry.plays || 1)
+    id: entry.id || entry.contentId || entry.titleId || entry.movieId || entry.seriesId || entry.concertId || "",
+    title: entry.title || entry.name || entry.contentTitle || "",
+    playCount: Number(entry.playCount || entry.count || entry.plays || 1),
+    lastPlayedAt: entry.lastPlayedAt || entry.playedAt || entry.updatedAt || entry.lastWatchedAt || 0,
+    lastWatchedAt: entry.lastWatchedAt || entry.updatedAt || entry.lastPlayedAt || 0,
+    addedAt: entry.addedAt || entry.createdAt || entry.updatedAt || 0
   };
 }
 
 async function loadAnalytics() {
-  const usersSnap = await getDocs(collection(db, "users"));
-  const users = [];
-
-  for (const userDoc of usersSnap.docs) {
-    const data = userDoc.data() || {};
-    const [favoritesRaw, continueRaw, completedRaw, progressRaw, historyRaw] = await Promise.all([
-      readUserSubcollection(userDoc.id, "favorites"),
-      readUserSubcollection(userDoc.id, "continueWatching"),
-      readUserSubcollection(userDoc.id, "completed"),
-      readUserSubcollection(userDoc.id, "episodeProgress"),
-      readUserSubcollection(userDoc.id, "playHistory")
-    ]);
-
-    const favorites = favoritesRaw.map(normalizeAnalyticsEntry).filter(entry => entry.id);
-    const completed = completedRaw.map(normalizeAnalyticsEntry).filter(entry => entry.id);
-    const continueWatching = continueRaw.map(normalizeAnalyticsEntry).filter(entry => entry.id);
-    const history = historyRaw.map(normalizeAnalyticsEntry).filter(entry => entry.id);
-
-    // Backward compatibility: if playHistory does not exist yet, use continue/completed as at least one play.
-    const historyMap = new Map();
-    [...history, ...continueWatching, ...completed].forEach(entry => {
-      const key = contentKey(entry.type, entry.id);
-      const prev = historyMap.get(key) || { ...entry, playCount: 0 };
-      prev.playCount += Number(entry.playCount || 1);
-      historyMap.set(key, prev);
-    });
-
-    users.push({
-      uid: userDoc.id,
-      email: data.email || data.userEmail || data.displayName || userDoc.id,
-      favorites,
-      completed,
-      continueWatching,
-      episodeProgress: progressRaw,
-      history: Array.from(historyMap.values())
-    });
-  }
-
-  const titleMap = new Map();
-  getAllAnalyticsTitles().forEach(item => {
-    titleMap.set(contentKey(item.type, item.id), {
-      ...item,
-      plays: 0,
-      playUsers: new Set(),
-      completedUsers: new Set(),
-      favoriteUsers: new Set()
-    });
-  });
-
-  users.forEach(user => {
-    user.history.forEach(entry => {
-      const key = contentKey(entry.type, entry.id);
-      if (!titleMap.has(key)) {
-        titleMap.set(key, {
-          id: entry.id,
-          type: entry.type,
-          title: titleForAnalytics(entry),
-          posterUrl: "",
-          published: true,
-          plays: 0,
-          playUsers: new Set(),
-          completedUsers: new Set(),
-          favoriteUsers: new Set()
-        });
-      }
-      const item = titleMap.get(key);
-      item.plays += Number(entry.playCount || 1);
-      item.playUsers.add(user.uid);
-    });
-
-    user.completed.forEach(entry => {
-      const key = contentKey(entry.type, entry.id);
-      if (!titleMap.has(key)) {
-        titleMap.set(key, {
-          id: entry.id,
-          type: entry.type,
-          title: titleForAnalytics(entry),
-          posterUrl: "",
-          published: true,
-          plays: 0,
-          playUsers: new Set(),
-          completedUsers: new Set(),
-          favoriteUsers: new Set()
-        });
-      }
-      titleMap.get(key).completedUsers.add(user.uid);
-    });
-
-    user.favorites.forEach(entry => {
-      const key = contentKey(entry.type, entry.id);
-      if (!titleMap.has(key)) {
-        titleMap.set(key, {
-          id: entry.id,
-          type: entry.type,
-          title: titleForAnalytics(entry),
-          posterUrl: "",
-          published: true,
-          plays: 0,
-          playUsers: new Set(),
-          completedUsers: new Set(),
-          favoriteUsers: new Set()
-        });
-      }
-      titleMap.get(key).favoriteUsers.add(user.uid);
-    });
-  });
-
-  state.analyticsUsers = users;
-  state.analyticsTitles = Array.from(titleMap.values())
-    .map(item => ({
-      ...item,
-      playUsersCount: item.playUsers.size,
-      completedUsersCount: item.completedUsers.size,
-      favoriteUsersCount: item.favoriteUsers.size
-    }))
-    .sort((a, b) => (b.plays - a.plays) || a.title.localeCompare(b.title));
-
-  state.analyticsLoaded = true;
+  state.analyticsLoading = true;
+  state.analyticsLoaded = false;
   renderAnalytics();
+
+  try {
+    const usersSnap = await getDocs(collection(db, "users"));
+    const users = [];
+
+    for (const userDoc of usersSnap.docs) {
+      const data = userDoc.data() || {};
+      const [favoritesRaw, continueRaw, completedRaw, progressRaw, historyRaw] = await Promise.all([
+        readUserSubcollection(userDoc.id, "favorites"),
+        readUserSubcollection(userDoc.id, "continueWatching"),
+        readUserSubcollection(userDoc.id, "completed"),
+        readUserSubcollection(userDoc.id, "episodeProgress"),
+        readUserSubcollection(userDoc.id, "playHistory")
+      ]);
+
+      const favorites = sortByRecentDate(favoritesRaw.map(normalizeAnalyticsEntry).filter(entry => entry.id));
+      const completed = sortByRecentDate(completedRaw.map(normalizeAnalyticsEntry).filter(entry => entry.id));
+      const continueWatching = sortByRecentDate(continueRaw.map(normalizeAnalyticsEntry).filter(entry => entry.id));
+      const history = sortByRecentDate(historyRaw.map(normalizeAnalyticsEntry).filter(entry => entry.id));
+
+      // Backward compatibility: if playHistory does not exist yet, use continue/completed as at least one play.
+      const historyMap = new Map();
+      [...history, ...continueWatching, ...completed].forEach(entry => {
+        const key = contentKey(entry.type, entry.id);
+        const prev = historyMap.get(key) || { ...entry, playCount: 0 };
+        prev.playCount += Number(entry.playCount || 1);
+        prev.lastPlayedAt = Math.max(getDateValue(prev.lastPlayedAt), getDateValue(entry.lastPlayedAt || entry.lastWatchedAt || entry.updatedAt));
+        prev.lastWatchedAt = Math.max(getDateValue(prev.lastWatchedAt), getDateValue(entry.lastWatchedAt || entry.updatedAt || entry.lastPlayedAt));
+        historyMap.set(key, prev);
+      });
+
+      const userEmail = data.email || data.userEmail || data.displayName || data.activeEmail || userDoc.id;
+      users.push({
+        uid: userDoc.id,
+        email: userEmail,
+        lastLoginAt: data.lastLoginAt || 0,
+        updatedAt: data.updatedAt || 0,
+        activeSessionId: data.activeSessionId || "",
+        favorites,
+        completed,
+        continueWatching,
+        episodeProgress: progressRaw,
+        history: sortByRecentDate(Array.from(historyMap.values()))
+      });
+    }
+
+    const titleMap = new Map();
+    getAllAnalyticsTitles().forEach(item => {
+      titleMap.set(contentKey(item.type, item.id), {
+        ...item,
+        plays: 0,
+        playUsers: new Set(),
+        completedUsers: new Set(),
+        favoriteUsers: new Set()
+      });
+    });
+
+    users.forEach(user => {
+      user.history.forEach(entry => {
+        const key = contentKey(entry.type, entry.id);
+        if (!titleMap.has(key)) {
+          titleMap.set(key, {
+            id: entry.id,
+            type: entry.type,
+            title: titleForAnalytics(entry),
+            posterUrl: "",
+            published: true,
+            plays: 0,
+            playUsers: new Set(),
+            completedUsers: new Set(),
+            favoriteUsers: new Set()
+          });
+        }
+        const item = titleMap.get(key);
+        item.plays += Number(entry.playCount || 1);
+        item.playUsers.add(user.uid);
+      });
+
+      user.completed.forEach(entry => {
+        const key = contentKey(entry.type, entry.id);
+        if (!titleMap.has(key)) {
+          titleMap.set(key, {
+            id: entry.id,
+            type: entry.type,
+            title: titleForAnalytics(entry),
+            posterUrl: "",
+            published: true,
+            plays: 0,
+            playUsers: new Set(),
+            completedUsers: new Set(),
+            favoriteUsers: new Set()
+          });
+        }
+        titleMap.get(key).completedUsers.add(user.uid);
+      });
+
+      user.favorites.forEach(entry => {
+        const key = contentKey(entry.type, entry.id);
+        if (!titleMap.has(key)) {
+          titleMap.set(key, {
+            id: entry.id,
+            type: entry.type,
+            title: titleForAnalytics(entry),
+            posterUrl: "",
+            published: true,
+            plays: 0,
+            playUsers: new Set(),
+            completedUsers: new Set(),
+            favoriteUsers: new Set()
+          });
+        }
+        titleMap.get(key).favoriteUsers.add(user.uid);
+      });
+    });
+
+    state.analyticsUsers = users.sort((a, b) => getDateValue(b.updatedAt || b.lastLoginAt) - getDateValue(a.updatedAt || a.lastLoginAt));
+    state.analyticsTitles = Array.from(titleMap.values())
+      .map(item => ({
+        ...item,
+        playUsersCount: item.playUsers.size,
+        completedUsersCount: item.completedUsers.size,
+        favoriteUsersCount: item.favoriteUsers.size
+      }))
+      .sort((a, b) => (b.plays - a.plays) || a.title.localeCompare(b.title));
+
+    state.analyticsLoaded = true;
+  } catch (error) {
+    console.error("No se pudieron cargar Analytics/Usuarios", error);
+    showStatus("No se pudieron cargar usuarios. Revisa permisos de Firestore.");
+    state.analyticsUsers = [];
+    state.analyticsTitles = [];
+    state.analyticsLoaded = true;
+  } finally {
+    state.analyticsLoading = false;
+    renderAnalytics();
+  }
 }
 
 function renderAnalytics() {
@@ -747,6 +821,11 @@ function renderAnalyticsTitles() {
 
   container.classList.add("grid-list");
   container.classList.remove("analytics-list");
+
+  if (state.analyticsLoading) {
+    container.innerHTML = `<p class="helper">Cargando métricas...</p>`;
+    return;
+  }
 
   if (!state.analyticsLoaded) {
     container.innerHTML = `<p class="helper">Carga Analytics para ver métricas.</p>`;
@@ -774,24 +853,29 @@ function renderAnalyticsUsers() {
   container.classList.remove("grid-list");
   container.classList.add("analytics-list");
 
+  if (state.analyticsLoading) {
+    container.innerHTML = `<p class="helper">Cargando usuarios...</p>`;
+    return;
+  }
+
   if (!state.analyticsLoaded) {
     container.innerHTML = `<p class="helper">Carga Analytics para ver usuarios.</p>`;
     return;
   }
 
   container.innerHTML = state.analyticsUsers.map(user => `
-    <article class="analytics-row user-row" data-analytics-user="${user.uid}" role="button" tabindex="0">
-      <div class="analytics-avatar">${String(user.email || "?").slice(0, 1).toUpperCase()}</div>
+    <article class="analytics-row user-row" data-analytics-user="${escapeHtml(user.uid)}" role="button" tabindex="0" title="Ver usuario">
+      <div class="analytics-avatar">${escapeHtml(String(user.email || "?").slice(0, 1).toUpperCase())}</div>
       <div>
-        <strong>${user.email}</strong>
-        <span>${user.favorites.length} favoritos · ${user.history.length} títulos vistos</span>
+        <strong>${escapeHtml(user.email)}</strong>
+        <span>${user.favorites.length} favoritos · ${user.history.length} títulos vistos · ${user.continueWatching.length} en progreso</span>
       </div>
       <div class="analytics-mini-stats">
         <span>${user.history.reduce((sum, item) => sum + Number(item.playCount || 1), 0)} plays</span>
-        <span>${user.completed.length} finalizados</span>
+        <span>${formatAnalyticsDate(user.updatedAt || user.lastLoginAt)}</span>
       </div>
     </article>
-  `).join("") || `<p class="helper">No hay usuarios todavía.</p>`;
+  `).join("") || `<p class="helper">No hay usuarios todavía. Cuando alguien inicie sesión, marque favoritos o vea títulos, aparecerá aquí.</p>`;
 }
 
 function openAnalyticsTitle(key) {
@@ -811,23 +895,40 @@ function openAnalyticsTitle(key) {
   $("analyticsTitleDialog").showModal();
 }
 
+function analyticsEntryLabel(entry) {
+  const item = findContentItem(entry);
+  const title = item?.title || entry.title || entry.id || "Sin título";
+  return `${escapeHtml(title)} <small>${typeLabel(entry.type)}</small>`;
+}
+
 function openAnalyticsUser(uid) {
   const user = state.analyticsUsers.find(item => item.uid === uid);
   if (!user) return;
 
-  const favoriteHtml = user.favorites.map(entry => `<li>${titleForAnalytics(entry)}</li>`).join("") || `<li>Sin favoritos</li>`;
-  const historyHtml = user.history
-    .sort((a, b) => Number(b.playCount || 1) - Number(a.playCount || 1))
-    .map(entry => `<li><span>${titleForAnalytics(entry)}</span><strong>${Number(entry.playCount || 1)}</strong></li>`)
-    .join("") || `<li><span>Sin historial</span><strong>0</strong></li>`;
+  const favoriteHtml = user.favorites
+    .map(entry => `<li><span>${analyticsEntryLabel(entry)}</span><em>${formatAnalyticsDate(entry.addedAt || entry.updatedAt)}</em></li>`)
+    .join("") || `<li><span>Sin favoritos</span><em>—</em></li>`;
+  const continueHtml = user.continueWatching
+    .map(entry => `<li><span>${analyticsEntryLabel(entry)}</span><em>${Math.round(Number(entry.progress || 0))}% · ${formatAnalyticsDate(entry.lastWatchedAt || entry.updatedAt)}</em></li>`)
+    .join("") || `<li><span>Sin contenido en progreso</span><em>—</em></li>`;
+  const historyHtml = sortByRecentDate(user.history)
+    .map(entry => `<li><span>${analyticsEntryLabel(entry)}</span><strong>${Number(entry.playCount || 1)} play${Number(entry.playCount || 1) === 1 ? "" : "s"}</strong><em>${formatAnalyticsDate(entry.lastPlayedAt || entry.lastWatchedAt || entry.updatedAt)}</em></li>`)
+    .join("") || `<li><span>Sin historial</span><strong>0</strong><em>—</em></li>`;
 
   $("analyticsUserName").textContent = user.email;
   $("analyticsUserBody").innerHTML = `
     <div class="analytics-user-meta">
-      <p><strong>Email:</strong> ${user.email}</p>
-      <p><strong>UID:</strong> ${user.uid}</p>
+      <p><strong>Email:</strong> ${escapeHtml(user.email)}</p>
+      <p><strong>UID:</strong> ${escapeHtml(user.uid)}</p>
+      <p><strong>Última actividad:</strong> ${formatAnalyticsDate(user.updatedAt || user.lastLoginAt)}</p>
     </div>
-    <div class="analytics-columns">
+    <div class="analytics-kpi-grid">
+      <div class="analytics-kpi"><strong>${user.history.reduce((sum, item) => sum + Number(item.playCount || 1), 0)}</strong><span>Plays</span></div>
+      <div class="analytics-kpi"><strong>${user.favorites.length}</strong><span>Favoritos</span></div>
+      <div class="analytics-kpi"><strong>${user.continueWatching.length}</strong><span>En progreso</span></div>
+      <div class="analytics-kpi"><strong>${user.completed.length}</strong><span>Finalizados</span></div>
+    </div>
+    <div class="analytics-columns analytics-columns-three">
       <div>
         <h3>Favoritos</h3>
         <ul class="analytics-list-plain">${favoriteHtml}</ul>
@@ -835,6 +936,10 @@ function openAnalyticsUser(uid) {
       <div>
         <h3>Historial</h3>
         <ul class="analytics-history">${historyHtml}</ul>
+      </div>
+      <div>
+        <h3>Continuar viendo</h3>
+        <ul class="analytics-list-plain">${continueHtml}</ul>
       </div>
     </div>
   `;
@@ -1492,6 +1597,27 @@ document.addEventListener("dragend", (e) => {
   renderHomeSectionControls();
 });
 
+
+document.querySelectorAll("[data-analytics-tab]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    state.analyticsTab = btn.dataset.analyticsTab || "titles";
+    renderAnalytics();
+    if (!state.analyticsLoaded && !state.analyticsLoading) loadAnalytics();
+  });
+});
+
+$("refreshAnalyticsBtn")?.addEventListener("click", () => loadAnalytics());
+$("analyticsTitlesList")?.addEventListener("click", (e) => {
+  const card = e.target.closest("[data-analytics-title]");
+  if (card) openAnalyticsTitle(card.dataset.analyticsTitle);
+});
+$("analyticsUsersList")?.addEventListener("click", (e) => {
+  const row = e.target.closest("[data-analytics-user]");
+  if (row) openAnalyticsUser(row.dataset.analyticsUser);
+});
+$("closeAnalyticsTitle")?.addEventListener("click", () => $("analyticsTitleDialog")?.close());
+$("closeAnalyticsUser")?.addEventListener("click", () => $("analyticsUserDialog")?.close());
+
 document.addEventListener("click", async (e) => {
   const addBtn = e.target.closest("[data-add-home]");
   if (addBtn) return addHomeItem(addBtn.dataset.addHome, addBtn.dataset.id, addBtn.dataset.type);
@@ -1510,6 +1636,21 @@ document.addEventListener("click", async (e) => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== " ") return;
+
+  const analyticsTitle = e.target.closest?.("[data-analytics-title]");
+  if (analyticsTitle) {
+    e.preventDefault();
+    openAnalyticsTitle(analyticsTitle.dataset.analyticsTitle);
+    return;
+  }
+
+  const analyticsUser = e.target.closest?.("[data-analytics-user]");
+  if (analyticsUser) {
+    e.preventDefault();
+    openAnalyticsUser(analyticsUser.dataset.analyticsUser);
+    return;
+  }
+
   if (handleCardActivation(e.target)) e.preventDefault();
 });
 

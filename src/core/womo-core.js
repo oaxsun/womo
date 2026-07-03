@@ -1113,8 +1113,10 @@ async function registerSessionWatch() {
   const sessionStartedAt = getSessionStartedAt();
 
   await userRef.set({
+    email: firebase.auth().currentUser?.email || "",
     activeSessionId: sessionId,
-    lastLoginAt: Date.now()
+    lastLoginAt: Date.now(),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
 
   if (forceLogoutUnsubscribe) forceLogoutUnsubscribe();
@@ -4027,7 +4029,10 @@ async function saveFavoriteToCloud(entry) {
   const ref = getUserDocRef();
   if (!ref || !entry) return;
 
-  await ref.set({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await ref.set({
+    email: firebase.auth().currentUser?.email || "",
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
   await ref.collection("favorites").doc(userItemDocId(entry)).set({
     id: entry.id,
     type: entry.type,
@@ -4063,7 +4068,10 @@ async function saveContinueEntryToCloud(entry) {
   const ref = getUserDocRef();
   if (!ref || !entry) return;
 
-  await ref.set({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await ref.set({
+    email: firebase.auth().currentUser?.email || "",
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
   await ref.collection("continueWatching").doc(userItemDocId(entry)).set({
     ...entry,
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -4119,6 +4127,11 @@ async function loadContinueFromCloud() {
 async function saveEpisodeProgressToCloud(seriesId, episode, progress) {
   const ref = getUserDocRef();
   if (!ref || !seriesId || !episode) return;
+
+  await ref.set({
+    email: firebase.auth().currentUser?.email || "",
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
 
   await ref.collection("episodeProgress")
     .doc(userEpisodeDocId(seriesId, episode.season, episode.episodeNumber, episode.id))
