@@ -4,7 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Web</title>
-  <link rel="stylesheet" href="styles.css?v=35" />
+
+  <script id="womoTvBrowserModeRedirect">
+    (function () {
+      var params = new URLSearchParams(window.location.search || '');
+      var forceTv = params.get('tv') === '1' || params.get('womoTv') === '1' || params.get('tvapp') === '1';
+      var ua = navigator.userAgent || '';
+      var tvUserAgent = /(Tizen|SMART-TV|SmartTV|SamsungBrowser.*TV|Web0S|webOS|NetCast|HbbTV|BRAVIA|Viera|Aquos|Hisense|VIDAA|Roku|AFTT|AFTM|AFTB|Fire TV|PlayStation|Xbox)/i.test(ua);
+      if (forceTv || tvUserAgent) {
+        var target = new URL('tvapp/', window.location.href);
+        if (forceTv) target.searchParams.set('tv', '1');
+        window.location.replace(target.toString());
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css?v=36" />
 </head>
 <body>
 
@@ -230,7 +244,7 @@
         </div>
 
         <div class="app-version-note" aria-label="Versión de la app">
-          Womo Web v1.1007.2331
+          Womo Web v1.1007.2349
         </div>
       </div>
     </section>
@@ -282,6 +296,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="src/core/womo-core.js?v=35"></script>
+  <script src="src/core/womo-core.js?v=36"></script>
 </body>
 </html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Womo TV Web</title>
+  <link rel="stylesheet" href="tv.css" />
+</head>
+<body class="tv-mode">
+  <div id="tvLogin" class="tv-login">
+    <img src="assets/logo.svg" alt="Womo" class="tv-login-logo">
+    <h1>Womo TV</h1>
+    <p>Inicia sesión para probar la experiencia de televisión.</p>
+    <form id="tvLoginForm" class="tv-login-form">
+      <input id="tvEmail" type="email" placeholder="Correo electrónico" autocomplete="email" required>
+      <input id="tvPassword" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+      <button type="submit">Entrar</button>
+      <div id="tvLoginError" class="tv-login-error"></div>
+    </form>
+  </div>
+
+  <main id="tvApp" class="tv-app hidden">
+    <nav class="tv-side-nav" aria-label="Womo TV navegación">
+      <img src="assets/logo.svg" alt="Womo TV" class="tv-side-logo">
+      <div class="tv-side-icons" aria-label="Menú principal">
+        <button class="tv-side-icon" data-nav-index="0" data-nav-action="search" type="button" aria-label="Buscar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </button>
+        <button class="tv-side-icon active" data-nav-index="1" data-nav-action="home" type="button" aria-label="Inicio">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10.5 9-7 9 7"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/></svg>
+        </button>
+        <button class="tv-side-icon" data-nav-index="2" data-nav-action="favorites" type="button" aria-label="Favoritos">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/></svg>
+        </button>
+      </div>
+      <div class="tv-side-settings" aria-label="Configuración">
+        <button class="tv-side-icon" data-nav-index="3" data-nav-action="settings" type="button" aria-label="Configuración">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 1 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3h.1A1.7 1.7 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6h.1a1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6.9h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>
+        </button>
+      </div>
+    </nav>
+    <section id="tvSearch" class="tv-search hidden" aria-hidden="true">
+      <div class="tv-search-left">
+        <label class="tv-search-title" for="tvSearchInput">Buscar</label>
+        <div class="tv-search-input-wrap"><input id="tvSearchInput" class="tv-search-input" type="text" autocomplete="off" inputmode="search" placeholder="Busca un título, género o actor..."><button id="tvSearchClear" class="tv-search-clear hidden" type="button" aria-label="Borrar búsqueda">×</button></div>
+        <div class="tv-search-shuffle-block">
+          <h2>¿No sabes que ver?</h2>
+          <button id="tvSearchShuffle" class="tv-search-shuffle" type="button">Shuffle</button>
+        </div>
+      </div>
+      <div id="tvSearchEmpty" class="tv-search-empty"></div>
+    </section>
+    <section id="tvHero" class="tv-hero"></section>
+    <section id="tvRows" class="tv-rows"></section>
+  </main>
+
+  <section id="tvPreview" class="tv-preview hidden" aria-hidden="true">
+    <div class="tv-preview-backdrop"></div>
+    <div class="tv-preview-panel">
+      <button id="tvPreviewBack" class="tv-preview-back focusable" data-focus-group="preview" type="button">‹</button>
+      <img id="tvPreviewPoster" class="tv-preview-poster" alt="">
+      <div class="tv-preview-info">
+        <h1 id="tvPreviewTitle"></h1>
+        <div id="tvPreviewMeta" class="tv-preview-meta"></div>
+        <p id="tvPreviewDescription"></p>
+        <div id="tvPreviewActions" class="tv-preview-actions"></div>
+        <div id="tvPreviewEpisodes" class="tv-preview-episodes"></div>
+      </div>
+    </div>
+  </section>
+
+
+
+  <section id="tvSettings" class="tv-settings hidden" aria-hidden="true">
+    <div class="tv-settings-panel">
+      <h1>Configuración</h1>
+      <div class="tv-settings-actions">
+        <button class="tv-settings-option" data-settings-index="0" data-settings-action="logout" type="button">Cerrar sesión</button>
+        <div class="tv-app-version" aria-label="Versión TV">Womo TV Web v1.1007.2349</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tvPlayerOverlay" class="tv-player-overlay hidden" aria-hidden="true">
+    <div id="tvPlayerTopbar" class="tv-player-topbar">
+      <button id="tvPlayerBack" class="tv-player-back focusable" data-focus-group="player" type="button" aria-label="Regresar"></button>
+      <div>
+        <h2 id="tvPlayerTitle"></h2>
+        <p id="tvPlayerSubtitle"></p>
+      </div>
+    </div>
+    <video id="tvPlayer" class="tv-player" controls autoplay playsinline controlsList="nodownload noplaybackrate"></video>
+  </section>
+
+  <div id="tvLoader" class="tv-loader">Cargando Womo TV…</div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="tv.js"></script>
+</body>
+</html>

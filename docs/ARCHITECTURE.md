@@ -129,3 +129,10 @@ Bloque duplicado de géneros en Admin eliminado. La activación y orden de Pelí
 - Loader inicial separado del loader de buffering durante reproducción.
 - Buffering durante reproducción usa delay y spinner sutil para evitar parpadeos por microcortes de red/Safari.
 - Se evita tapar el frame actual del video cuando el contenido ya empezó.
+
+
+## TV Browser Mode
+
+La app web incluye una experiencia separada para televisiones dentro de `tvapp/`. La web principal conserva su flujo normal para desktop/móvil, pero redirige a `tvapp/` cuando detecta user agents de Smart TV/Tizen/webOS/Roku/Fire TV/consolas o cuando se abre manualmente con `?tv=1`, `?womoTv=1` o `?tvapp=1`.
+
+Esta capa se mantiene aislada de la UI web normal para evitar romper Home, móvil, Admin o el player web existente.
