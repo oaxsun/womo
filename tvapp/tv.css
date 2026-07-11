@@ -1058,3 +1058,29 @@ body.tv-search-view .tv-card {
 }
 
 .tv-app-version { margin-top: 22px; color: rgba(255,255,255,.45); font-size: 15px; letter-spacing: .02em; }
+
+/* TV browser remote mode: keep focus inside Womo and prevent browser-like pointer feel inside the app. */
+html, body.tv-mode {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+body.tv-remote-locked,
+body.tv-remote-locked * {
+  cursor: none !important;
+}
+body.tv-remote-locked input,
+body.tv-remote-locked textarea {
+  cursor: text !important;
+}
+.tv-mode button,
+.tv-mode .tv-card,
+.tv-mode .tv-side-icon,
+.tv-mode .tv-action,
+.tv-mode .tv-episode {
+  -webkit-tap-highlight-color: transparent;
+}

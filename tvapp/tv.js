@@ -1706,12 +1706,112 @@ function closePlayer() {
     applyHomeFocus();
   }
 }
+
+function normalizeRemoteKey(event) {
+  const key = event?.key || '';
+  const code = Number(event?.keyCode || event?.which || 0);
+  const byCode = {
+    13: 'Enter',
+    27: 'Escape',
+    8: 'Backspace',
+    37: 'ArrowLeft',
+    38: 'ArrowUp',
+    39: 'ArrowRight',
+    40: 'ArrowDown',
+    10009: 'BrowserBack',
+    415: 'MediaPlayPause',
+    19: 'MediaPlayPause',
+    179: 'MediaPlayPause'
+  };
+  if (byCode[code]) return byCode[code];
+  return key;
+}
+
+const remoteBridge = {
+  locked: false,
+  lastX: null,
+  lastY: null,
+  accX: 0,
+  accY: 0,
+  lastActionAt: 0,
+  pointerThreshold: 34,
+  actionCooldown: 210
+};
+
+function lockTVRemoteMode() {
+  remoteBridge.locked = true;
+  document.body.classList.add('tv-remote-locked');
+  if (!document.body.hasAttribute('tabindex')) document.body.setAttribute('tabindex', '-1');
+  const active = document.activeElement;
+  const typing = active && ['INPUT', 'TEXTAREA'].includes(active.tagName);
+  if (!typing) document.body.focus({ preventScroll: true });
+}
+
+function resetRemotePointerBridge() {
+  remoteBridge.lastX = null;
+  remoteBridge.lastY = null;
+  remoteBridge.accX = 0;
+  remoteBridge.accY = 0;
+}
+
+function sendSyntheticRemoteKey(key) {
+  handleKey({
+    key,
+    keyCode: key === 'Enter' ? 13 : key === 'ArrowLeft' ? 37 : key === 'ArrowUp' ? 38 : key === 'ArrowRight' ? 39 : key === 'ArrowDown' ? 40 : 0,
+    preventDefault() {},
+    stopPropagation() {},
+    stopImmediatePropagation() {}
+  });
+}
+
+function handleRemotePointerMove(event) {
+  if (!remoteBridge.locked) return;
+  if (state.mode === 'player') return;
+  const target = event.target;
+  if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+  const x = Number(event.clientX || 0);
+  const y = Number(event.clientY || 0);
+  if (!remoteBridge.lastX && !remoteBridge.lastY) {
+    remoteBridge.lastX = x;
+    remoteBridge.lastY = y;
+    return;
+  }
+  remoteBridge.accX += x - remoteBridge.lastX;
+  remoteBridge.accY += y - remoteBridge.lastY;
+  remoteBridge.lastX = x;
+  remoteBridge.lastY = y;
+  const now = Date.now();
+  if (now - remoteBridge.lastActionAt < remoteBridge.actionCooldown) return;
+  const absX = Math.abs(remoteBridge.accX);
+  const absY = Math.abs(remoteBridge.accY);
+  if (Math.max(absX, absY) < remoteBridge.pointerThreshold) return;
+  const key = absX >= absY
+    ? (remoteBridge.accX > 0 ? 'ArrowRight' : 'ArrowLeft')
+    : (remoteBridge.accY > 0 ? 'ArrowDown' : 'ArrowUp');
+  remoteBridge.accX = 0;
+  remoteBridge.accY = 0;
+  remoteBridge.lastActionAt = now;
+  sendSyntheticRemoteKey(key);
+}
+
+function keepTVFocusInsideApp() {
+  if (!remoteBridge.locked) return;
+  const active = document.activeElement;
+  const typing = active && ['INPUT', 'TEXTAREA'].includes(active.tagName);
+  if (!typing && document.hasFocus()) document.body.focus({ preventScroll: true });
+}
+
 function handleKey(event) {
-  const key = event.key;
+  lockTVRemoteMode();
+  const key = normalizeRemoteKey(event);
   const enter = key === 'Enter' || key === 'NumpadEnter';
-  const back = key === 'Escape' || key === 'Backspace' || key === 'BrowserBack' || event.keyCode === 10009;
+  const back = key === 'Escape' || key === 'Backspace' || key === 'BrowserBack' || Number(event.keyCode || 0) === 10009;
   const arrows = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
-  if (enter || back || arrows.includes(key)) event.preventDefault();
+  if (enter || back || arrows.includes(key) || key === 'MediaPlayPause') {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    event.stopImmediatePropagation?.();
+  }
 
   if (isLoginVisible()) {
     if (key === 'ArrowDown') return moveLogin(1);
@@ -1884,7 +1984,31 @@ function setupLogin() {
 }
 
 document.addEventListener('keydown', handleKey, true);
+document.addEventListener('keyup', event => {
+  const key = normalizeRemoteKey(event);
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'BrowserBack', 'Backspace', 'Escape'].includes(key)) {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+  }
+}, true);
+document.addEventListener('mousemove', handleRemotePointerMove, true);
+document.addEventListener('pointermove', handleRemotePointerMove, true);
+document.addEventListener('wheel', event => {
+  if (!remoteBridge.locked || state.mode === 'player') return;
+  event.preventDefault?.();
+  const absX = Math.abs(event.deltaX || 0);
+  const absY = Math.abs(event.deltaY || 0);
+  if (Math.max(absX, absY) < 8) return;
+  sendSyntheticRemoteKey(absX > absY ? (event.deltaX > 0 ? 'ArrowRight' : 'ArrowLeft') : (event.deltaY > 0 ? 'ArrowDown' : 'ArrowUp'));
+}, { capture: true, passive: false });
+window.addEventListener('focus', () => { lockTVRemoteMode(); setTimeout(keepTVFocusInsideApp, 30); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(() => { lockTVRemoteMode(); keepTVFocusInsideApp(); }, 80); });
+document.addEventListener('focusin', event => {
+  if (!event.target?.closest?.('input, textarea')) setTimeout(keepTVFocusInsideApp, 0);
+}, true);
 document.addEventListener('click', event => {
+  lockTVRemoteMode();
+  resetRemotePointerBridge();
   const nav = event.target.closest('.tv-side-icon');
   if (nav) { state.navFocus = Number(nav.dataset.navIndex || 0); state.focusArea = 'nav'; activateNav(); return; }
   const card = event.target.closest('.tv-card');
@@ -1964,6 +2088,7 @@ function setupSearch() {
 
 setupLogin();
 setupSearch();
+lockTVRemoteMode();
 auth.onAuthStateChanged(async user => {
   $('#tvLoader').classList.add('hidden');
   if (!user) { $('#tvSettings')?.classList.add('hidden'); showLogin(true); return; }
