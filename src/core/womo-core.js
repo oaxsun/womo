@@ -3694,14 +3694,18 @@ function openPlayer(item, options = {}) {
   const title = document.getElementById('playerTitle');
   const subtitle = document.getElementById('playerSubtitle');
 
-  const setPlayerLoading = (loading) => {
+  const setPlayerLoading = (loading, reason = "direct") => {
+    if (typeof window.womoSetSmartPlayerLoading === "function") {
+      window.womoSetSmartPlayerLoading(Boolean(loading), reason);
+      return;
+    }
     if (overlay) overlay.classList.toggle('is-video-loading', Boolean(loading));
   };
-  video.onwaiting = () => setPlayerLoading(true);
-  video.onloadstart = () => setPlayerLoading(true);
-  video.onstalled = () => setPlayerLoading(true);
-  video.oncanplay = () => setPlayerLoading(false);
-  video.onplaying = () => setPlayerLoading(false);
+  video.onwaiting = () => setPlayerLoading(true, "waiting");
+  video.onloadstart = () => setPlayerLoading(true, "loadstart");
+  video.onstalled = () => setPlayerLoading(true, "stalled");
+  video.oncanplay = () => setPlayerLoading(false, "canplay");
+  video.onplaying = () => setPlayerLoading(false, "playing");
 
   video.onerror = () => {
     console.warn("Womo video playback error detail", {
@@ -5882,31 +5886,115 @@ setTimeout(() => window.womoHideSkeleton?.(), 1200);
   function overlay(){ return document.getElementById('playerOverlay') || document.querySelector('.player-overlay'); }
   function video(){ return document.getElementById('womoPlayer') || document.querySelector('#playerOverlay video, .player-overlay video'); }
 
-  function showStrictLoader(){
+  let womoLoaderShowTimer = null;
+  let womoLoaderHideTimer = null;
+  let womoLoaderHasStarted = false;
+  let womoLoaderVisibleSince = 0;
+  let womoLoaderLastHideAt = 0;
+
+  function clearLoaderTimers(){
+    if (womoLoaderShowTimer) clearTimeout(womoLoaderShowTimer);
+    if (womoLoaderHideTimer) clearTimeout(womoLoaderHideTimer);
+    womoLoaderShowTimer = null;
+    womoLoaderHideTimer = null;
+  }
+
+  function resetSmoothLoaderState(){
+    clearLoaderTimers();
+    womoLoaderHasStarted = false;
+    womoLoaderVisibleSince = 0;
+    womoLoaderLastHideAt = 0;
+    const o = overlay();
+    if (o) {
+      o.classList.remove('womo-player-buffering-smooth');
+      o.classList.remove('womo-player-initial-loading');
+    }
+  }
+
+  function applyLoaderVisible(mode){
     const o = overlay();
     const v = video();
     if (o) {
       o.classList.add('womo-strict-video-loading');
       o.classList.add('is-video-loading');
+      o.classList.toggle('womo-player-initial-loading', mode === 'initial');
+      o.classList.toggle('womo-player-buffering-smooth', mode !== 'initial');
     }
     if (v) {
-      try { v.controls = false; } catch (_) {}
+      if (mode === 'initial') {
+        try { v.controls = false; } catch (_) {}
+      }
       try { v.setAttribute('controlsList', 'nodownload noplaybackrate'); } catch (_) {}
       try { v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); } catch (_) {}
     }
+    womoLoaderVisibleSince = Date.now();
+  }
+
+  function showStrictLoader(reason){
+    const v = video();
+    const o = overlay();
+    if (!o) return;
+
+    const currentTime = v ? Number(v.currentTime || 0) : 0;
+    const readyState = v ? Number(v.readyState || 0) : 0;
+    const isInitial = !womoLoaderHasStarted && currentTime < 0.35 && readyState < 3;
+    const isPausedBuffer = v && v.paused && !v.seeking && reason !== 'loadstart' && reason !== 'initial';
+    if (isPausedBuffer) return;
+
+    if (womoLoaderShowTimer) clearTimeout(womoLoaderShowTimer);
+    if (womoLoaderHideTimer) clearTimeout(womoLoaderHideTimer);
+    womoLoaderShowTimer = null;
+    womoLoaderHideTimer = null;
+
+    if (isInitial || reason === 'initial' || reason === 'loadstart') {
+      applyLoaderVisible('initial');
+      return;
+    }
+
+    // During active playback, wait before showing the spinner. This prevents
+    // Safari/iOS micro-buffer events from looking like player flicker.
+    const sinceLastHide = Date.now() - womoLoaderLastHideAt;
+    const delay = reason === 'seeking' ? 520 : (sinceLastHide < 700 ? 1100 : 850);
+    womoLoaderShowTimer = setTimeout(function(){
+      const vv = video();
+      if (!vv || vv.ended) return;
+      if (vv.readyState >= 3 && !vv.seeking) return;
+      if (vv.paused && !vv.seeking) return;
+      applyLoaderVisible('buffering');
+    }, delay);
   }
 
   function hideStrictLoader(){
     const o = overlay();
     const v = video();
-    if (o) {
-      o.classList.remove('womo-strict-video-loading');
-      o.classList.remove('is-video-loading');
-    }
-    if (v) {
-      try { v.controls = true; } catch (_) {}
-    }
+    if (v && (Number(v.currentTime || 0) > 0 || v.readyState >= 3)) womoLoaderHasStarted = true;
+    if (womoLoaderShowTimer) clearTimeout(womoLoaderShowTimer);
+    womoLoaderShowTimer = null;
+
+    const visibleFor = womoLoaderVisibleSince ? Date.now() - womoLoaderVisibleSince : 0;
+    const delay = visibleFor > 0 && visibleFor < 180 ? 180 - visibleFor : 80;
+    if (womoLoaderHideTimer) clearTimeout(womoLoaderHideTimer);
+    womoLoaderHideTimer = setTimeout(function(){
+      const oo = overlay();
+      const vv = video();
+      if (oo) {
+        oo.classList.remove('womo-strict-video-loading');
+        oo.classList.remove('is-video-loading');
+        oo.classList.remove('womo-player-buffering-smooth');
+        oo.classList.remove('womo-player-initial-loading');
+      }
+      if (vv) {
+        try { vv.controls = true; } catch (_) {}
+      }
+      womoLoaderVisibleSince = 0;
+      womoLoaderLastHideAt = Date.now();
+    }, delay);
   }
+
+  window.womoSetSmartPlayerLoading = function(loading, reason){
+    if (loading) showStrictLoader(reason || 'direct');
+    else hideStrictLoader();
+  };
 
   function forceMobileLandscapeShell(){
     const o = overlay();
@@ -5946,7 +6034,7 @@ setTimeout(() => window.womoHideSkeleton?.(), 1200);
       try { v.removeAttribute('src'); v.load(); } catch (_) {}
     }
     if (o) {
-      o.classList.remove('open','active','show','show-controls','controls-visible','is-video-loading','womo-strict-video-loading');
+      o.classList.remove('open','active','show','show-controls','controls-visible','is-video-loading','womo-strict-video-loading','womo-player-buffering-smooth','womo-player-initial-loading');
       o.classList.add('hidden');
       o.setAttribute('aria-hidden','true');
       o.style.display = 'none';
@@ -5974,14 +6062,14 @@ setTimeout(() => window.womoHideSkeleton?.(), 1200);
     if (!v) return;
     bindCloseButton();
     forceMobileLandscapeShell();
-    showStrictLoader();
+    showStrictLoader('initial');
 
     if (v.dataset.womoStrictLoaderBound !== 'true') {
       v.dataset.womoStrictLoaderBound = 'true';
-      v.addEventListener('loadstart', showStrictLoader);
-      v.addEventListener('waiting', showStrictLoader);
-      v.addEventListener('stalled', showStrictLoader);
-      v.addEventListener('seeking', showStrictLoader);
+      v.addEventListener('loadstart', function(){ showStrictLoader('loadstart'); });
+      v.addEventListener('waiting', function(){ showStrictLoader('waiting'); });
+      v.addEventListener('stalled', function(){ showStrictLoader('stalled'); });
+      v.addEventListener('seeking', function(){ showStrictLoader('seeking'); });
       v.addEventListener('playing', hideStrictLoader);
       v.addEventListener('timeupdate', function(){
         if (Number(v.currentTime || 0) > 0 || v.readyState >= 3) hideStrictLoader();
@@ -5996,7 +6084,7 @@ setTimeout(() => window.womoHideSkeleton?.(), 1200);
       });
       v.addEventListener('error', function(){
         const o = overlay();
-        if (o) o.classList.remove('womo-strict-video-loading','is-video-loading');
+        if (o) o.classList.remove('womo-strict-video-loading','is-video-loading','womo-player-buffering-smooth','womo-player-initial-loading');
         try { v.controls = true; } catch (_) {}
       });
     }
@@ -6006,10 +6094,11 @@ setTimeout(() => window.womoHideSkeleton?.(), 1200);
   if (originalOpenPlayer) {
     openPlayer = function(item, options){
       const result = originalOpenPlayer.apply(this, arguments);
-      showStrictLoader();
+      resetSmoothLoaderState();
+      showStrictLoader('initial');
       bindStrictVideoEvents();
       forceMobileLandscapeShell();
-      setTimeout(function(){ showStrictLoader(); bindStrictVideoEvents(); forceMobileLandscapeShell(); }, 30);
+      setTimeout(function(){ showStrictLoader('initial'); bindStrictVideoEvents(); forceMobileLandscapeShell(); }, 30);
       setTimeout(function(){ bindStrictVideoEvents(); forceMobileLandscapeShell(); }, 180);
       return result;
     };
