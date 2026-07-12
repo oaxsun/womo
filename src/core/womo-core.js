@@ -2842,7 +2842,8 @@ function womoTryMobileNativeFullscreen(video) {
     if (typeof video.requestFullscreen === "function") {
       video.requestFullscreen()
         .then(() => womoLockMobileLandscape())
-        .catch(() => {});
+        // If metadata is not ready yet, let the later media hooks try again.
+        .catch(() => womoResetMobileFullscreenAttempt(video));
       setTimeout(womoLockMobileLandscape, 120);
       return;
     }
@@ -2852,6 +2853,7 @@ function womoTryMobileNativeFullscreen(video) {
       setTimeout(womoLockMobileLandscape, 120);
     }
   } catch (error) {
+    womoResetMobileFullscreenAttempt(video);
     console.warn("No se pudo activar fullscreen móvil automático.", error);
   }
 }
@@ -3797,6 +3799,10 @@ function openPlayer(item, options = {}) {
 
   overlay.classList.add('open', 'controls-visible');
   overlay.setAttribute('aria-hidden', 'false');
+
+  // Run from the original Play-button gesture. Mobile browsers commonly
+  // reject fullscreen when it is first requested by a later async event.
+  womoTryMobileNativeFullscreen(video);
 
   const hasExplicitStartAt = Object.prototype.hasOwnProperty.call(options, "startAt");
   const shouldIgnoreSavedProgress = Boolean(options.shuffleMode || options.noProgress || options.fromShuffle || options.saveProgress === false);

@@ -9203,3 +9203,80 @@ body.player-open{
     filter:none !important;
   }
 }
+
+/* 2026-07-12 mobile search scroll and preview typography fixes */
+@media (max-width:760px){
+  #searchPage,
+  body.search-scroll-enabled #searchPage,
+  body:not(.search-scroll-enabled) #searchPage{
+    position:absolute !important;
+    inset:0 !important;
+    width:100% !important;
+    height:100% !important;
+    min-height:0 !important;
+    max-height:100% !important;
+    overflow-x:hidden !important;
+    overflow-y:auto !important;
+    overscroll-behavior-y:contain !important;
+    -webkit-overflow-scrolling:touch !important;
+    touch-action:pan-y !important;
+    padding-bottom:130px !important;
+  }
+
+  #searchPage .library-page,
+  body.search-scroll-enabled #searchPage .library-page,
+  body:not(.search-scroll-enabled) #searchPage .library-page,
+  #searchPage .search-results-section,
+  #searchPage #searchResults{
+    height:auto !important;
+    max-height:none !important;
+    overflow:visible !important;
+    touch-action:pan-y !important;
+  }
+
+  #searchPage .search-shell{
+    display:flex !important;
+    flex:0 0 52px !important;
+    align-self:center !important;
+    align-items:center !important;
+    width:calc(100vw - 36px) !important;
+    max-width:none !important;
+    height:52px !important;
+    min-height:52px !important;
+    max-height:52px !important;
+    margin:0 auto 28px !important;
+    padding:0 22px !important;
+    border:1px solid rgba(255,255,255,.08) !important;
+    border-radius:999px !important;
+    background:#1a1a1a !important;
+    overflow:hidden !important;
+    box-sizing:border-box !important;
+  }
+
+  #searchPage .search-shell input,
+  #searchPage #searchInput{
+    flex:1 1 auto !important;
+    width:auto !important;
+    min-width:0 !important;
+    height:100% !important;
+    margin:0 !important;
+    padding:0 !important;
+    border:0 !important;
+    border-radius:0 !important;
+    background:transparent !important;
+  }
+
+  .preview-content h2,
+  .preview-hero-content h2{
+    position:relative !important;
+    top:-2px !important;
+  }
+
+  .preview-hero-content p,
+  #previewDesc{
+    position:relative !important;
+    top:-4px !important;
+    text-align:justify !important;
+    text-justify:inter-word !important;
+  }
+}

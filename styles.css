@@ -4,4 +4,4 @@
   Keep visual changes inside src/styles/.
   The functional engine lives in src/core/womo-core.js.
 */
-@import url('./src/styles/womo-ui.css');
+@import url('./src/styles/womo-ui.css?v=41');
