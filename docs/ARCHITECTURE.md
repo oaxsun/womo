@@ -133,11 +133,9 @@ Bloque duplicado de géneros en Admin eliminado. La activación y orden de Pelí
 
 ## TV Browser Mode
 
-La app web incluye una experiencia separada para televisiones dentro de `tvapp/`. La web principal conserva su flujo normal para desktop/móvil, pero redirige a `tvapp/` cuando detecta user agents de Smart TV/Tizen/webOS/Roku/Fire TV/consolas o cuando se abre manualmente con `?tv=1`, `?womoTv=1` o `?tvapp=1`.
 
 Esta capa se mantiene aislada de la UI web normal para evitar romper Home, móvil, Admin o el player web existente.
 
 
 ## TV Browser Remote Focus v1.1107.0006
-- `tvapp/` now locks focus inside the TV experience, hides the cursor while Womo TV is active, captures remote key events, blocks page scroll, and bridges TV-browser cursor movement into directional navigation when the browser exposes arrows as pointer movement instead of keyboard events.
 - The normal desktop/mobile web app remains unchanged.

@@ -782,83 +782,80 @@ function setupRowEdgeScroll() {
   document.querySelectorAll(".poster-row").forEach(row => {
     if (row.dataset.edgeScrollReady === "true") return;
     row.dataset.edgeScrollReady = "true";
+
+    row.classList.toggle("native-touch-scroll", touchCarouselDevice);
+
     row.addEventListener("scroll", () => {
       if (!touchCarouselDevice) womoMaintainLoopingRow(row);
-    });
+    }, { passive: true });
 
-    let touchDrag = null;
+    if (touchCarouselDevice) {
+      // iPad/tablet keeps the desktop layout, but the interaction must be native touch.
+      // Do not capture pointers or manually set scrollLeft: Safari's inertial scroll is smoother.
+      let touchStart = null;
 
-    row.addEventListener("pointerdown", event => {
-      if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
-      if (!touchCarouselDevice) womoMarkRowInteraction(row);
-      touchDrag = {
-        id: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        scrollLeft: row.scrollLeft,
-        dragging: false
+      row.addEventListener("pointerdown", event => {
+        if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+        touchStart = {
+          id: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          moved: false
+        };
+      }, { passive: true });
+
+      row.addEventListener("pointermove", event => {
+        if (!touchStart || touchStart.id !== event.pointerId) return;
+        const dx = event.clientX - touchStart.x;
+        const dy = event.clientY - touchStart.y;
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+          touchStart.moved = true;
+          row.dataset.suppressClickUntil = String(Date.now() + 350);
+        }
+      }, { passive: true });
+
+      const endNativeTouch = event => {
+        if (!touchStart || touchStart.id !== event.pointerId) return;
+        if (touchStart.moved) row.dataset.suppressClickUntil = String(Date.now() + 350);
+        touchStart = null;
       };
-      try { row.setPointerCapture(event.pointerId); } catch (error) {}
-    });
 
-    row.addEventListener("pointermove", event => {
-      if (!touchDrag || touchDrag.id !== event.pointerId) return;
-      const dx = event.clientX - touchDrag.startX;
-      const dy = event.clientY - touchDrag.startY;
+      row.addEventListener("pointerup", endNativeTouch, { passive: true });
+      row.addEventListener("pointercancel", endNativeTouch, { passive: true });
+      return;
+    }
 
-      if (!touchDrag.dragging && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
-        touchDrag.dragging = true;
+    row.addEventListener("mousemove", event => {
+      const rect = row.getBoundingClientRect();
+      const edgeSize = 120;
+      const x = event.clientX - rect.left;
+      const maxScroll = row.scrollWidth - row.clientWidth;
+
+      let nextDirection = 0;
+
+      if (x > rect.width - edgeSize && row.scrollLeft < maxScroll - 2) {
+        nextDirection = 1;
+      } else if (x < edgeSize && row.scrollLeft > 2) {
+        nextDirection = -1;
       }
 
-      if (!touchDrag.dragging) return;
-      event.preventDefault();
-      row.dataset.suppressClickUntil = String(Date.now() + 450);
-      row.scrollLeft = touchDrag.scrollLeft - dx;
-      womoMaintainLoopingRow(row);
+      if (nextDirection === 0) {
+        if (activeScrollRow === row) stopEdgeScroll();
+        return;
+      }
+
+      womoMarkRowInteraction(row);
+      activeScrollRow = row;
+      scrollDirection = nextDirection;
+
+      if (!edgeScrollFrame) {
+        edgeScrollFrame = requestAnimationFrame(runEdgeScroll);
+      }
     });
 
-    function endTouchDrag(event) {
-      if (!touchDrag || touchDrag.id !== event.pointerId) return;
-      if (touchDrag.dragging) row.dataset.suppressClickUntil = String(Date.now() + 450);
-      touchDrag = null;
-    }
-
-    row.addEventListener("pointerup", endTouchDrag);
-    row.addEventListener("pointercancel", endTouchDrag);
-
-    if (!touchCarouselDevice) {
-      row.addEventListener("mousemove", event => {
-        const rect = row.getBoundingClientRect();
-        const edgeSize = 120;
-        const x = event.clientX - rect.left;
-        const maxScroll = row.scrollWidth - row.clientWidth;
-
-        let nextDirection = 0;
-
-        if (x > rect.width - edgeSize && row.scrollLeft < maxScroll - 2) {
-          nextDirection = 1;
-        } else if (x < edgeSize && row.scrollLeft > 2) {
-          nextDirection = -1;
-        }
-
-        if (nextDirection === 0) {
-          if (activeScrollRow === row) stopEdgeScroll();
-          return;
-        }
-
-        womoMarkRowInteraction(row);
-        activeScrollRow = row;
-        scrollDirection = nextDirection;
-
-        if (!edgeScrollFrame) {
-          edgeScrollFrame = requestAnimationFrame(runEdgeScroll);
-        }
-      });
-
-      row.addEventListener("mouseleave", () => {
-        if (activeScrollRow === row) stopEdgeScroll();
-      });
-    }
+    row.addEventListener("mouseleave", () => {
+      if (activeScrollRow === row) stopEdgeScroll();
+    });
   });
 }
 

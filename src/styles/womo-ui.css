@@ -9176,3 +9176,30 @@ body.player-open{
 .genre-home-sections {
   display: contents;
 }
+
+/* iPad / tablet desktop-layout touch polish */
+.poster-row.native-touch-scroll{
+  overflow-x:auto !important;
+  overflow-y:visible !important;
+  -webkit-overflow-scrolling:touch !important;
+  scroll-behavior:auto !important;
+  overscroll-behavior-x:contain !important;
+  touch-action:pan-x pan-y !important;
+  cursor:grab;
+}
+.poster-row.native-touch-scroll .poster-card{
+  touch-action:manipulation !important;
+  -webkit-tap-highlight-color:transparent;
+}
+@media (hover:none), (pointer:coarse){
+  .poster-row{
+    -webkit-overflow-scrolling:touch !important;
+    scroll-behavior:auto !important;
+    overscroll-behavior-x:contain !important;
+    touch-action:pan-x pan-y !important;
+  }
+  .poster-row .poster-card:hover{
+    transform:none !important;
+    filter:none !important;
+  }
+}
