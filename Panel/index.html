@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Admin</title>
-  <link rel="stylesheet" href="/Panel/panel-admin.css?v=33" />
+  <link rel="stylesheet" href="/Panel/panel-admin.css?v=34" />
 </head>
 <body>
   <section id="loginScreen" class="login-screen">
@@ -75,7 +75,7 @@
           <div>
             <p class="eyebrow">Orden de Home</p>
             <h3>Secciones dinámicas</h3>
-            <p class="helper">Activa o apaga Películas, Series, Conciertos y géneros. Arrastra los bloques para ordenar cómo aparecen después de Continuar viendo.</p>
+            <p class="helper">Activa o apaga Películas, Series, Conciertos, géneros y colecciones. Arrastra los bloques para ordenar cómo aparecen después de Continuar viendo.</p>
           </div>
           <div id="homeSectionControls" class="genre-toggle-list section-order-list"></div>
         </div>
@@ -238,6 +238,18 @@
         <label class="full">
           Géneros separados por coma
           <input id="genres" placeholder="Thriller, Slasher" />
+        </label>
+        <label class="full">
+          Colección separada por coma
+          <input id="collections" placeholder="Harry Potter, Marvel" />
+        </label>
+        <label>
+          Director
+          <input id="director" placeholder="Christopher Nolan" />
+        </label>
+        <label>
+          Actores separados por coma
+          <input id="actors" placeholder="Actor 1, Actor 2" />
         </label>
         <label class="full">
           Poster URL

@@ -251,6 +251,7 @@ async function readHomeConfigMain(allByKey) {
   const fallback = {
     newItems: buildDefaultNewItems(allItems),
     visibleGenres: [],
+    visibleCollections: [],
     dynamicSections: cloneHomeDynamicSections(DEFAULT_HOME_SECTION_CONFIG)
   };
   try {
@@ -287,7 +288,16 @@ async function readHomeConfigMain(allByKey) {
       }))
       .filter(entry => entry.name);
 
-    return { newItems, visibleGenres, dynamicSections };
+    const rawCollectionSections = data.collectionSections || data.homeCollections || {};
+    const visibleCollections = Object.entries(rawCollectionSections)
+      .filter(([, value]) => womoSectionVisible(value, false))
+      .map(([name, value]) => ({
+        name: String(name || "").trim(),
+        order: womoSectionOrder(value, 60)
+      }))
+      .filter(entry => entry.name);
+
+    return { newItems, visibleGenres, visibleCollections, dynamicSections };
   } catch (error) {
     console.warn("No se pudo leer homeConfig/main.", error);
     return fallback;
@@ -320,49 +330,82 @@ function womoGenreList(item) {
     .filter(Boolean);
 }
 
-function womoBuildHomeGenreSections(items, visibleGenres) {
-  const container = document.getElementById("genreHomeSections");
-  if (!container) return [];
+function womoCollectionList(item) {
+  const raw = Array.isArray(item?.collections)
+    ? item.collections
+    : String(item?.collection || item?.collections || "").split(",");
+  return raw
+    .map(womoGenreDisplayName)
+    .filter(Boolean);
+}
 
-  const allowed = Array.isArray(visibleGenres) ? visibleGenres : [];
-  if (!allowed.length) {
+function womoBuildHomeGenreSections(items, visibleGenres, visibleCollections = []) {
+  const container = document.getElementById("genreHomeSections");
+  if (!container) return { genres: [], collections: [] };
+
+  const allowedGenres = Array.isArray(visibleGenres) ? visibleGenres : [];
+  const allowedCollections = Array.isArray(visibleCollections) ? visibleCollections : [];
+  if (!allowedGenres.length && !allowedCollections.length) {
     container.innerHTML = "";
-    return [];
+    return { genres: [], collections: [] };
   }
 
-  const contentPool = (items || []).filter(item => item && item.poster && (item.type === "movie" || item.type === "series"));
-  const genreEntries = allowed
+  // Genre rows intentionally use movies only. Series stay only in the Series row.
+  const genrePool = (items || []).filter(item => item && item.poster && item.type === "movie");
+  const collectionPool = (items || []).filter(item => item && item.poster);
+
+  const genreEntries = allowedGenres
     .map(entry => {
       const name = womoGenreDisplayName(typeof entry === "string" ? entry : entry.name);
       const order = Number.isFinite(Number(entry?.order)) ? Number(entry.order) : 50;
       const slug = womoGenreSlug(name);
-      const list = contentPool
+      const list = genrePool
         .filter(item => womoGenreList(item).some(genre => womoGenreSlug(genre) === slug))
         .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
-      return { name, slug, order, list };
+      return { name, slug, order, list, kind: "genre" };
     })
     .filter(entry => entry.name && entry.list.length);
 
-  container.innerHTML = genreEntries.map(entry => `
-    <section class="content-row genre-content-row" data-home-section-key="genre:${entry.slug}" data-genre-section="${entry.slug}">
-      <div class="row-header">
-        <h2>${entry.name}</h2>
-      </div>
-      <div class="poster-row" id="genreRow-${entry.slug}"></div>
-    </section>
-  `).join("");
+  const collectionEntries = allowedCollections
+    .map(entry => {
+      const name = womoGenreDisplayName(typeof entry === "string" ? entry : entry.name);
+      const order = Number.isFinite(Number(entry?.order)) ? Number(entry.order) : 60;
+      const slug = womoGenreSlug(name);
+      const list = collectionPool
+        .filter(item => womoCollectionList(item).some(collection => womoGenreSlug(collection) === slug))
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+      return { name, slug, order, list, kind: "collection" };
+    })
+    .filter(entry => entry.name && entry.list.length);
 
-  genreEntries.forEach(entry => {
-    const key = `genre-${entry.slug}`;
+  const allEntries = [...genreEntries, ...collectionEntries];
+
+  container.innerHTML = allEntries.map(entry => {
+    const key = entry.kind === "collection" ? `collection-${entry.slug}` : `genre-${entry.slug}`;
+    const attr = entry.kind === "collection" ? `data-collection-section="${entry.slug}"` : `data-genre-section="${entry.slug}"`;
+    return `
+      <section class="content-row ${entry.kind}-content-row" data-home-section-key="${entry.kind}:${entry.slug}" ${attr}>
+        <div class="row-header">
+          <h2>${entry.name}</h2>
+          <button type="button" data-view-all="${key}">Ver más</button>
+        </div>
+        <div class="poster-row" id="${entry.kind}Row-${entry.slug}"></div>
+      </section>
+    `;
+  }).join("");
+
+  allEntries.forEach(entry => {
+    const key = entry.kind === "collection" ? `collection-${entry.slug}` : `genre-${entry.slug}`;
     viewAllCollections[key] = entry.list;
-    dynamicViewAllMeta[key] = { title: entry.name, eyebrow: "Sección", empty: `No hay títulos en ${entry.name}.` };
-    fillRow(`genreRow-${entry.slug}`, entry.list, false, true);
+    dynamicViewAllMeta[key] = { title: entry.name, eyebrow: entry.kind === "collection" ? "Colección" : "Sección", empty: `No hay títulos en ${entry.name}.` };
+    fillRow(`${entry.kind}Row-${entry.slug}`, entry.list, false, true);
   });
 
-  return genreEntries;
+  bindViewAllButtons(container);
+  return { genres: genreEntries, collections: collectionEntries };
 }
 
-function applyDynamicHomeSectionOrder(homeConfig, genreEntries = []) {
+function applyDynamicHomeSectionOrder(homeConfig, genreEntries = [], collectionEntries = []) {
   const root = document.getElementById("dynamicHomeSections");
   if (!root) return;
   const entries = [];
@@ -385,6 +428,11 @@ function applyDynamicHomeSectionOrder(homeConfig, genreEntries = []) {
   genreEntries.forEach(entry => {
     const el = root.querySelector(`[data-genre-section="${entry.slug}"]`);
     if (el) entries.push({ el, order: Number(entry.order || 50) });
+  });
+
+  collectionEntries.forEach(entry => {
+    const el = root.querySelector(`[data-collection-section="${entry.slug}"]`);
+    if (el) entries.push({ el, order: Number(entry.order || 60) });
   });
 
   entries.sort((a, b) => a.order - b.order).forEach(entry => root.appendChild(entry.el));
@@ -494,6 +542,9 @@ function normalizeMovie(docSnap) {
   const data = docSnap.data();
   const title = data.title || data.name || cleanTitleFromId(docSnap.id);
   const genre = normalizeGenres(data.genres || data.genre);
+  const genres = Array.isArray(data.genres) ? data.genres : String(data.genre || data.genres || "").split(",").map(value => value.trim()).filter(Boolean);
+  const collections = Array.isArray(data.collections) ? data.collections : String(data.collection || data.collections || "").split(",").map(value => value.trim()).filter(Boolean);
+  const actors = Array.isArray(data.actors) ? data.actors : String(data.actors || data.cast || "").split(",").map(value => value.trim()).filter(Boolean);
   const duration = data.duration ? `${data.duration} min` : (data.runtime ? `${data.runtime} min` : "");
 
   return {
@@ -502,6 +553,11 @@ function normalizeMovie(docSnap) {
     duration,
     year: data.year || "",
     genre,
+    genres,
+    collection: collections.join(", "),
+    collections,
+    director: data.director || "",
+    actors,
     description: data.synopsis || data.description || "",
     poster: data.posterUrl || data.poster || data.imageUrl || "",
     hlsUrl: data.hlsUrl || data.videoUrl || data.videoURL || data.streamUrl || data.playbackUrl || data.mp4Url || data.m3u8 || data.file || data.link || data.url || "",
@@ -525,6 +581,9 @@ function normalizeSeries(docSnap) {
   const data = docSnap.data();
   const title = data.title || data.name || cleanTitleFromId(docSnap.id);
   const genre = normalizeGenres(data.genres || data.genre);
+  const genres = Array.isArray(data.genres) ? data.genres : String(data.genre || data.genres || "").split(",").map(value => value.trim()).filter(Boolean);
+  const collections = Array.isArray(data.collections) ? data.collections : String(data.collection || data.collections || "").split(",").map(value => value.trim()).filter(Boolean);
+  const actors = Array.isArray(data.actors) ? data.actors : String(data.actors || data.cast || "").split(",").map(value => value.trim()).filter(Boolean);
 
   return {
     id: docSnap.id,
@@ -532,6 +591,11 @@ function normalizeSeries(docSnap) {
     duration: data.seasons ? `${data.seasons} temporada${data.seasons === 1 ? "" : "s"}` : "Serie",
     year: data.year || "",
     genre,
+    genres,
+    collection: collections.join(", "),
+    collections,
+    director: data.director || "",
+    actors,
     description: data.synopsis || data.description || "",
     poster: data.posterUrl || data.poster || data.imageUrl || "",
     isFavorite: Boolean(data.isFavorite),
@@ -969,6 +1033,10 @@ function searchMatches(item, query) {
     item.title,
     item.genre,
     item.genres,
+    item.collection,
+    item.collections,
+    item.director,
+    item.actors,
     item.year,
     item.type === "series" ? "series serie" : item.type === "concert" ? "concierto concert" : "pelicula movie"
   ].filter(Boolean).join(" ").toLowerCase();
@@ -1516,9 +1584,9 @@ async function init() {
   fillRow("continueRow", continueItems, true, true, { loop: true });
   fillRow("moviesRow", noveltyItems, false, true, { loop: true, limit: 20 });
   fillRow("seriesRow", seriesItems, false, true);
-  const genreEntries = womoBuildHomeGenreSections([...movieItems, ...seriesItems], homeConfig.visibleGenres);
+  const taxonomyEntries = womoBuildHomeGenreSections(sortedItems, homeConfig.visibleGenres, homeConfig.visibleCollections);
   fillRow("concertsRow", concertItems, false, true);
-  applyDynamicHomeSectionOrder(homeConfig, genreEntries);
+  applyDynamicHomeSectionOrder(homeConfig, taxonomyEntries.genres || taxonomyEntries || [], taxonomyEntries.collections || []);
   womoHideSkeleton();
   setupRowEdgeScroll();
   renderSearchResults();
@@ -1544,10 +1612,16 @@ function getPreviewRecommendations(item) {
   const all = [...allItemsByContinueKey.values()]
     .filter(x => x && x.id !== item.id && x.poster);
 
-  if (item.type === 'series') {
-    const empty = [];
-    empty.womoTitle = 'Recomendaciones';
-    return empty;
+  const currentCollections = womoCollectionList(item).map(womoGenreSlug);
+  if (currentCollections.length) {
+    const sameCollection = all
+      .filter(x => womoCollectionList(x).some(collection => currentCollections.includes(womoGenreSlug(collection))))
+      .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+      .slice(0, 8);
+    if (sameCollection.length) {
+      sameCollection.womoTitle = womoCollectionList(item)[0] || 'Colección';
+      return sameCollection;
+    }
   }
 
   if (item.type === 'concert') {
@@ -1555,15 +1629,16 @@ function getPreviewRecommendations(item) {
       .filter(x => x.type === 'concert')
       .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
       .slice(0, 3);
-    concerts.womoTitle = 'Recomendaciones';
-    return concerts;
+    if (concerts.length) {
+      concerts.womoTitle = 'Recomendaciones';
+      return concerts;
+    }
   }
 
   const currentGenres = genreTokens(item);
-
   const sameGenre = currentGenres.length
     ? all
-        .filter(x => x.type === 'movie')
+        .filter(x => item.type === 'series' ? x.type === 'series' : x.type === 'movie')
         .filter(x => genreTokens(x).some(genre => currentGenres.includes(genre)))
         .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
         .slice(0, 8)
@@ -1575,12 +1650,34 @@ function getPreviewRecommendations(item) {
   }
 
   const recent = all
-    .filter(x => x.type === 'movie')
+    .filter(x => item.type === 'series' ? x.type === 'series' : item.type === 'concert' ? x.type === 'concert' : x.type === 'movie')
     .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
     .slice(0, 3);
 
   recent.womoTitle = 'Recientes';
   return recent;
+}
+
+function renderPreviewRecommendationsForItem(item) {
+  const extra = document.getElementById('previewExtra');
+  const extraTitle = document.getElementById('previewExtraTitle');
+  const recs = document.getElementById('previewRecs');
+  if (!extra || !extraTitle || !recs || !item) return;
+  recs.innerHTML = '';
+  const recommendations = getPreviewRecommendations(item);
+  if (!recommendations.length) {
+    extra.classList.add('hidden');
+    return;
+  }
+  extra.classList.remove('hidden');
+  extraTitle.textContent = recommendations.womoTitle || 'Recomendaciones';
+  recommendations.forEach(r => {
+    const img = document.createElement('img');
+    img.src = r.poster || r.posterUrl;
+    img.alt = r.title || 'Recomendación';
+    img.addEventListener('click', () => openPreview(r));
+    recs.appendChild(img);
+  });
 }
 
 
@@ -2116,6 +2213,7 @@ async function openPreview(item) {
       };
     }
     renderEpisodes(item.id, episodes);
+    renderPreviewRecommendationsForItem(item);
   } else {
     actions.innerHTML = state
       ? '<button class="primary" data-preview-play>Continuar</button><button class="secondary" data-preview-restart>Reiniciar</button>'
@@ -2129,21 +2227,7 @@ async function openPreview(item) {
       openPlayer(item);
     };
 
-    const recommendations = getPreviewRecommendations(item);
-    if (!recommendations.length) {
-      extra.classList.add('hidden');
-    } else {
-      extra.classList.remove('hidden');
-      extraTitle.textContent = recommendations.womoTitle || 'Recomendaciones';
-      recommendations.forEach(r => {
-        const img = document.createElement('img');
-        img.src = r.poster || r.posterUrl;
-        img.alt = r.title || 'Recomendación';
-        img.addEventListener('click', () => openPreview(r));
-        recs.appendChild(img);
-      });
-      extra.classList.remove('hidden');
-    }
+    renderPreviewRecommendationsForItem(item);
   }
 
   modal.classList.add('open');
