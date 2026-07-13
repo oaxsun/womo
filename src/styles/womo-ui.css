@@ -2323,6 +2323,74 @@ body {
   }
 }
 
+/* Player audio-language selector: visible only when JS detects 2+ tracks. */
+.player-audio-control{
+  position:absolute;
+  top:28px;
+  right:24px;
+  z-index:40;
+}
+
+.player-audio-control[hidden]{ display:none !important; }
+
+.player-audio-button{
+  height:40px;
+  padding:0 15px;
+  border:1px solid rgba(255,255,255,.22);
+  border-radius:999px;
+  background:rgba(12,12,12,.78);
+  color:#fff;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font:700 13px/1 inherit;
+  cursor:pointer;
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+}
+
+.player-audio-button svg{ width:18px; height:18px; }
+
+.player-audio-menu{
+  position:absolute;
+  top:48px;
+  right:0;
+  width:max-content;
+  min-width:150px;
+  padding:6px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:14px;
+  background:rgba(18,18,18,.96);
+  box-shadow:0 16px 42px rgba(0,0,0,.45);
+  display:none;
+}
+
+.player-audio-menu.open{ display:grid; gap:2px; }
+
+.player-audio-option{
+  width:100%;
+  padding:10px 12px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#fff;
+  text-align:left;
+  font:600 13px/1.2 inherit;
+  cursor:pointer;
+}
+
+.player-audio-option:hover{ background:rgba(255,255,255,.08); }
+.player-audio-option.active{ background:var(--accent); color:#111; }
+
+/* Home content stays in carousels; the old View all entry points are retired. */
+#homePage .row-header [data-view-all]{ display:none !important; }
+
+@media (max-width:760px){
+  .player-audio-control{ top:18px; right:16px; }
+  .player-audio-button{ width:42px; padding:0; justify-content:center; }
+  .player-audio-button span{ display:none; }
+}
+
 @media (max-width:380px){
   .preview-content{
     margin-top:-335px !important;

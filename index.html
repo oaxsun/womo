@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Web</title>
 
-  <link rel="stylesheet" href="styles.css?v=41" />
+  <link rel="stylesheet" href="styles.css?v=43" />
 </head>
 <body>
 
@@ -96,7 +96,6 @@
       <section class="content-row">
         <div class="row-header">
           <h2>Continuar viendo</h2>
-          <button type="button" data-view-all="continue" class="hidden">Ver más</button>
         </div>
         <div class="poster-row" id="continueRow"></div>
       </section>
@@ -104,8 +103,7 @@
       <div id="dynamicHomeSections" class="dynamic-home-sections">
         <section class="content-row" id="moviesHomeSection" data-home-section-key="movies">
           <div class="row-header">
-            <h2>Películas</h2>
-            <button type="button" data-view-all="movies">Ver más</button>
+            <h2>Novedades</h2>
           </div>
           <div class="poster-row" id="moviesRow"></div>
         </section>
@@ -113,7 +111,6 @@
         <section class="content-row" id="seriesHomeSection" data-home-section-key="series">
           <div class="row-header">
             <h2>Series</h2>
-            <button type="button" data-view-all="series">Ver más</button>
           </div>
           <div class="poster-row" id="seriesRow"></div>
         </section>
@@ -123,7 +120,6 @@
         <section class="content-row" id="concertsHomeSection" data-home-section-key="concerts">
           <div class="row-header">
             <h2>Conciertos</h2>
-            <button type="button" data-view-all="concerts">Ver más</button>
           </div>
           <div class="poster-row" id="concertsRow"></div>
         </section>
@@ -274,6 +270,12 @@
       <div id="playerSubtitle" class="player-subtitle"></div>
     </div>
   </div>
+  <div id="playerAudioControl" class="player-audio-control" hidden>
+    <button type="button" id="playerAudioButton" class="player-audio-button" aria-label="Cambiar idioma" aria-expanded="false">
+      <i data-lucide="languages"></i><span>Idioma</span>
+    </button>
+    <div id="playerAudioMenu" class="player-audio-menu" role="menu"></div>
+  </div>
   <video id="womoPlayer" class="womo-player" controls playsinline controlsList="nodownload noplaybackrate" disablePictureInPicture></video>
 </div>
 
@@ -283,6 +285,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="src/core/womo-core.js?v=41"></script>
+  <script src="src/core/womo-core.js?v=43"></script>
 </body>
 </html>

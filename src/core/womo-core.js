@@ -347,7 +347,6 @@ function womoBuildHomeGenreSections(items, visibleGenres) {
     <section class="content-row genre-content-row" data-home-section-key="genre:${entry.slug}" data-genre-section="${entry.slug}">
       <div class="row-header">
         <h2>${entry.name}</h2>
-        <button type="button" data-view-all="genre-${entry.slug}">Ver más</button>
       </div>
       <div class="poster-row" id="genreRow-${entry.slug}"></div>
     </section>
@@ -355,13 +354,11 @@ function womoBuildHomeGenreSections(items, visibleGenres) {
 
   genreEntries.forEach(entry => {
     const key = `genre-${entry.slug}`;
-    const limited = entry.list.slice(0, 10);
     viewAllCollections[key] = entry.list;
     dynamicViewAllMeta[key] = { title: entry.name, eyebrow: "Sección", empty: `No hay títulos en ${entry.name}.` };
-    fillRow(`genreRow-${entry.slug}`, limited, false, true);
+    fillRow(`genreRow-${entry.slug}`, entry.list, false, true);
   });
 
-  bindViewAllButtons(container);
   return genreEntries;
 }
 
@@ -552,18 +549,34 @@ async function readCollection(name, normalizer) {
   if (user) await user.getIdToken();
 
   try {
-    const snapshot = await db.collection(name).orderBy("createdAt", "desc").limit(60).get();
-    return snapshot.docs.map(normalizer);
+    // Read the complete collection. Ordering in memory also keeps documents
+    // without createdAt available instead of silently excluding them.
+    const snapshot = await db.collection(name).get();
+    return snapshot.docs.map(normalizer).sort((a, b) => b.createdAt - a.createdAt);
   } catch (error) {
-    console.warn(`No se pudo leer ${name} con orden. Intentando sin orden.`, error);
-    try {
-      const snapshot = await db.collection(name).get();
-      return snapshot.docs.map(normalizer).sort((a, b) => b.createdAt - a.createdAt);
-    } catch (fallbackError) {
-      console.error(`No se pudo leer ${name}.`, fallbackError);
-      return [];
-    }
+    console.error(`No se pudo leer ${name}.`, error);
+    return [];
   }
+}
+
+async function getSeriesLatestEpisodeAt(seriesId) {
+  try {
+    const snapshot = await db.collection("series").doc(seriesId)
+      .collection("episodes").orderBy("createdAt", "desc").limit(1).get();
+    if (snapshot.empty) return 0;
+    return toMillis(snapshot.docs[0].data()?.createdAt);
+  } catch (error) {
+    console.warn(`No se pudo leer la fecha del episodio más reciente de ${seriesId}.`, error);
+    return 0;
+  }
+}
+
+async function sortSeriesByLatestEpisode(seriesItems) {
+  const enriched = await Promise.all((seriesItems || []).map(async item => ({
+    item,
+    activityAt: Math.max(Number(item.createdAt || 0), await getSeriesLatestEpisodeAt(item.id))
+  })));
+  return enriched.sort((a, b) => b.activityAt - a.activityAt).map(entry => entry.item);
 }
 
 
@@ -688,7 +701,6 @@ function womoIsTouchCarouselDevice() {
 }
 
 function fillRow(id, data, progress = false, hideWhenEmpty = false, options = {}) {
-  const rowLimit = 10;
   updateViewAllButtonsVisibility(id, Array.isArray(data) ? data.length : 0);
   const row = document.getElementById(id);
   if (!row) return;
@@ -698,7 +710,11 @@ function fillRow(id, data, progress = false, hideWhenEmpty = false, options = {}
     section.classList.toggle("hidden", !data.length);
   }
 
-  const visibleData = Array.isArray(data) ? data.slice(0, rowLimit) : [];
+  const sourceData = Array.isArray(data) ? data : [];
+  const requestedLimit = Number(options.limit);
+  const visibleData = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? sourceData.slice(0, requestedLimit)
+    : sourceData;
   const allowLoop = !womoIsTouchCarouselDevice();
   // Desktop loop rule: every Home carousel with more than 6 real titles loops.
   // Touch/mobile keeps native horizontal scroll to avoid jank.
@@ -1480,22 +1496,26 @@ async function init() {
   heroIndex = 0;
 
   const movieItems = movies.filter(item => item.type === "movie");
+  const noveltyItems = [...movieItems]
+    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+    .slice(0, 20);
+  const seriesItems = await sortSeriesByLatestEpisode(publishedSeries);
   const concertItems = concerts;
   const continueItems = buildContinueItems(sortedItems);
 
   dynamicViewAllMeta = {};
   viewAllCollections = {
     continue: continueItems,
-    movies: movieItems,
-    series: publishedSeries,
+    movies: noveltyItems,
+    series: seriesItems,
     concerts: concertItems,
     all: sortedItems
   };
 
   setHero(0);
   fillRow("continueRow", continueItems, true, true, { loop: true });
-  fillRow("moviesRow", movieItems, false, true, { loop: true });
-  fillRow("seriesRow", publishedSeries, false, true);
+  fillRow("moviesRow", noveltyItems, false, true, { loop: true, limit: 20 });
+  fillRow("seriesRow", seriesItems, false, true);
   const genreEntries = womoBuildHomeGenreSections(movieItems, homeConfig.visibleGenres);
   fillRow("concertsRow", concertItems, false, true);
   applyDynamicHomeSectionOrder(homeConfig, genreEntries);
@@ -2145,6 +2165,99 @@ document.addEventListener('keydown', e => {
 let currentHls = null;
 let playerSaveTimer = null;
 let currentPlayerContext = null;
+
+let womoAudioTrackSetter = null;
+
+function womoAudioTrackLabel(track, index) {
+  const raw = track?.name || track?.label || track?.lang || track?.language || "";
+  const languageNames = {
+    es: "Español", spa: "Español", en: "English", eng: "English",
+    fr: "Français", fra: "Français", fre: "Français",
+    de: "Deutsch", deu: "Deutsch", ger: "Deutsch",
+    it: "Italiano", ita: "Italiano", pt: "Português", por: "Português",
+    ja: "日本語", jpn: "日本語", ko: "한국어", kor: "한국어"
+  };
+  return languageNames[String(raw).toLowerCase()] || raw || `Audio ${index + 1}`;
+}
+
+function womoResetAudioSelector() {
+  const control = document.getElementById("playerAudioControl");
+  const button = document.getElementById("playerAudioButton");
+  const menu = document.getElementById("playerAudioMenu");
+  womoAudioTrackSetter = null;
+  if (control) control.hidden = true;
+  if (button) button.setAttribute("aria-expanded", "false");
+  if (menu) {
+    menu.classList.remove("open");
+    menu.replaceChildren();
+  }
+}
+
+function womoRenderAudioSelector(tracks, activeIndex, setter) {
+  const list = Array.from(tracks || []);
+  if (list.length < 2) {
+    womoResetAudioSelector();
+    return;
+  }
+
+  const control = document.getElementById("playerAudioControl");
+  const menu = document.getElementById("playerAudioMenu");
+  if (!control || !menu) return;
+
+  womoAudioTrackSetter = setter;
+  menu.replaceChildren();
+  list.forEach((track, index) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "player-audio-option";
+    option.setAttribute("role", "menuitemradio");
+    option.setAttribute("aria-checked", index === activeIndex ? "true" : "false");
+    option.classList.toggle("active", index === activeIndex);
+    option.textContent = womoAudioTrackLabel(track, index);
+    option.addEventListener("click", event => {
+      event.stopPropagation();
+      if (typeof womoAudioTrackSetter === "function") womoAudioTrackSetter(index);
+      womoRenderAudioSelector(list, index, setter);
+      menu.classList.remove("open");
+      document.getElementById("playerAudioButton")?.setAttribute("aria-expanded", "false");
+    });
+    menu.appendChild(option);
+  });
+  control.hidden = false;
+  if (window.lucide) lucide.createIcons();
+}
+
+function womoRefreshHlsAudioTracks() {
+  if (!currentHls) return;
+  womoRenderAudioSelector(currentHls.audioTracks, currentHls.audioTrack, index => {
+    if (currentHls) currentHls.audioTrack = index;
+  });
+}
+
+function womoRefreshNativeAudioTracks(video) {
+  const tracks = video?.audioTracks;
+  if (!tracks || tracks.length < 2) return;
+  const list = Array.from({ length: tracks.length }, (_, index) => tracks[index]);
+  const active = Math.max(0, list.findIndex(track => track.enabled));
+  womoRenderAudioSelector(list, active, index => {
+    list.forEach((track, trackIndex) => { track.enabled = trackIndex === index; });
+  });
+}
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("#playerAudioButton");
+  const menu = document.getElementById("playerAudioMenu");
+  if (button && menu) {
+    event.stopPropagation();
+    const open = menu.classList.toggle("open");
+    button.setAttribute("aria-expanded", String(open));
+    return;
+  }
+  if (!event.target.closest("#playerAudioControl")) {
+    menu?.classList.remove("open");
+    document.getElementById("playerAudioButton")?.setAttribute("aria-expanded", "false");
+  }
+});
 
 function getContinueEntry(item) {
   return loadContinueState().find(x => x.id === item.id && x.type === item.type);
@@ -2838,9 +2951,11 @@ function womoTryMobileNativeFullscreen(video) {
       return;
     }
 
-    // Modern mobile browsers.
-    if (typeof video.requestFullscreen === "function") {
-      video.requestFullscreen()
+    // Modern mobile browsers: fullscreen the whole player so custom controls
+    // such as the audio-language selector remain visible.
+    const fullscreenTarget = video.closest("#playerOverlay") || video;
+    if (typeof fullscreenTarget.requestFullscreen === "function") {
+      fullscreenTarget.requestFullscreen()
         .then(() => womoLockMobileLandscape())
         // If metadata is not ready yet, let the later media hooks try again.
         .catch(() => womoResetMobileFullscreenAttempt(video));
@@ -2848,8 +2963,8 @@ function womoTryMobileNativeFullscreen(video) {
       return;
     }
 
-    if (typeof video.webkitRequestFullscreen === "function") {
-      video.webkitRequestFullscreen();
+    if (typeof fullscreenTarget.webkitRequestFullscreen === "function") {
+      fullscreenTarget.webkitRequestFullscreen();
       setTimeout(womoLockMobileLandscape, 120);
     }
   } catch (error) {
@@ -3659,6 +3774,7 @@ function womoDecorateShuffleButtons() {
 
 function openPlayer(item, options = {}) {
   window.__womoPlayerOpenedAt = Date.now();
+  womoResetAudioSelector();
   currentPlayerItem = item;
   currentPlayerEpisode = options?.episode || null;
   if (options && (options.shuffleMode || options.fromShuffle || options.noProgress || options.saveProgress === false)) {
@@ -3766,8 +3882,15 @@ function openPlayer(item, options = {}) {
     currentHls.attachMedia(video);
     currentHls.on(Hls.Events.MANIFEST_PARSED, () => {
       if (overlay) overlay.classList.remove('is-video-loading');
+      womoRefreshHlsAudioTracks();
       video.play().catch(() => {});
     });
+    if (Hls.Events.AUDIO_TRACKS_UPDATED) {
+      currentHls.on(Hls.Events.AUDIO_TRACKS_UPDATED, womoRefreshHlsAudioTracks);
+    }
+    if (Hls.Events.AUDIO_TRACK_SWITCHED) {
+      currentHls.on(Hls.Events.AUDIO_TRACK_SWITCHED, womoRefreshHlsAudioTracks);
+    }
     currentHls.on(Hls.Events.ERROR, (event, data) => {
       if (!data || !data.fatal) return;
       console.warn("Womo HLS fatal error; intentando recuperar sin recargar la página.", data);
@@ -3813,6 +3936,7 @@ function openPlayer(item, options = {}) {
       : getItemProgress(item));
 
   video.onloadedmetadata = () => {
+    if (!currentHls) womoRefreshNativeAudioTracks(video);
     if (hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0) {
       video.currentTime = Number(options.startAt);
     } else if (savedProgress > 0 && savedProgress < 98 && video.duration && isFinite(video.duration)) {
@@ -3837,6 +3961,7 @@ function openPlayer(item, options = {}) {
 }
 
 function closePlayer() {
+  womoResetAudioSelector();
   try {
     const videoFs = document.getElementById('womoPlayer');
     if (videoFs && typeof videoFs.webkitExitFullscreen === 'function') videoFs.webkitExitFullscreen();
