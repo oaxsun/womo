@@ -330,7 +330,7 @@ function womoBuildHomeGenreSections(items, visibleGenres) {
     return [];
   }
 
-  const contentPool = (items || []).filter(item => item && item.poster && item.type === "movie");
+  const contentPool = (items || []).filter(item => item && item.poster && (item.type === "movie" || item.type === "series"));
   const genreEntries = allowed
     .map(entry => {
       const name = womoGenreDisplayName(typeof entry === "string" ? entry : entry.name);
@@ -1516,7 +1516,7 @@ async function init() {
   fillRow("continueRow", continueItems, true, true, { loop: true });
   fillRow("moviesRow", noveltyItems, false, true, { loop: true, limit: 20 });
   fillRow("seriesRow", seriesItems, false, true);
-  const genreEntries = womoBuildHomeGenreSections(movieItems, homeConfig.visibleGenres);
+  const genreEntries = womoBuildHomeGenreSections([...movieItems, ...seriesItems], homeConfig.visibleGenres);
   fillRow("concertsRow", concertItems, false, true);
   applyDynamicHomeSectionOrder(homeConfig, genreEntries);
   womoHideSkeleton();
@@ -5463,8 +5463,21 @@ function womoAutoNextBindVideo() {
     womoAutoNextHide();
   });
 
-  video.addEventListener("ended", function() {
-    womoAutoNextHide();
+  video.addEventListener("ended", async function() {
+    if (!currentPlayerItem || currentPlayerItem.type !== "series" || womoAutoNextIsShuffle()) {
+      womoAutoNextHide();
+      return;
+    }
+
+    const nextEpisode = womoAutoNextEpisode || await womoAutoNextFindNextEpisode();
+    if (!nextEpisode) {
+      womoAutoNextHide();
+      return;
+    }
+
+    womoAutoNextEpisode = nextEpisode;
+    womoAutoNextClearTimer();
+    womoAutoNextPlayNow();
   });
 
   video.addEventListener("pause", function() {
