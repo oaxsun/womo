@@ -139,3 +139,18 @@ Esta capa se mantiene aislada de la UI web normal para evitar romper Home, móvi
 
 ## TV Browser Remote Focus v1.1107.0006
 - The normal desktop/mobile web app remains unchanged.
+
+## 2026-07-13 — Colecciones y metadata extendida
+
+- Admin agrega metadata `collection` / `collections`, `director` y `actors` en películas, series y conciertos.
+- Home soporta secciones dinámicas de colecciones en `homeConfig/main.collectionSections`, activables y ordenables desde el bloque **Orden de Home** junto a Películas, Series, Conciertos y géneros.
+- Las secciones de género en Home muestran únicamente películas. Las series permanecen exclusivamente en la sección Series.
+- Las recomendaciones del preview ahora priorizan títulos de la misma colección. Si el título no tiene colección o no hay coincidencias, usan género; si tampoco aplica, usan títulos recientes.
+- Search de la app incluye título, género, colección, director y actores.
+
+
+## Fix 1.1407.0010
+
+- Series previews keep the episodes/seasons panel and no longer render recommendations.
+- Dynamic genre sections are strictly movie-only; series remain only in the Series section.
+- Collection sections and collection-based recommendations remain enabled for movies/concerts.
