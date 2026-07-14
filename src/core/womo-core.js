@@ -351,7 +351,12 @@ function womoBuildHomeGenreSections(items, visibleGenres, visibleCollections = [
   }
 
   // Genre rows intentionally use movies only. Series stay only in the Series row.
-  const genrePool = (items || []).filter(item => item && item.poster && item.type === "movie");
+  // Keep this guard strict because collections can mix content types, but genres cannot.
+  const genrePool = (items || []).filter(item => {
+    if (!item || !item.poster) return false;
+    const type = String(item.type || "").toLowerCase();
+    return type === "movie";
+  });
   const collectionPool = (items || []).filter(item => item && item.poster);
 
   const genreEntries = allowedGenres
@@ -1609,6 +1614,10 @@ function genreTokens(item) {
 }
 
 function getPreviewRecommendations(item) {
+  // Series previews must reserve the lower panel for seasons/episodes.
+  // Do not render recommendations for series, even when they belong to a collection.
+  if (item && item.type === 'series') return [];
+
   const all = [...allItemsByContinueKey.values()]
     .filter(x => x && x.id !== item.id && x.poster);
 
@@ -2213,7 +2222,6 @@ async function openPreview(item) {
       };
     }
     renderEpisodes(item.id, episodes);
-    renderPreviewRecommendationsForItem(item);
   } else {
     actions.innerHTML = state
       ? '<button class="primary" data-preview-play>Continuar</button><button class="secondary" data-preview-restart>Reiniciar</button>'

@@ -475,6 +475,18 @@ async function importConcertsFromJson(file) {
   }
 }
 
+async function importConcertsFromJsonFiles(files) {
+  try {
+    const { parsed, failed } = await parseJsonFiles(files);
+    if (!parsed.length) return alert("No se pudo importar ningún JSON válido.");
+    const items = parsed.flatMap(({ json }) => Array.isArray(json) ? json : Array.isArray(json.concerts) ? json.concerts : [json]);
+    await importConcertsFromJsonValue(items);
+    if (failed.length) alert(`Se importaron los JSON válidos, pero fallaron: ${failed.join(", ")}`);
+  } finally {
+    $("importConcertInput").value = "";
+  }
+}
+
 async function importMoviesFromJson(file) {
   try {
     const text = await file.text();
@@ -487,6 +499,18 @@ async function importMoviesFromJson(file) {
   }
 }
 
+async function importMoviesFromJsonFiles(files) {
+  try {
+    const { parsed, failed } = await parseJsonFiles(files);
+    if (!parsed.length) return alert("No se pudo importar ningún JSON válido.");
+    const items = parsed.flatMap(({ json }) => Array.isArray(json) ? json : Array.isArray(json.movies) ? json.movies : [json]);
+    await importMoviesFromJsonValue(items);
+    if (failed.length) alert(`Se importaron los JSON válidos, pero fallaron: ${failed.join(", ")}`);
+  } finally {
+    $("importMovieInput").value = "";
+  }
+}
+
 async function importSeriesFromJson(file) {
   try {
     const text = await file.text();
@@ -494,6 +518,18 @@ async function importSeriesFromJson(file) {
   } catch (error) {
     console.error(error);
     alert("No se pudo importar el JSON. Revisa que el archivo sea válido.");
+  } finally {
+    $("importSeriesInput").value = "";
+  }
+}
+
+async function importSeriesFromJsonFiles(files) {
+  try {
+    const { parsed, failed } = await parseJsonFiles(files);
+    if (!parsed.length) return alert("No se pudo importar ningún JSON válido.");
+    const items = parsed.flatMap(({ json }) => Array.isArray(json) ? json : Array.isArray(json.series) ? json.series : [json]);
+    await importSeriesFromJsonValue(items);
+    if (failed.length) alert(`Se importaron los JSON válidos, pero fallaron: ${failed.join(", ")}`);
   } finally {
     $("importSeriesInput").value = "";
   }
@@ -558,6 +594,29 @@ async function importSeriesFromJsonValue(json) {
 
 function getEpisodeRawFromJsonValue(json) {
   return Array.isArray(json) ? json[0] : Array.isArray(json.episodes) ? json.episodes[0] : json;
+}
+
+function getEpisodeItemsFromJsonValue(json) {
+  const items = Array.isArray(json) ? json : Array.isArray(json.episodes) ? json.episodes : [json];
+  return items.filter(Boolean);
+}
+
+async function parseJsonFiles(files) {
+  const list = Array.from(files || []);
+  const parsed = [];
+  const failed = [];
+
+  for (const file of list) {
+    try {
+      const text = await file.text();
+      parsed.push({ file, json: JSON.parse(text) });
+    } catch (error) {
+      console.error(error);
+      failed.push(file?.name || "archivo");
+    }
+  }
+
+  return { parsed, failed };
 }
 
 async function importMovieCode(text) {
@@ -1515,6 +1574,36 @@ async function importEpisodeFromJson(file) {
   }
 }
 
+async function importEpisodesFromJsonFiles(files) {
+  const seriesId = state.editingSeriesId;
+  if (!seriesId) {
+    $("importEpisodeInput").value = "";
+    return alert("Primero guarda o abre una serie para importar episodios.");
+  }
+
+  try {
+    const { parsed, failed } = await parseJsonFiles(files);
+    const rawEpisodes = parsed.flatMap(({ json }) => getEpisodeItemsFromJsonValue(json));
+    if (!rawEpisodes.length) return alert("Los JSON seleccionados no contienen episodios.");
+
+    const normalized = rawEpisodes.map((raw, index) => normalizeEpisodeFromJson(raw, index));
+    await Promise.all(normalized.map(ep => setDoc(doc(db, "series", seriesId, "episodes", ep.id), ep.data, { merge: true })));
+
+    const importedSeasons = normalized.map(ep => Number(ep.data.seasonNumber || 1));
+    const preferredSeason = importedSeasons[0] || state.selectedSeason || 1;
+    if ($("episodeDialog")?.open) $("episodeDialog").close();
+    await loadEpisodes(seriesId, preferredSeason);
+
+    const suffix = failed.length ? ` (${failed.length} archivo${failed.length === 1 ? "" : "s"} falló${failed.length === 1 ? "" : "n"})` : "";
+    showStatus(`${normalized.length} episodio${normalized.length === 1 ? "" : "s"} importado${normalized.length === 1 ? "" : "s"} automáticamente${suffix}`);
+  } catch (error) {
+    console.error(error);
+    alert("No se pudieron importar los episodios. Revisa que los archivos sean JSON válidos.");
+  } finally {
+    $("importEpisodeInput").value = "";
+  }
+}
+
 async function saveEpisode(e) {
   e.preventDefault();
   const seriesId = state.editingSeriesId;
@@ -1597,11 +1686,11 @@ function handleCardActivation(target) {
 document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
 primaryAction.addEventListener("click", () => openEditor(state.view === "series" ? "series" : state.view === "concerts" ? "concert" : "movie"));
 $("importMovieBtn").addEventListener("click", () => $("importMovieInput").click());
-$("importMovieInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importMoviesFromJson(file); });
+$("importMovieInput").addEventListener("change", (e) => { const files = e.target.files; if (files?.length) importMoviesFromJsonFiles(files); });
 $("importSeriesBtn").addEventListener("click", () => $("importSeriesInput").click());
-$("importSeriesInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importSeriesFromJson(file); });
+$("importSeriesInput").addEventListener("change", (e) => { const files = e.target.files; if (files?.length) importSeriesFromJsonFiles(files); });
 $("importConcertBtn").addEventListener("click", () => $("importConcertInput").click());
-$("importConcertInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importConcertsFromJson(file); });
+$("importConcertInput").addEventListener("change", (e) => { const files = e.target.files; if (files?.length) importConcertsFromJsonFiles(files); });
 
 $("pasteMovieCodeBtn").addEventListener("click", () => openJsonCodeDialog("movie"));
 $("pasteSeriesCodeBtn").addEventListener("click", () => openJsonCodeDialog("series"));
@@ -1628,7 +1717,7 @@ $("seasonFilter").addEventListener("change", () => {
   renderEpisodesList();
 });
 $("importEpisodeBtn").addEventListener("click", () => $("importEpisodeInput").click());
-$("importEpisodeInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importEpisodeFromJson(file); });
+$("importEpisodeInput").addEventListener("change", (e) => { const files = e.target.files; if (files?.length) importEpisodesFromJsonFiles(files); });
 $("episodeForm").addEventListener("submit", saveEpisode);
 $("closeEpisodeEditor").addEventListener("click", () => $("episodeDialog").close());
 $("cancelEpisodeBtn").addEventListener("click", () => $("episodeDialog").close());

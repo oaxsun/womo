@@ -48,13 +48,13 @@
       <div class="top-actions">
         <button id="importMovieBtn" class="secondary-btn hidden" type="button">Importar película</button>
         <button id="pasteMovieCodeBtn" class="secondary-btn hidden" type="button">Ingresar código</button>
-        <input id="importMovieInput" type="file" accept="application/json,.json" class="hidden" />
+        <input id="importMovieInput" type="file" accept="application/json,.json" class="hidden" multiple />
         <button id="importSeriesBtn" class="secondary-btn hidden" type="button">Importar serie</button>
         <button id="pasteSeriesCodeBtn" class="secondary-btn hidden" type="button">Ingresar código</button>
-        <input id="importSeriesInput" type="file" accept="application/json,.json" class="hidden" />
+        <input id="importSeriesInput" type="file" accept="application/json,.json" class="hidden" multiple />
         <button id="importConcertBtn" class="secondary-btn hidden" type="button">Importar concierto</button>
         <button id="pasteConcertCodeBtn" class="secondary-btn hidden" type="button">Ingresar código</button>
-        <input id="importConcertInput" type="file" accept="application/json,.json" class="hidden" />
+        <input id="importConcertInput" type="file" accept="application/json,.json" class="hidden" multiple />
         <button id="primaryAction" class="primary-btn">Agregar película</button>
       </div>
     </header>
@@ -299,9 +299,9 @@
           <h2 id="episodeEditorTitle">Agregar episodio</h2>
         </div>
         <div class="dialog-tools">
-          <button type="button" id="importEpisodeBtn" class="secondary-btn small">Importar</button>
+          <button type="button" id="importEpisodeBtn" class="secondary-btn small">Importar JSON(s)</button>
           <button type="button" id="pasteEpisodeCodeBtn" class="secondary-btn small">Ingresar código</button>
-          <input id="importEpisodeInput" type="file" accept="application/json,.json" class="hidden" />
+          <input id="importEpisodeInput" type="file" accept="application/json,.json" class="hidden" multiple />
           <button class="icon-btn" value="cancel" type="button" id="closeEpisodeEditor">×</button>
         </div>
       </div>
