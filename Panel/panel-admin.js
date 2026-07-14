@@ -434,10 +434,13 @@ function normalizeSeriesFromJson(rawSeries, index = 0) {
   };
 }
 
-function normalizeEpisodeFromJson(rawEpisode, index = 0) {
+function normalizeEpisodeFromJson(rawEpisode, index = 0, sourceFileName = "") {
   const seasonNumber = Number(rawEpisode.seasonNumber || rawEpisode.season || 1);
   const episodeNumber = Number(rawEpisode.episodeNumber || rawEpisode.episode || index + 1);
-  const id = slugify(rawEpisode.id || rawEpisode.docId || rawEpisode.slug || `s${String(seasonNumber).padStart(2, "0")}e${String(episodeNumber).padStart(2, "0")}`);
+  const sourceFileId = String(sourceFileName || "").replace(/\.json$/i, "");
+  const explicitId = rawEpisode.id || rawEpisode.docId || rawEpisode.slug;
+  const fallbackId = sourceFileId || `s${String(seasonNumber).padStart(2, "0")}e${String(episodeNumber).padStart(2, "0")}`;
+  const id = slugify(explicitId || fallbackId);
   return {
     id,
     data: {
@@ -1176,13 +1179,13 @@ function getSortableHomeSectionEntries() {
 
   const genreSections = getDetectedHomeGenres().map(name => {
     const genreState = getGenreSectionState(name);
-    const count = state.movies.filter(item => itemGenres(item).some(g => genreSlug(g) === genreSlug(name))).length;
+    const count = [...state.movies, ...state.series].filter(item => itemGenres(item).some(g => genreSlug(g) === genreSlug(name))).length;
     return {
       id: `genre:${genreSlug(name)}`,
       type: "genre",
       key: name,
       title: name,
-      subtitle: `${count} película${count === 1 ? "" : "s"} · Género`,
+      subtitle: `${count} título${count === 1 ? "" : "s"} · Género`,
       visible: genreState.visible,
       order: genreState.order
     };
@@ -1582,11 +1585,28 @@ async function importEpisodesFromJsonFiles(files) {
   }
 
   try {
-    const { parsed, failed } = await parseJsonFiles(files);
-    const rawEpisodes = parsed.flatMap(({ json }) => getEpisodeItemsFromJsonValue(json));
+    const selectedFiles = Array.from(files || []);
+    const { parsed, failed } = await parseJsonFiles(selectedFiles);
+    const rawEpisodes = parsed.flatMap(({ json, file }) =>
+      getEpisodeItemsFromJsonValue(json).map(raw => ({ raw, fileName: file?.name || "" }))
+    );
     if (!rawEpisodes.length) return alert("Los JSON seleccionados no contienen episodios.");
 
-    const normalized = rawEpisodes.map((raw, index) => normalizeEpisodeFromJson(raw, index));
+    const usedIds = new Set();
+    const normalized = rawEpisodes.map(({ raw, fileName }, index) => {
+      const item = normalizeEpisodeFromJson(raw, index, fileName);
+      let uniqueId = item.id || slugify(fileName || `episode-${index + 1}`);
+      if (usedIds.has(uniqueId)) {
+        const season = Number(item.data.seasonNumber || 1);
+        const episode = Number(item.data.episodeNumber || index + 1);
+        const episodeKey = `s${String(season).padStart(2, "0")}e${String(episode).padStart(2, "0")}`;
+        const fileKey = String(fileName || `archivo-${index + 1}`).replace(/\.json$/i, "");
+        uniqueId = slugify(`${episodeKey}-${fileKey}-${index + 1}`);
+      }
+      usedIds.add(uniqueId);
+      item.id = uniqueId;
+      return item;
+    });
     await Promise.all(normalized.map(ep => setDoc(doc(db, "series", seriesId, "episodes", ep.id), ep.data, { merge: true })));
 
     const importedSeasons = normalized.map(ep => Number(ep.data.seasonNumber || 1));

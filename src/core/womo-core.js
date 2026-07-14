@@ -339,6 +339,32 @@ function womoCollectionList(item) {
     .filter(Boolean);
 }
 
+function womoInterleaveGenreTitlesForHome(list) {
+  const source = Array.isArray(list) ? list : [];
+  const movies = source.filter(item => String(item?.type || "").toLowerCase() === "movie");
+  const series = source.filter(item => String(item?.type || "").toLowerCase() === "series");
+
+  if (!movies.length || !series.length) return source;
+
+  const result = [];
+  let movieIndex = 0;
+  let seriesIndex = 0;
+
+  while (movieIndex < movies.length || seriesIndex < series.length) {
+    if (movieIndex < movies.length) {
+      result.push(movies[movieIndex]);
+      movieIndex += 1;
+    }
+
+    if (seriesIndex < series.length) {
+      result.push(series[seriesIndex]);
+      seriesIndex += 1;
+    }
+  }
+
+  return result;
+}
+
 function womoBuildHomeGenreSections(items, visibleGenres, visibleCollections = []) {
   const container = document.getElementById("genreHomeSections");
   if (!container) return { genres: [], collections: [] };
@@ -350,12 +376,13 @@ function womoBuildHomeGenreSections(items, visibleGenres, visibleCollections = [
     return { genres: [], collections: [] };
   }
 
-  // Genre rows intentionally use movies only. Series stay only in the Series row.
-  // Keep this guard strict because collections can mix content types, but genres cannot.
+  // Genre rows use catalog titles that are meaningfully categorized by genre:
+  // movies and series. Concerts stay only in the Conciertos row unless they are part
+  // of a Collection, because genre rows are meant for video catalog discovery.
   const genrePool = (items || []).filter(item => {
     if (!item || !item.poster) return false;
     const type = String(item.type || "").toLowerCase();
-    return type === "movie";
+    return type === "movie" || type === "series";
   });
   const collectionPool = (items || []).filter(item => item && item.poster);
 
@@ -364,9 +391,10 @@ function womoBuildHomeGenreSections(items, visibleGenres, visibleCollections = [
       const name = womoGenreDisplayName(typeof entry === "string" ? entry : entry.name);
       const order = Number.isFinite(Number(entry?.order)) ? Number(entry.order) : 50;
       const slug = womoGenreSlug(name);
-      const list = genrePool
+      const rawList = genrePool
         .filter(item => womoGenreList(item).some(genre => womoGenreSlug(genre) === slug))
         .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+      const list = womoInterleaveGenreTitlesForHome(rawList);
       return { name, slug, order, list, kind: "genre" };
     })
     .filter(entry => entry.name && entry.list.length);
