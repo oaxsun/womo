@@ -17,6 +17,29 @@
   let activeSetter = null;
   let activeTracks = [];
 
+  function isDebugEnabled(){
+    try { return new URLSearchParams(window.location.search).has("audioDebug"); } catch (_) { return false; }
+  }
+
+  function updateDebugPanel(message, details){
+    if (!isDebugEnabled()) return;
+    let panel = document.getElementById("womoAudioDebugPanel");
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = "womoAudioDebugPanel";
+      panel.style.cssText = "position:absolute;left:18px;bottom:82px;z-index:80;max-width:min(420px,calc(100vw - 36px));padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.72);color:#fff;font:12px/1.35 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(12px);pointer-events:none;";
+      document.getElementById("playerOverlay")?.appendChild(panel);
+    }
+    const extra = details ? `<br><span style="opacity:.68">${details}</span>` : "";
+    panel.innerHTML = `<strong>Audio debug</strong><br>${message}${extra}`;
+    try { console.info("Womo Audio Debug:", message, details || ""); } catch (_) {}
+  }
+
+  function hideDebugPanel(){
+    if (!isDebugEnabled()) return;
+    document.getElementById("womoAudioDebugPanel")?.remove();
+  }
+
   function getFirebase(){
     return window.firebase || null;
   }
@@ -164,6 +187,7 @@
     activeSetter = null;
     activeTracks = [];
     if (control) control.hidden = true;
+    updateDebugPanel("Sin selector visible", "El navegador no expuso 2+ pistas de audio seleccionables.");
     if (button) button.setAttribute("aria-expanded", "false");
     if (menu) {
       menu.classList.remove("open");
@@ -205,6 +229,7 @@
     });
 
     control.hidden = false;
+    updateDebugPanel(`Selector visible: ${list.length} pistas`, list.map((track, i) => `${i + 1}. ${getTrackLabel(track, i)}`).join(" · "));
     if (window.lucide) window.lucide.createIcons();
   }
 
@@ -220,6 +245,7 @@
     const token = ++currentApplyToken;
     const tracks = video?.audioTracks;
     if (!tracks || tracks.length < 2) {
+      updateDebugPanel(`Native audioTracks: ${tracks ? tracks.length : "no soportado"}`, "Se usa la pista predeterminada del navegador.");
       reset();
       return;
     }
@@ -245,6 +271,7 @@
   async function setupHls(hls){
     const token = ++currentApplyToken;
     if (!hls || !Array.isArray(hls.audioTracks) || hls.audioTracks.length < 2) {
+      updateDebugPanel(`HLS audioTracks: ${hls && Array.isArray(hls.audioTracks) ? hls.audioTracks.length : "no disponible"}`, "Se usa la pista predeterminada del stream.");
       reset();
       return;
     }
@@ -290,6 +317,7 @@
     setupNative,
     setupHls,
     reset,
+    updateDebugPanel,
     getPreferredLanguage: () => preferredAudioLanguage,
     inferCanonicalLanguage,
     getTrackLabel

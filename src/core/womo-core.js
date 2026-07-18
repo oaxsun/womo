@@ -3849,8 +3849,10 @@ function openPlayer(item, options = {}) {
   womoResetMobileFullscreenAttempt(video);
   womoBindMobileNativeFullscreen(video);
   bindTsSeekGuard(video);
-  video.setAttribute('controlsList', 'nodownload noplaybackrate');
+  video.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback');
   video.disablePictureInPicture = true;
+  video.disableRemotePlayback = true;
+  video.setAttribute('x-webkit-airplay', 'deny');
   const title = document.getElementById('playerTitle');
   const subtitle = document.getElementById('playerSubtitle');
 
@@ -4060,8 +4062,10 @@ function setupPlayerControls() {
   if (!back || back.dataset.ready === "true") return;
   back.dataset.ready = "true";
 
-  video.setAttribute('controlsList', 'nodownload noplaybackrate');
+  video.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback');
   video.disablePictureInPicture = true;
+  video.disableRemotePlayback = true;
+  video.setAttribute('x-webkit-airplay', 'deny');
 
   back.addEventListener('click', closePlayer);
 
@@ -6110,7 +6114,9 @@ setTimeout(() => window.womoHideSkeleton?.(), 1200);
       if (mode === 'initial') {
         try { v.controls = false; } catch (_) {}
       }
-      try { v.setAttribute('controlsList', 'nodownload noplaybackrate'); } catch (_) {}
+      try { v.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback'); } catch (_) {}
+      try { v.disableRemotePlayback = true; } catch (_) {}
+      try { v.setAttribute('x-webkit-airplay', 'deny'); } catch (_) {}
       try { v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); } catch (_) {}
     }
     womoLoaderVisibleSince = Date.now();

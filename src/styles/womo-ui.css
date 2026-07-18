@@ -9348,3 +9348,11 @@ body.player-open{
     text-justify:inter-word !important;
   }
 }
+
+/* Player native controls cleanup: Womo handles Audio separately.
+   Hide browser-only controls that can appear disabled or confusing in Safari/Chrome. */
+#womoPlayer::-webkit-media-controls-picture-in-picture-button,
+#womoPlayer::-webkit-media-controls-airplay-button,
+#womoPlayer::-webkit-media-controls-download-button{
+  display:none !important;
+}
