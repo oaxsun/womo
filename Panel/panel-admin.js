@@ -387,6 +387,7 @@ function normalizeMovieFromJson(rawMovie, index = 0) {
       duration: Number(rawMovie.duration) || 0,
       synopsis: String(rawMovie.synopsis || rawMovie.overview || rawMovie.description || "").trim(),
       posterUrl: String(rawMovie.posterUrl || rawMovie.posterURL || rawMovie.poster || "").trim(),
+      backdropUrl: String(rawMovie.backdropUrl || rawMovie.backdropURL || rawMovie.backdrop || rawMovie.horizontalPoster || rawMovie.landscapePoster || rawMovie.bannerUrl || rawMovie.banner || "").trim(),
       hlsUrl: String(rawMovie.hlsUrl || rawMovie.movieURL || rawMovie.videoUrl || rawMovie.url || "").trim(),
       type: "movie",
       isFavorite: Boolean(rawMovie.isFavorite),
@@ -425,6 +426,7 @@ function normalizeSeriesFromJson(rawSeries, index = 0) {
       actors,
       synopsis: String(rawSeries.synopsis || rawSeries.overview || rawSeries.description || "").trim(),
       posterUrl: String(rawSeries.posterUrl || rawSeries.posterURL || rawSeries.poster || "").trim(),
+      backdropUrl: String(rawSeries.backdropUrl || rawSeries.backdropURL || rawSeries.backdrop || rawSeries.horizontalPoster || rawSeries.landscapePoster || rawSeries.bannerUrl || rawSeries.banner || "").trim(),
       type: "series",
       isFavorite: Boolean(rawSeries.isFavorite),
       popularity: Number(rawSeries.popularity) || 0,
@@ -1384,6 +1386,7 @@ function openEditor(type, item = null) {
   if ($("director")) $("director").value = item?.director ?? "";
   if ($("actors")) $("actors").value = formatListForInput(item?.actors);
   $("posterUrl").value = item?.posterUrl ?? "";
+  if ($("backdropUrl")) $("backdropUrl").value = item?.backdropUrl ?? item?.backdrop ?? "";
   $("hlsUrl").value = item?.hlsUrl ?? "";
   $("synopsis").value = item?.synopsis ?? "";
   $("showInNew").checked = false;
@@ -1415,6 +1418,7 @@ async function saveEditor(e) {
     actors: splitList($("actors")?.value || ""),
     synopsis: $("synopsis").value.trim(),
     posterUrl: $("posterUrl").value.trim(),
+    backdropUrl: ($("backdropUrl")?.value || "").trim(),
     type,
     published: $("published") ? $("published").checked : true,
     updatedAt: serverTimestamp(),

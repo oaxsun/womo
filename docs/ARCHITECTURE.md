@@ -171,3 +171,8 @@ Dynamic genre sections can include movies and series. When both types are presen
 ## Audio Tracks
 
 `src/core/audioManager.js` centraliza la detección de pistas de audio, el selector del player y la preferencia global `users/{uid}.playbackPreferences.preferredAudioLanguage`. El player solo consume este módulo y la preferencia se guarda como código ISO (`es` o `en`) para reutilizarla en futuras plataformas.
+
+
+## Backdrop / imagen horizontal
+
+El Panel guarda `backdropUrl` como imagen horizontal independiente de `posterUrl`. Se usa para futuras vistas horizontales, hero, banners o cards landscape sin reemplazar el poster vertical actual. También se aceptan desde JSON alias como `backdrop`, `horizontalPoster`, `landscapePoster` y `bannerUrl`.
