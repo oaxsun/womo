@@ -139,3 +139,35 @@ Esta capa se mantiene aislada de la UI web normal para evitar romper Home, móvi
 
 ## TV Browser Remote Focus v1.1107.0006
 - The normal desktop/mobile web app remains unchanged.
+
+## 2026-07-13 — Colecciones y metadata extendida
+
+- Admin agrega metadata `collection` / `collections`, `director` y `actors` en películas, series y conciertos.
+- Home soporta secciones dinámicas de colecciones en `homeConfig/main.collectionSections`, activables y ordenables desde el bloque **Orden de Home** junto a Películas, Series, Conciertos y géneros.
+- Las secciones de género en Home muestran películas y series que compartan el género. Las series conservan su propio carrusel Series y su preview con temporadas/capítulos.
+- Las recomendaciones del preview ahora priorizan títulos de la misma colección. Si el título no tiene colección o no hay coincidencias, usan género; si tampoco aplica, usan títulos recientes.
+- Search de la app incluye título, género, colección, director y actores.
+
+
+## Fix 1.1407.0010
+
+- Series previews keep the episodes/seasons panel and no longer render recommendations.
+- Dynamic genre sections are strictly movie-only; series remain only in the Series section.
+- Collection sections and collection-based recommendations remain enabled for movies/concerts.
+
+
+## Fix 1.1407.0028
+
+- Los carruseles dinámicos de género vuelven a incluir tanto películas como series cuando comparten género.
+- Se mantiene intacto el preview de series con lista de temporadas y capítulos.
+- El Admin ahora cuenta los géneros como títulos, no solo películas.
+
+
+## Home genre carousel interleaving
+
+Dynamic genre sections can include movies and series. When both types are present, the Home ordering starts with movies and repeats the pattern: two movies, one series. If one type runs out, the remaining titles continue in their existing recency order.
+
+
+## Audio Tracks
+
+`src/core/audioManager.js` centraliza la detección de pistas de audio, el selector del player y la preferencia global `users/{uid}.playbackPreferences.preferredAudioLanguage`. El player solo consume este módulo y la preferencia se guarda como código ISO (`es` o `en`) para reutilizarla en futuras plataformas.

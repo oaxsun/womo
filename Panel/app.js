@@ -696,7 +696,7 @@ $("seasonFilter").addEventListener("change", () => {
   renderEpisodesList();
 });
 $("importEpisodeBtn").addEventListener("click", () => $("importEpisodeInput").click());
-$("importEpisodeInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importEpisodeFromJson(file); });
+$("importEpisodeInput").addEventListener("change", (e) => { const files = Array.from(e.target.files || []); if (files.length) importEpisodesFromJsonFiles(files); });
 $("episodeForm").addEventListener("submit", saveEpisode);
 $("closeEpisodeEditor").addEventListener("click", () => $("episodeDialog").close());
 $("cancelEpisodeBtn").addEventListener("click", () => $("episodeDialog").close());

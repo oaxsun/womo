@@ -52,7 +52,8 @@ const defaultHomeConfig = {
     series: { mode: "recent", limit: 10, selectedItems: [], visible: true, order: 20 },
     concerts: { mode: "recent", limit: 10, selectedItems: [], visible: true, order: 90 }
   },
-  genreSections: {}
+  genreSections: {},
+  collectionSections: {}
 };
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -108,6 +109,16 @@ function formatGenresForInput(value) {
   return "";
 }
 
+function splitList(value) {
+  return String(value || "").split(",").map(v => v.trim()).filter(Boolean);
+}
+
+function formatListForInput(value) {
+  if (Array.isArray(value)) return value.map(v => String(v).trim()).filter(Boolean).join(", ");
+  if (typeof value === "string") return value;
+  return "";
+}
+
 function getAllContent() {
   return [...state.movies, ...state.series, ...state.concerts];
 }
@@ -127,6 +138,11 @@ function genreSlug(value) {
 
 function itemGenres(item) {
   const raw = Array.isArray(item?.genres) ? item.genres : splitGenres(item?.genre || item?.genres || "");
+  return raw.map(genreDisplayName).filter(Boolean);
+}
+
+function itemCollections(item) {
+  const raw = Array.isArray(item?.collections) ? item.collections : splitList(item?.collection || item?.collections || "");
   return raw.map(genreDisplayName).filter(Boolean);
 }
 
@@ -169,6 +185,47 @@ function setGenreSectionOrder(name, order) {
   if (!state.homeConfig.genreSections) state.homeConfig.genreSections = {};
   const current = getGenreSectionState(name);
   state.homeConfig.genreSections[name] = { ...current, order: Number(order) || getDefaultGenreOrder(name) };
+}
+
+function getDetectedHomeCollections() {
+  const bySlug = new Map();
+  getAllContent().forEach(item => {
+    itemCollections(item).forEach(name => {
+      const slug = genreSlug(name);
+      if (!bySlug.has(slug)) bySlug.set(slug, name);
+    });
+  });
+  return Array.from(bySlug.values()).sort((a, b) => a.localeCompare(b, "es"));
+}
+
+function getDefaultCollectionOrder(name) {
+  const index = getDetectedHomeCollections().findIndex(collection => genreSlug(collection) === genreSlug(name));
+  return 60 + Math.max(index, 0);
+}
+
+function getCollectionSectionState(name) {
+  if (!state.homeConfig.collectionSections) state.homeConfig.collectionSections = {};
+  const existing = state.homeConfig.collectionSections[name];
+  if (existing === true) return { visible: true, order: getDefaultCollectionOrder(name) };
+  if (existing && typeof existing === "object") {
+    return {
+      visible: Boolean(existing.visible ?? existing.enabled ?? existing.showInHome),
+      order: Number.isFinite(Number(existing.order)) ? Number(existing.order) : getDefaultCollectionOrder(name)
+    };
+  }
+  return { visible: false, order: getDefaultCollectionOrder(name) };
+}
+
+function setCollectionSectionVisible(name, visible) {
+  if (!state.homeConfig.collectionSections) state.homeConfig.collectionSections = {};
+  const current = getCollectionSectionState(name);
+  state.homeConfig.collectionSections[name] = { ...current, visible: Boolean(visible) };
+}
+
+function setCollectionSectionOrder(name, order) {
+  if (!state.homeConfig.collectionSections) state.homeConfig.collectionSections = {};
+  const current = getCollectionSectionState(name);
+  state.homeConfig.collectionSections[name] = { ...current, order: Number(order) || getDefaultCollectionOrder(name) };
 }
 
 function getDynamicSectionConfig(sectionKey) {
@@ -314,12 +371,19 @@ function normalizeMovieFromJson(rawMovie, index = 0) {
   else if (typeof rawMovie.genres === "string") genres = splitGenres(rawMovie.genres);
   else if (typeof rawMovie.genre === "string") genres = splitGenres(rawMovie.genre);
 
+  const collections = Array.isArray(rawMovie.collections) ? rawMovie.collections.map(g => String(g).trim()).filter(Boolean) : splitList(rawMovie.collection || rawMovie.collections || rawMovie.saga || rawMovie.franchise || "");
+  const actors = Array.isArray(rawMovie.actors) ? rawMovie.actors.map(g => String(g).trim()).filter(Boolean) : splitList(rawMovie.actors || rawMovie.cast || "");
+
   return {
     id,
     data: {
       title,
       year: Number(rawMovie.year) || null,
       genres,
+      collection: collections.join(", "),
+      collections,
+      director: String(rawMovie.director || "").trim(),
+      actors,
       duration: Number(rawMovie.duration) || 0,
       synopsis: String(rawMovie.synopsis || rawMovie.overview || rawMovie.description || "").trim(),
       posterUrl: String(rawMovie.posterUrl || rawMovie.posterURL || rawMovie.poster || "").trim(),
@@ -343,6 +407,9 @@ function normalizeSeriesFromJson(rawSeries, index = 0) {
   else if (typeof rawSeries.genres === "string") genres = splitGenres(rawSeries.genres);
   else if (typeof rawSeries.genre === "string") genres = splitGenres(rawSeries.genre);
 
+  const collections = Array.isArray(rawSeries.collections) ? rawSeries.collections.map(g => String(g).trim()).filter(Boolean) : splitList(rawSeries.collection || rawSeries.collections || rawSeries.saga || rawSeries.franchise || "");
+  const actors = Array.isArray(rawSeries.actors) ? rawSeries.actors.map(g => String(g).trim()).filter(Boolean) : splitList(rawSeries.actors || rawSeries.cast || "");
+
   const episodes = Array.isArray(rawSeries.episodes) ? rawSeries.episodes : [];
 
   return {
@@ -352,6 +419,10 @@ function normalizeSeriesFromJson(rawSeries, index = 0) {
       title,
       year: Number(rawSeries.year) || null,
       genres,
+      collection: collections.join(", "),
+      collections,
+      director: String(rawSeries.director || "").trim(),
+      actors,
       synopsis: String(rawSeries.synopsis || rawSeries.overview || rawSeries.description || "").trim(),
       posterUrl: String(rawSeries.posterUrl || rawSeries.posterURL || rawSeries.poster || "").trim(),
       type: "series",
@@ -363,10 +434,13 @@ function normalizeSeriesFromJson(rawSeries, index = 0) {
   };
 }
 
-function normalizeEpisodeFromJson(rawEpisode, index = 0) {
+function normalizeEpisodeFromJson(rawEpisode, index = 0, sourceFileName = "") {
   const seasonNumber = Number(rawEpisode.seasonNumber || rawEpisode.season || 1);
   const episodeNumber = Number(rawEpisode.episodeNumber || rawEpisode.episode || index + 1);
-  const id = slugify(rawEpisode.id || rawEpisode.docId || rawEpisode.slug || `s${String(seasonNumber).padStart(2, "0")}e${String(episodeNumber).padStart(2, "0")}`);
+  const sourceFileId = String(sourceFileName || "").replace(/\.json$/i, "");
+  const explicitId = rawEpisode.id || rawEpisode.docId || rawEpisode.slug;
+  const fallbackId = sourceFileId || `s${String(seasonNumber).padStart(2, "0")}e${String(episodeNumber).padStart(2, "0")}`;
+  const id = slugify(explicitId || fallbackId);
   return {
     id,
     data: {
@@ -404,6 +478,18 @@ async function importConcertsFromJson(file) {
   }
 }
 
+async function importConcertsFromJsonFiles(files) {
+  try {
+    const { parsed, failed } = await parseJsonFiles(files);
+    if (!parsed.length) return alert("No se pudo importar ningún JSON válido.");
+    const items = parsed.flatMap(({ json }) => Array.isArray(json) ? json : Array.isArray(json.concerts) ? json.concerts : [json]);
+    await importConcertsFromJsonValue(items);
+    if (failed.length) alert(`Se importaron los JSON válidos, pero fallaron: ${failed.join(", ")}`);
+  } finally {
+    $("importConcertInput").value = "";
+  }
+}
+
 async function importMoviesFromJson(file) {
   try {
     const text = await file.text();
@@ -416,6 +502,18 @@ async function importMoviesFromJson(file) {
   }
 }
 
+async function importMoviesFromJsonFiles(files) {
+  try {
+    const { parsed, failed } = await parseJsonFiles(files);
+    if (!parsed.length) return alert("No se pudo importar ningún JSON válido.");
+    const items = parsed.flatMap(({ json }) => Array.isArray(json) ? json : Array.isArray(json.movies) ? json.movies : [json]);
+    await importMoviesFromJsonValue(items);
+    if (failed.length) alert(`Se importaron los JSON válidos, pero fallaron: ${failed.join(", ")}`);
+  } finally {
+    $("importMovieInput").value = "";
+  }
+}
+
 async function importSeriesFromJson(file) {
   try {
     const text = await file.text();
@@ -423,6 +521,18 @@ async function importSeriesFromJson(file) {
   } catch (error) {
     console.error(error);
     alert("No se pudo importar el JSON. Revisa que el archivo sea válido.");
+  } finally {
+    $("importSeriesInput").value = "";
+  }
+}
+
+async function importSeriesFromJsonFiles(files) {
+  try {
+    const { parsed, failed } = await parseJsonFiles(files);
+    if (!parsed.length) return alert("No se pudo importar ningún JSON válido.");
+    const items = parsed.flatMap(({ json }) => Array.isArray(json) ? json : Array.isArray(json.series) ? json.series : [json]);
+    await importSeriesFromJsonValue(items);
+    if (failed.length) alert(`Se importaron los JSON válidos, pero fallaron: ${failed.join(", ")}`);
   } finally {
     $("importSeriesInput").value = "";
   }
@@ -487,6 +597,29 @@ async function importSeriesFromJsonValue(json) {
 
 function getEpisodeRawFromJsonValue(json) {
   return Array.isArray(json) ? json[0] : Array.isArray(json.episodes) ? json.episodes[0] : json;
+}
+
+function getEpisodeItemsFromJsonValue(json) {
+  const items = Array.isArray(json) ? json : Array.isArray(json.episodes) ? json.episodes : [json];
+  return items.filter(Boolean);
+}
+
+async function parseJsonFiles(files) {
+  const list = Array.from(files || []);
+  const parsed = [];
+  const failed = [];
+
+  for (const file of list) {
+    try {
+      const text = await file.text();
+      parsed.push({ file, json: JSON.parse(text) });
+    } catch (error) {
+      console.error(error);
+      failed.push(file?.name || "archivo");
+    }
+  }
+
+  return { parsed, failed };
 }
 
 async function importMovieCode(text) {
@@ -972,6 +1105,10 @@ async function loadAll() {
       genreSections: {
         ...clone(defaultHomeConfig.genreSections),
         ...(homeSnap.data().genreSections || homeSnap.data().homeGenres || {})
+      },
+      collectionSections: {
+        ...clone(defaultHomeConfig.collectionSections),
+        ...(homeSnap.data().collectionSections || homeSnap.data().homeCollections || {})
       }
     };
   } else {
@@ -1013,7 +1150,6 @@ function render() {
 
 function renderHome() {
   renderHomeSectionControls();
-  renderGenreToggles();
   HOME_SECTION_KEYS.forEach(sectionKey => {
     const config = getSectionConfig(sectionKey);
     const modeSelect = document.querySelector(`[data-home-mode="${sectionKey}"]`);
@@ -1043,19 +1179,33 @@ function getSortableHomeSectionEntries() {
 
   const genreSections = getDetectedHomeGenres().map(name => {
     const genreState = getGenreSectionState(name);
-    const count = state.movies.filter(item => itemGenres(item).some(g => genreSlug(g) === genreSlug(name))).length;
+    const count = [...state.movies, ...state.series].filter(item => itemGenres(item).some(g => genreSlug(g) === genreSlug(name))).length;
     return {
       id: `genre:${genreSlug(name)}`,
       type: "genre",
       key: name,
       title: name,
-      subtitle: `${count} película${count === 1 ? "" : "s"}`,
+      subtitle: `${count} título${count === 1 ? "" : "s"} · Género`,
       visible: genreState.visible,
       order: genreState.order
     };
   });
 
-  return [...baseSections, ...genreSections].sort((a, b) => {
+  const collectionSections = getDetectedHomeCollections().map(name => {
+    const collectionState = getCollectionSectionState(name);
+    const count = getAllContent().filter(item => itemCollections(item).some(c => genreSlug(c) === genreSlug(name))).length;
+    return {
+      id: `collection:${genreSlug(name)}`,
+      type: "collection",
+      key: name,
+      title: name,
+      subtitle: `${count} título${count === 1 ? "" : "s"} · Colección`,
+      visible: collectionState.visible,
+      order: collectionState.order
+    };
+  });
+
+  return [...baseSections, ...genreSections, ...collectionSections].sort((a, b) => {
     const byOrder = Number(a.order || 999) - Number(b.order || 999);
     if (byOrder) return byOrder;
     return a.title.localeCompare(b.title, "es");
@@ -1074,7 +1224,7 @@ function renderHomeSectionControls() {
     <div class="home-order-card ${entry.visible ? "is-visible" : "is-hidden"}" draggable="true" data-home-order-card="${entry.id}" data-home-order-type="${entry.type}" data-home-order-key="${String(entry.key).replace(/"/g, '&quot;')}">
       <span class="drag-handle" aria-hidden="true">☰</span>
       <label class="mini-toggle" title="Mostrar en Home">
-        <input type="checkbox" ${entry.type === "section" ? `data-home-section-visible="${entry.key}"` : `data-home-genre="${String(entry.key).replace(/"/g, '&quot;')}"`} ${entry.visible ? "checked" : ""} />
+        <input type="checkbox" ${entry.type === "section" ? `data-home-section-visible="${entry.key}"` : entry.type === "collection" ? `data-home-collection="${String(entry.key).replace(/"/g, '&quot;')}"` : `data-home-genre="${String(entry.key).replace(/"/g, '&quot;')}"`} ${entry.visible ? "checked" : ""} />
         <span class="toggle-ui"></span>
       </label>
       <div class="home-order-copy">
@@ -1093,6 +1243,8 @@ function applyHomeSectionDragOrder() {
       setDynamicSectionOrder(card.dataset.homeOrderKey, order);
     } else if (card.dataset.homeOrderType === "genre") {
       setGenreSectionOrder(card.dataset.homeOrderKey, order);
+    } else if (card.dataset.homeOrderType === "collection") {
+      setCollectionSectionOrder(card.dataset.homeOrderKey, order);
     }
   });
 }
@@ -1146,7 +1298,16 @@ function renderSearchResults(sectionKey) {
   const selectedKeys = new Set(config.selectedItems.map(refKey));
   const limit = getSectionLimit(sectionKey);
   const source = getContentForSection(sectionKey)
-    .filter(item => (item.title || item.id).toLowerCase().includes(query))
+    .filter(item => [
+      item.title,
+      item.id,
+      item.year,
+      item.genres,
+      item.collection,
+      item.collections,
+      item.director,
+      item.actors
+    ].filter(Boolean).join(" ").toLowerCase().includes(query))
     .slice(0, 8);
 
   resultsEl.innerHTML = source.map(item => {
@@ -1219,6 +1380,9 @@ function openEditor(type, item = null) {
   $("year").value = item?.year ?? "";
   $("duration").value = item?.duration ?? "";
   $("genres").value = formatGenresForInput(item?.genres);
+  if ($("collections")) $("collections").value = formatListForInput(item?.collections || item?.collection);
+  if ($("director")) $("director").value = item?.director ?? "";
+  if ($("actors")) $("actors").value = formatListForInput(item?.actors);
   $("posterUrl").value = item?.posterUrl ?? "";
   $("hlsUrl").value = item?.hlsUrl ?? "";
   $("synopsis").value = item?.synopsis ?? "";
@@ -1245,6 +1409,10 @@ async function saveEditor(e) {
     title: $("title").value.trim(),
     year: Number($("year").value) || null,
     genres: splitGenres($("genres").value),
+    collection: splitList($("collections")?.value || "").join(", "),
+    collections: splitList($("collections")?.value || ""),
+    director: ($("director")?.value || "").trim(),
+    actors: splitList($("actors")?.value || ""),
     synopsis: $("synopsis").value.trim(),
     posterUrl: $("posterUrl").value.trim(),
     type,
@@ -1293,9 +1461,16 @@ async function saveHome() {
     cleanGenreSections[name] = { visible: genreState.visible, order: genreState.order };
   });
 
+  const cleanCollectionSections = {};
+  getDetectedHomeCollections().forEach(name => {
+    const collectionState = getCollectionSectionState(name);
+    cleanCollectionSections[name] = { visible: collectionState.visible, order: collectionState.order };
+  });
+
   await setDoc(doc(db, "homeConfig", "main"), {
     sections: cleanSections,
     genreSections: cleanGenreSections,
+    collectionSections: cleanCollectionSections,
     updatedAt: serverTimestamp()
   }, { merge: true });
 
@@ -1402,6 +1577,53 @@ async function importEpisodeFromJson(file) {
   }
 }
 
+async function importEpisodesFromJsonFiles(files) {
+  const seriesId = state.editingSeriesId;
+  if (!seriesId) {
+    $("importEpisodeInput").value = "";
+    return alert("Primero guarda o abre una serie para importar episodios.");
+  }
+
+  try {
+    const selectedFiles = Array.from(files || []);
+    const { parsed, failed } = await parseJsonFiles(selectedFiles);
+    const rawEpisodes = parsed.flatMap(({ json, file }) =>
+      getEpisodeItemsFromJsonValue(json).map(raw => ({ raw, fileName: file?.name || "" }))
+    );
+    if (!rawEpisodes.length) return alert("Los JSON seleccionados no contienen episodios.");
+
+    const usedIds = new Set();
+    const normalized = rawEpisodes.map(({ raw, fileName }, index) => {
+      const item = normalizeEpisodeFromJson(raw, index, fileName);
+      let uniqueId = item.id || slugify(fileName || `episode-${index + 1}`);
+      if (usedIds.has(uniqueId)) {
+        const season = Number(item.data.seasonNumber || 1);
+        const episode = Number(item.data.episodeNumber || index + 1);
+        const episodeKey = `s${String(season).padStart(2, "0")}e${String(episode).padStart(2, "0")}`;
+        const fileKey = String(fileName || `archivo-${index + 1}`).replace(/\.json$/i, "");
+        uniqueId = slugify(`${episodeKey}-${fileKey}-${index + 1}`);
+      }
+      usedIds.add(uniqueId);
+      item.id = uniqueId;
+      return item;
+    });
+    await Promise.all(normalized.map(ep => setDoc(doc(db, "series", seriesId, "episodes", ep.id), ep.data, { merge: true })));
+
+    const importedSeasons = normalized.map(ep => Number(ep.data.seasonNumber || 1));
+    const preferredSeason = importedSeasons[0] || state.selectedSeason || 1;
+    if ($("episodeDialog")?.open) $("episodeDialog").close();
+    await loadEpisodes(seriesId, preferredSeason);
+
+    const suffix = failed.length ? ` (${failed.length} archivo${failed.length === 1 ? "" : "s"} falló${failed.length === 1 ? "" : "n"})` : "";
+    showStatus(`${normalized.length} episodio${normalized.length === 1 ? "" : "s"} importado${normalized.length === 1 ? "" : "s"} automáticamente${suffix}`);
+  } catch (error) {
+    console.error(error);
+    alert("No se pudieron importar los episodios. Revisa que los archivos sean JSON válidos.");
+  } finally {
+    $("importEpisodeInput").value = "";
+  }
+}
+
 async function saveEpisode(e) {
   e.preventDefault();
   const seriesId = state.editingSeriesId;
@@ -1484,11 +1706,11 @@ function handleCardActivation(target) {
 document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
 primaryAction.addEventListener("click", () => openEditor(state.view === "series" ? "series" : state.view === "concerts" ? "concert" : "movie"));
 $("importMovieBtn").addEventListener("click", () => $("importMovieInput").click());
-$("importMovieInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importMoviesFromJson(file); });
+$("importMovieInput").addEventListener("change", (e) => { const files = e.target.files; if (files?.length) importMoviesFromJsonFiles(files); });
 $("importSeriesBtn").addEventListener("click", () => $("importSeriesInput").click());
-$("importSeriesInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importSeriesFromJson(file); });
+$("importSeriesInput").addEventListener("change", (e) => { const files = e.target.files; if (files?.length) importSeriesFromJsonFiles(files); });
 $("importConcertBtn").addEventListener("click", () => $("importConcertInput").click());
-$("importConcertInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importConcertsFromJson(file); });
+$("importConcertInput").addEventListener("change", (e) => { const files = e.target.files; if (files?.length) importConcertsFromJsonFiles(files); });
 
 $("pasteMovieCodeBtn").addEventListener("click", () => openJsonCodeDialog("movie"));
 $("pasteSeriesCodeBtn").addEventListener("click", () => openJsonCodeDialog("series"));
@@ -1515,7 +1737,7 @@ $("seasonFilter").addEventListener("change", () => {
   renderEpisodesList();
 });
 $("importEpisodeBtn").addEventListener("click", () => $("importEpisodeInput").click());
-$("importEpisodeInput").addEventListener("change", (e) => { const file = e.target.files?.[0]; if (file) importEpisodeFromJson(file); });
+$("importEpisodeInput").addEventListener("change", (e) => { const files = e.target.files; if (files?.length) importEpisodesFromJsonFiles(files); });
 $("episodeForm").addEventListener("submit", saveEpisode);
 $("closeEpisodeEditor").addEventListener("click", () => $("episodeDialog").close());
 $("cancelEpisodeBtn").addEventListener("click", () => $("episodeDialog").close());
@@ -1546,7 +1768,13 @@ document.addEventListener("change", (e) => {
   if (genreInput) {
     setGenreSectionVisible(genreInput.dataset.homeGenre, genreInput.checked);
     renderHomeSectionControls();
-    renderGenreToggles();
+    return;
+  }
+
+  const collectionInput = e.target.closest("[data-home-collection]");
+  if (collectionInput) {
+    setCollectionSectionVisible(collectionInput.dataset.homeCollection, collectionInput.checked);
+    renderHomeSectionControls();
   }
 });
 
@@ -1560,6 +1788,12 @@ document.addEventListener("input", (e) => {
   const genreOrder = e.target.closest("[data-home-genre-order]");
   if (genreOrder) {
     setGenreSectionOrder(genreOrder.dataset.homeGenreOrder, genreOrder.value);
+    return;
+  }
+
+  const collectionOrder = e.target.closest("[data-home-collection-order]");
+  if (collectionOrder) {
+    setCollectionSectionOrder(collectionOrder.dataset.homeCollectionOrder, collectionOrder.value);
   }
 });
 
