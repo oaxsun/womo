@@ -9,8 +9,14 @@
 
   window.womoHideSkeleton = hideSkeleton;
 
+  window.__womoAuthResolved = false;
+
   window.addEventListener("load", () => {
-    setTimeout(hideSkeleton, 900);
+    // Keep the initial auth/loading spinner visible until Firebase resolves the session.
+    // This prevents the login screen from flashing for users who are already signed in.
+    setTimeout(() => {
+      if (window.__womoAuthResolved) hideSkeleton();
+    }, 900);
   });
 
   document.addEventListener("womo:ready", hideSkeleton);
@@ -4184,18 +4190,22 @@ function setupLogin() {
   if (!screen || !form) return;
 
   auth.onAuthStateChanged(async user => {
+    window.__womoAuthResolved = true;
+
     if (user) {
       screen.classList.add("hidden");
       localStorage.setItem("womoUser", user.email || user.uid);
       await bootWomoAppAfterLogin();
     } else {
-      screen.classList.remove("hidden");
       localStorage.removeItem("womoUser");
       localStorage.removeItem(FAVORITES_KEY);
       localStorage.removeItem(CONTINUE_KEY);
       localStorage.removeItem(EPISODE_PROGRESS_KEY);
       resetLocalSession();
       womoAppStarted = false;
+
+      if (typeof womoHideSkeleton === "function") womoHideSkeleton();
+      screen.classList.remove("hidden");
     }
   });
 
@@ -5408,6 +5418,29 @@ async function womoAutoNextPlayNow() {
   }
 }
 
+(function womoBindAutoNextButtonsCapture(){
+  if (window.__womoAutoNextButtonsCaptureBound) return;
+  window.__womoAutoNextButtonsCaptureBound = true;
+
+  document.addEventListener("click", function(event) {
+    const target = event.target && event.target.closest ? event.target.closest("#womoAutoNextPlay, #womoAutoNextCancel") : null;
+    if (!target) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+
+    if (target.id === "womoAutoNextPlay") {
+      womoAutoNextPlayNow();
+      return;
+    }
+
+    womoAutoNextDismissedKey = womoAutoNextKey();
+    womoAutoNextHide();
+    womoClearAutoNextOverlayVisualOnly();
+  }, true);
+})();
+
 
 
 function womoEllipsisText(text, maxLength = 28) {
@@ -5692,9 +5725,9 @@ function womoFixPreviewBottomWhenNoRecommendations() {
   };
 
   window.addEventListener("load", () => {
-    setTimeout(tryHide, 250);
-    setTimeout(tryHide, 900);
-    setTimeout(womoHideSkeleton, 3500);
+    setTimeout(() => { if (window.__womoAuthResolved) tryHide(); }, 250);
+    setTimeout(() => { if (window.__womoAuthResolved) tryHide(); }, 900);
+    setTimeout(() => { if (window.__womoAuthResolved) womoHideSkeleton(); }, 3500);
   });
 
   const observer = new MutationObserver(() => {
@@ -5709,7 +5742,7 @@ function womoFixPreviewBottomWhenNoRecommendations() {
 
 
 
-setTimeout(() => window.womoHideSkeleton?.(), 1200);
+setTimeout(() => { if (window.__womoAuthResolved) window.womoHideSkeleton?.(); }, 1200);
 
 
 
@@ -5799,6 +5832,10 @@ setTimeout(() => window.womoHideSkeleton?.(), 1200);
     if (playerOverlay && playerOverlay.dataset.reloadGuard !== "true") {
       playerOverlay.dataset.reloadGuard = "true";
       playerOverlay.addEventListener("click", (event) => {
+        const interactiveAutoNext = event.target && event.target.closest && event.target.closest(
+          "#womoAutoNextPlay, #womoAutoNextCancel, #womoShuffleNextPlay, #womoShuffleNextCancel, #womoShuffleSkipPlay, #womoShuffleSkipCancel"
+        );
+        if (interactiveAutoNext) return;
         event.stopPropagation();
       }, true);
     }
