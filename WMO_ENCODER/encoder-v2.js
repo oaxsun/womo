@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const https = require("https");
 const { spawnSync } = require("child_process");
 
-const REGISTER_URL = "https://gruposegel.com/api/media/register.php";
+const REGISTER_URL = "https://womo-media-api.jmnz-music.workers.dev/register";
 const REGISTER_TOKEN = process.env.WMO_REGISTER_TOKEN;
 const HEADER_SIZE = 256;
 const MAGIC_WMO = Buffer.from("WMO1");

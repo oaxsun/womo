@@ -4,7 +4,8 @@
   const HEADER_SIZE = 256;
   const WMO_MAGIC = "WMO1";
   const INDEX_MAGIC = "WIDX";
-  const KEY_ENDPOINT = "https://gruposegel.com/api/media/playback.php";
+  const KEY_ENDPOINT = "https://womo-media-api.jmnz-music.workers.dev/playback";
+  const LEGACY_KEY_ENDPOINT = "https://gruposegel.com/api/media/playback.php";
   const MEDIA_ENDPOINT = "https://gruposegel.com/api/media/media.php";
   const START_BUFFER_SECONDS = 12;
   const TARGET_BUFFER_SECONDS = 30;
@@ -103,11 +104,28 @@
     return buffer;
   }
 
-  async function getPlaybackSession(contentId, signal) {
-    const idToken = await getFirebaseIdToken(false);
-    // text/plain keeps this a CORS-simple request, so Safari does not need
-    // an OPTIONS preflight against the shared hosting endpoint.
+  async function requestCloudflarePlayback(contentId, idToken, signal) {
     const response = await fetch(KEY_ENDPOINT, {
+      method: "POST",
+      mode: "cors",
+      credentials: "omit",
+      cache: "no-store",
+      headers: {
+        "Authorization": `Bearer ${idToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ contentId }),
+      signal
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch (_) {}
+    return { response, payload };
+  }
+
+  async function requestLegacyPlayback(contentId, idToken, signal) {
+    // Legacy fallback keeps older WMO files usable while their keys still
+    // live in cPanel. text/plain avoids shared-hosting preflight issues.
+    const response = await fetch(LEGACY_KEY_ENDPOINT, {
       method: "POST",
       mode: "cors",
       credentials: "omit",
@@ -118,9 +136,23 @@
       body: JSON.stringify({ contentId, idToken }),
       signal
     });
-
     let payload = null;
     try { payload = await response.json(); } catch (_) {}
+    return { response, payload };
+  }
+
+  async function getPlaybackSession(contentId, signal) {
+    const idToken = await getFirebaseIdToken(false);
+
+    let { response, payload } = await requestCloudflarePlayback(contentId, idToken, signal);
+
+    // During migration, previously encoded titles can still have their key
+    // only in the legacy SQLite database. Fall back only when Cloudflare
+    // explicitly says that contentId is not present.
+    if (response.status === 404 && payload?.error === "content_not_found") {
+      ({ response, payload } = await requestLegacyPlayback(contentId, idToken, signal));
+    }
+
     if (!response.ok || !payload || !payload.ok || !payload.key) {
       const reason = payload?.error || `HTTP ${response.status}`;
       throw new Error(`WMO key request failed: ${reason}`);
@@ -551,7 +583,8 @@
     load,
     destroy,
     isWmoUrl,
-    version: "2.0.0",
+    version: "2.1.0",
+    keyProvider: "cloudflare-d1-with-legacy-fallback",
     keyEndpoint: KEY_ENDPOINT,
     mediaEndpoint: MEDIA_ENDPOINT
   };
