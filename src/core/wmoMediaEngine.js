@@ -6,16 +6,17 @@
   const INDEX_MAGIC = "WIDX";
   const KEY_ENDPOINT = "https://gruposegel.com/api/media/playback.php";
   const MEDIA_ENDPOINT = "https://gruposegel.com/api/media/media.php";
+  const START_BUFFER_SECONDS = 12;
+  const TARGET_BUFFER_SECONDS = 30;
 
   let activeObjectUrl = "";
   let activeAbortController = null;
   let fullFileCache = null;
   let activeSourceUrl = "";
+  let activeStreamCleanup = null;
 
   function emit(name, detail = {}) {
-    try {
-      window.dispatchEvent(new CustomEvent(name, { detail }));
-    } catch (_) {}
+    try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch (_) {}
   }
 
   function setLoadingProgress(percent, stage) {
@@ -26,6 +27,10 @@
     if (activeAbortController) {
       try { activeAbortController.abort(); } catch (_) {}
       activeAbortController = null;
+    }
+    if (activeStreamCleanup) {
+      try { activeStreamCleanup(); } catch (_) {}
+      activeStreamCleanup = null;
     }
     if (activeObjectUrl) {
       try { URL.revokeObjectURL(activeObjectUrl); } catch (_) {}
@@ -53,23 +58,19 @@
     return out;
   }
 
-  async function getFirebaseIdToken() {
-    if (!window.firebase || !firebase.auth) {
-      throw new Error("Firebase Auth is not available");
-    }
+  async function getFirebaseIdToken(forceRefresh = false) {
+    if (!window.firebase || !firebase.auth) throw new Error("Firebase Auth is not available");
     const user = firebase.auth().currentUser;
-    if (!user) {
-      throw new Error("WMO playback requires an authenticated user");
-    }
-    return user.getIdToken(false);
+    if (!user) throw new Error("WMO playback requires an authenticated user");
+    return user.getIdToken(forceRefresh);
   }
 
-  async function fetchRange(url, start, end, signal) {
+  async function fetchRange(url, start, end, signal, authToken) {
     if (fullFileCache && activeSourceUrl === url) {
       return fullFileCache.slice(start, end + 1);
     }
 
-    const idToken = await getFirebaseIdToken();
+    const token = authToken || await getFirebaseIdToken(false);
     const proxyUrl = `${MEDIA_ENDPOINT}?url=${encodeURIComponent(url)}`;
     const response = await fetch(proxyUrl, {
       method: "GET",
@@ -77,35 +78,27 @@
       credentials: "omit",
       cache: "no-store",
       headers: {
-        "Authorization": `Bearer ${idToken}`,
+        "Authorization": `Bearer ${token}`,
         "Range": `bytes=${start}-${end}`
       },
       signal
     });
 
-    if (!response.ok) {
-      throw new Error(`WMO media request failed (HTTP ${response.status})`);
-    }
-
+    if (!response.ok) throw new Error(`WMO media request failed (HTTP ${response.status})`);
     const buffer = await response.arrayBuffer();
 
-    // Some origins ignore Range and answer 200 with the entire object.
-    // Cache it once so later chunk reads do not redownload the file.
     if (response.status === 200) {
       fullFileCache = buffer;
       activeSourceUrl = url;
-      if (buffer.byteLength < end + 1) {
-        throw new Error("WMO source returned an incomplete file");
-      }
+      if (buffer.byteLength < end + 1) throw new Error("WMO source returned an incomplete file");
       return buffer.slice(start, end + 1);
     }
 
     return buffer;
   }
 
-  async function getPlaybackKey(contentId, signal) {
-    const idToken = await getFirebaseIdToken();
-
+  async function getPlaybackSession(contentId, signal) {
+    const idToken = await getFirebaseIdToken(false);
     const response = await fetch(KEY_ENDPOINT, {
       method: "POST",
       mode: "cors",
@@ -121,24 +114,26 @@
 
     let payload = null;
     try { payload = await response.json(); } catch (_) {}
-
     if (!response.ok || !payload || !payload.ok || !payload.key) {
       const reason = payload?.error || `HTTP ${response.status}`;
       throw new Error(`WMO key request failed: ${reason}`);
     }
 
     const keyBytes = base64ToBytes(payload.key);
-    if (keyBytes.byteLength !== 32) {
-      throw new Error("WMO key server returned an invalid AES-256 key");
-    }
+    if (keyBytes.byteLength !== 32) throw new Error("WMO key server returned an invalid AES-256 key");
 
-    return crypto.subtle.importKey(
+    const key = await crypto.subtle.importKey(
       "raw",
       keyBytes,
       { name: "AES-GCM" },
       false,
       ["decrypt"]
     );
+
+    return {
+      key,
+      mediaToken: String(payload.mediaToken || "")
+    };
   }
 
   function parseHeader(buffer) {
@@ -157,21 +152,22 @@
     const chunkCount = view.getUint32(44, true);
     const indexOffset = Number(view.getBigUint64(48, true));
     const indexSize = Number(view.getBigUint64(56, true));
+    const duration = version >= 2 ? view.getFloat64(64, true) : 0;
+    const mediaSegmentCount = version >= 2 ? view.getUint32(72, true) : 0;
 
-    if (version !== 1 || headerSize !== HEADER_SIZE) {
+    if ((version !== 1 && version !== 2) || headerSize !== HEADER_SIZE) {
       throw new Error(`Unsupported WMO version ${version}`);
     }
-    if ((flags & 1) !== 1) {
-      throw new Error("This WMO file is not encrypted as expected");
-    }
-    if (!chunkCount || !indexOffset || !indexSize) {
-      throw new Error("WMO index metadata is missing");
-    }
+    if ((flags & 1) !== 1) throw new Error("This WMO file is not encrypted as expected");
+    if (!chunkCount || !indexOffset || !indexSize) throw new Error("WMO index metadata is missing");
 
-    return { version, flags, contentId, originalSize, chunkSize, chunkCount, indexOffset, indexSize };
+    return {
+      version, flags, contentId, originalSize, chunkSize, chunkCount,
+      indexOffset, indexSize, duration, mediaSegmentCount
+    };
   }
 
-  function parseIndex(buffer, expectedChunkCount) {
+  function parseIndex(buffer, header) {
     const bytes = new Uint8Array(buffer);
     const view = new DataView(buffer);
     if (buffer.byteLength < 12) throw new Error("WMO index is incomplete");
@@ -179,19 +175,40 @@
     if (magic !== INDEX_MAGIC) throw new Error("Invalid WMO index");
     const version = view.getUint32(4, true);
     const count = view.getUint32(8, true);
-    if (version !== 1 || count !== expectedChunkCount) throw new Error("WMO index mismatch");
+    if (version !== header.version || count !== header.chunkCount) throw new Error("WMO index mismatch");
 
     const entries = [];
     let offset = 12;
+
+    if (version === 1) {
+      for (let i = 0; i < count; i++) {
+        if (offset + 24 > buffer.byteLength) throw new Error("WMO index entry is incomplete");
+        entries.push({
+          chunkIndex: view.getUint32(offset, true),
+          type: 1,
+          offset: Number(view.getBigUint64(offset + 4, true)),
+          totalLength: view.getUint32(offset + 12, true),
+          plainLength: view.getUint32(offset + 16, true),
+          startTime: 0,
+          duration: 0
+        });
+        offset += 24;
+      }
+      return entries;
+    }
+
     for (let i = 0; i < count; i++) {
-      if (offset + 24 > buffer.byteLength) throw new Error("WMO index entry is incomplete");
+      if (offset + 40 > buffer.byteLength) throw new Error("WMO v2 index entry is incomplete");
       entries.push({
         chunkIndex: view.getUint32(offset, true),
-        offset: Number(view.getBigUint64(offset + 4, true)),
-        totalLength: view.getUint32(offset + 12, true),
-        plainLength: view.getUint32(offset + 16, true)
+        type: view.getUint8(offset + 4),
+        offset: Number(view.getBigUint64(offset + 8, true)),
+        totalLength: view.getUint32(offset + 16, true),
+        plainLength: view.getUint32(offset + 20, true),
+        startTime: view.getFloat64(offset + 24, true),
+        duration: view.getFloat64(offset + 32, true)
       });
-      offset += 24;
+      offset += 40;
     }
     return entries;
   }
@@ -210,11 +227,8 @@
     const nonce = bytes.slice(12, 24);
     const authTag = bytes.slice(24, 40);
     const encrypted = bytes.slice(40, 40 + encryptedLength);
-    if (encrypted.byteLength !== encryptedLength) {
-      throw new Error(`WMO chunk ${entry.chunkIndex} payload is incomplete`);
-    }
+    if (encrypted.byteLength !== encryptedLength) throw new Error(`WMO chunk ${entry.chunkIndex} payload is incomplete`);
 
-    // WebCrypto expects AES-GCM ciphertext and its 16-byte tag together.
     const ciphertextWithTag = new Uint8Array(encryptedLength + 16);
     ciphertextWithTag.set(encrypted, 0);
     ciphertextWithTag.set(authTag, encryptedLength);
@@ -233,10 +247,262 @@
       ciphertextWithTag
     );
 
-    if (plain.byteLength !== plainLength) {
-      throw new Error(`WMO chunk ${entry.chunkIndex} decrypted size mismatch`);
-    }
+    if (plain.byteLength !== plainLength) throw new Error(`WMO chunk ${entry.chunkIndex} decrypted size mismatch`);
     return new Uint8Array(plain);
+  }
+
+  function findAscii(bytes, text) {
+    const target = Array.from(text, c => c.charCodeAt(0));
+    outer: for (let i = 0; i <= bytes.length - target.length; i++) {
+      for (let j = 0; j < target.length; j++) if (bytes[i + j] !== target[j]) continue outer;
+      return i;
+    }
+    return -1;
+  }
+
+  function detectMp4Mime(initBytes) {
+    const avcC = findAscii(initBytes, "avcC");
+    const mp4a = findAscii(initBytes, "mp4a");
+    const codecs = [];
+
+    if (avcC >= 0 && avcC + 8 < initBytes.length) {
+      const profile = initBytes[avcC + 5].toString(16).padStart(2, "0");
+      const compat = initBytes[avcC + 6].toString(16).padStart(2, "0");
+      const level = initBytes[avcC + 7].toString(16).padStart(2, "0");
+      codecs.push(`avc1.${profile}${compat}${level}`);
+    }
+    if (mp4a >= 0) codecs.push("mp4a.40.2");
+
+    const candidates = [];
+    if (codecs.length) candidates.push(`video/mp4; codecs="${codecs.join(", ")}"`);
+    candidates.push("video/mp4");
+
+    const MS = window.MediaSource || window.ManagedMediaSource;
+    for (const mime of candidates) {
+      try {
+        if (!MS || typeof MS.isTypeSupported !== "function" || MS.isTypeSupported(mime)) return mime;
+      } catch (_) {}
+    }
+    throw new Error("This browser cannot play the codecs inside this WMO file");
+  }
+
+  function waitForSourceOpen(mediaSource, signal) {
+    return new Promise((resolve, reject) => {
+      if (mediaSource.readyState === "open") return resolve();
+      const onOpen = () => cleanup(resolve);
+      const onError = () => cleanup(() => reject(new Error("MediaSource failed to open")));
+      const onAbort = () => cleanup(() => reject(new DOMException("Aborted", "AbortError")));
+      function cleanup(done) {
+        mediaSource.removeEventListener("sourceopen", onOpen);
+        mediaSource.removeEventListener("sourceclose", onError);
+        if (signal) signal.removeEventListener("abort", onAbort);
+        done();
+      }
+      mediaSource.addEventListener("sourceopen", onOpen, { once: true });
+      mediaSource.addEventListener("sourceclose", onError, { once: true });
+      if (signal) signal.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  function appendBuffer(sourceBuffer, bytes, signal) {
+    return new Promise((resolve, reject) => {
+      const onEnd = () => cleanup(resolve);
+      const onError = () => cleanup(() => reject(new Error("WMO SourceBuffer append failed")));
+      const onAbort = () => cleanup(() => reject(new DOMException("Aborted", "AbortError")));
+      function cleanup(done) {
+        sourceBuffer.removeEventListener("updateend", onEnd);
+        sourceBuffer.removeEventListener("error", onError);
+        if (signal) signal.removeEventListener("abort", onAbort);
+        done();
+      }
+      sourceBuffer.addEventListener("updateend", onEnd, { once: true });
+      sourceBuffer.addEventListener("error", onError, { once: true });
+      if (signal) signal.addEventListener("abort", onAbort, { once: true });
+      try { sourceBuffer.appendBuffer(bytes); } catch (error) { cleanup(() => reject(error)); }
+    });
+  }
+
+  function bufferedEndAt(sourceBuffer, time) {
+    try {
+      const ranges = sourceBuffer.buffered;
+      for (let i = 0; i < ranges.length; i++) {
+        const start = ranges.start(i);
+        const end = ranges.end(i);
+        if (time >= start - 0.25 && time <= end + 0.25) return end;
+      }
+    } catch (_) {}
+    return time;
+  }
+
+  function isTimeBuffered(sourceBuffer, time) {
+    return bufferedEndAt(sourceBuffer, time) > time + 0.05;
+  }
+
+  function findMediaEntryIndex(mediaEntries, time) {
+    if (!mediaEntries.length) return -1;
+    let lo = 0;
+    let hi = mediaEntries.length - 1;
+    let best = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (mediaEntries[mid].startTime <= time + 0.001) {
+        best = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return Math.min(best, mediaEntries.length - 1);
+  }
+
+  async function loadV1Memory(url, video, header, entries, session, signal) {
+    const plainParts = new Array(entries.length);
+    let plainBytes = 0;
+    const authToken = session.mediaToken || await getFirebaseIdToken(false);
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const encryptedChunk = await fetchRange(url, entry.offset, entry.offset + entry.totalLength - 1, signal, authToken);
+      const plain = await decryptChunk(encryptedChunk, entry, session.key);
+      plainParts[i] = plain;
+      plainBytes += plain.byteLength;
+      const percent = Math.max(5, Math.min(99, Math.round(((i + 1) / entries.length) * 95)));
+      setLoadingProgress(percent, "decrypt");
+    }
+
+    if (plainBytes !== header.originalSize) throw new Error("WMO decrypted file size does not match the original media size");
+    const blob = new Blob(plainParts, { type: "video/mp4" });
+    activeObjectUrl = URL.createObjectURL(blob);
+    video.src = activeObjectUrl;
+    video.load();
+    setLoadingProgress(100, "ready");
+    return { contentId: header.contentId, originalSize: header.originalSize, chunks: header.chunkCount, mode: "memory-blob-v1" };
+  }
+
+  async function loadV2Stream(url, video, header, entries, session, signal) {
+    const MS = window.MediaSource || window.ManagedMediaSource;
+    if (!MS) throw new Error("This browser does not support MediaSource streaming");
+
+    const initEntry = entries.find(entry => entry.type === 0);
+    const mediaEntries = entries.filter(entry => entry.type === 1).sort((a, b) => a.startTime - b.startTime);
+    if (!initEntry || !mediaEntries.length) throw new Error("WMO v2 is missing its init or media segments");
+
+    const authToken = session.mediaToken || await getFirebaseIdToken(false);
+    setLoadingProgress(5, "init");
+    const initEncrypted = await fetchRange(url, initEntry.offset, initEntry.offset + initEntry.totalLength - 1, signal, authToken);
+    const initPlain = await decryptChunk(initEncrypted, initEntry, session.key);
+    const mime = detectMp4Mime(initPlain);
+
+    const mediaSource = new MS();
+    activeObjectUrl = URL.createObjectURL(mediaSource);
+    video.src = activeObjectUrl;
+    video.load();
+    await waitForSourceOpen(mediaSource, signal);
+
+    const sourceBuffer = mediaSource.addSourceBuffer(mime);
+    try { sourceBuffer.mode = "segments"; } catch (_) {}
+    await appendBuffer(sourceBuffer, initPlain, signal);
+
+    if (Number.isFinite(header.duration) && header.duration > 0) {
+      try { mediaSource.duration = header.duration; } catch (_) {}
+    }
+
+    let filling = false;
+    let destroyed = false;
+    let firstReadyResolved = false;
+    let firstReadyResolve;
+    let firstReadyReject;
+    const firstReady = new Promise((resolve, reject) => {
+      firstReadyResolve = resolve;
+      firstReadyReject = reject;
+    });
+
+    async function fetchAndAppend(entry) {
+      const encrypted = await fetchRange(url, entry.offset, entry.offset + entry.totalLength - 1, signal, authToken);
+      const plain = await decryptChunk(encrypted, entry, session.key);
+      await appendBuffer(sourceBuffer, plain, signal);
+    }
+
+    async function fillBuffer() {
+      if (filling || destroyed || signal.aborted || mediaSource.readyState !== "open") return;
+      filling = true;
+      try {
+        let guard = 0;
+        while (!destroyed && !signal.aborted && guard++ < 30) {
+          const currentTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+          const end = bufferedEndAt(sourceBuffer, currentTime);
+          const ahead = Math.max(0, end - currentTime);
+
+          if (ahead >= TARGET_BUFFER_SECONDS) break;
+
+          let index = findMediaEntryIndex(mediaEntries, currentTime);
+          if (index < 0) index = 0;
+
+          while (index < mediaEntries.length) {
+            const entry = mediaEntries[index];
+            const probe = entry.startTime + Math.max(0.05, Math.min(entry.duration * 0.5, 0.5));
+            if (!isTimeBuffered(sourceBuffer, probe)) break;
+            index++;
+          }
+
+          if (index >= mediaEntries.length) break;
+          await fetchAndAppend(mediaEntries[index]);
+
+          const afterEnd = bufferedEndAt(sourceBuffer, currentTime);
+          const afterAhead = Math.max(0, afterEnd - currentTime);
+          const totalDuration = header.duration || mediaEntries[mediaEntries.length - 1].startTime + mediaEntries[mediaEntries.length - 1].duration;
+          const percent = totalDuration > 0 ? Math.min(99, Math.round((afterEnd / totalDuration) * 100)) : 10;
+          setLoadingProgress(percent, "stream");
+
+          if (!firstReadyResolved && (afterAhead >= START_BUFFER_SECONDS || index === mediaEntries.length - 1)) {
+            firstReadyResolved = true;
+            setLoadingProgress(100, "ready");
+            firstReadyResolve();
+          }
+        }
+      } catch (error) {
+        if (!firstReadyResolved) firstReadyReject(error);
+        else console.error("WMO background buffer failed", error);
+      } finally {
+        filling = false;
+      }
+    }
+
+    const scheduleFill = () => { fillBuffer().catch(() => {}); };
+    const onSeeking = () => scheduleFill();
+    const onTimeUpdate = () => scheduleFill();
+    const onWaiting = () => scheduleFill();
+    const onPlaying = () => scheduleFill();
+
+    video.addEventListener("seeking", onSeeking);
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("waiting", onWaiting);
+    video.addEventListener("playing", onPlaying);
+
+    activeStreamCleanup = () => {
+      destroyed = true;
+      video.removeEventListener("seeking", onSeeking);
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("playing", onPlaying);
+      try {
+        if (mediaSource.readyState === "open" && !sourceBuffer.updating) mediaSource.endOfStream();
+      } catch (_) {}
+    };
+
+    setLoadingProgress(8, "stream");
+    scheduleFill();
+    await firstReady;
+
+    return {
+      contentId: header.contentId,
+      originalSize: header.originalSize,
+      chunks: header.chunkCount,
+      mediaSegments: mediaEntries.length,
+      duration: header.duration,
+      mode: "media-source-v2",
+      mime
+    };
   }
 
   async function load(url, video) {
@@ -249,59 +515,20 @@
     activeSourceUrl = url;
 
     setLoadingProgress(0, "header");
-    const headerBuffer = await fetchRange(url, 0, HEADER_SIZE - 1, signal);
+    const firebaseToken = await getFirebaseIdToken(false);
+    const headerBuffer = await fetchRange(url, 0, HEADER_SIZE - 1, signal, firebaseToken);
     const header = parseHeader(headerBuffer);
 
     setLoadingProgress(2, "key");
-    const key = await getPlaybackKey(header.contentId, signal);
+    const session = await getPlaybackSession(header.contentId, signal);
 
     setLoadingProgress(4, "index");
-    const indexBuffer = await fetchRange(
-      url,
-      header.indexOffset,
-      header.indexOffset + header.indexSize - 1,
-      signal
-    );
-    const entries = parseIndex(indexBuffer, header.chunkCount);
+    const indexAuth = session.mediaToken || firebaseToken;
+    const indexBuffer = await fetchRange(url, header.indexOffset, header.indexOffset + header.indexSize - 1, signal, indexAuth);
+    const entries = parseIndex(indexBuffer, header);
 
-    const plainParts = new Array(entries.length);
-    let plainBytes = 0;
-
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i];
-      const encryptedChunk = await fetchRange(
-        url,
-        entry.offset,
-        entry.offset + entry.totalLength - 1,
-        signal
-      );
-      const plain = await decryptChunk(encryptedChunk, entry, key);
-      plainParts[i] = plain;
-      plainBytes += plain.byteLength;
-      const percent = Math.max(5, Math.min(99, Math.round(((i + 1) / entries.length) * 95)));
-      setLoadingProgress(percent, "decrypt");
-    }
-
-    if (plainBytes !== header.originalSize) {
-      throw new Error("WMO decrypted file size does not match the original media size");
-    }
-
-    // WMO Media Engine v1 compatibility path:
-    // current WMO Encoder encrypts arbitrary MP4 byte chunks. A regular MP4
-    // cannot be safely appended to MediaSource until the encoder emits fMP4
-    // segments, so v1 reconstructs the MP4 in memory and never writes it to disk.
-    const blob = new Blob(plainParts, { type: "video/mp4" });
-    activeObjectUrl = URL.createObjectURL(blob);
-    video.src = activeObjectUrl;
-    video.load();
-    setLoadingProgress(100, "ready");
-
-    return {
-      contentId: header.contentId,
-      originalSize: header.originalSize,
-      chunks: header.chunkCount,
-      mode: "memory-blob-v1"
-    };
+    if (header.version === 2) return loadV2Stream(url, video, header, entries, session, signal);
+    return loadV1Memory(url, video, header, entries, session, signal);
   }
 
   function isWmoUrl(url) {
@@ -317,7 +544,7 @@
     load,
     destroy,
     isWmoUrl,
-    version: "1.0.1",
+    version: "2.0.0",
     keyEndpoint: KEY_ENDPOINT,
     mediaEndpoint: MEDIA_ENDPOINT
   };

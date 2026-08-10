@@ -1,21 +1,23 @@
-WMO Media Engine server files
+WMO Media Server v2
+===================
 
-Upload these files to:
-  public_html/api/media/
+Upload/replace these files in cPanel:
+  public_html/api/media/playback.php
+  public_html/api/media/media.php
 
-Required:
-  playback.php  - returns the AES media key after Firebase Auth validation
-  media.php     - authenticated Archive.org byte/range bridge for .wmo files
+Keep your existing:
+  public_html/api/media/register.php
+  private/data/config.php
+  private/data/media.db
 
-Keep these existing private files unchanged:
-  /home/gyu5la0fbzjq/private/data/config.php
-  /home/gyu5la0fbzjq/private/data/media.db
+No new config keys are required. v2 reuses register_token internally as the
+HMAC signing secret for short-lived media bridge tokens.
 
-Why media.php exists:
-Safari blocks JavaScript fetch() when archive.org redirects a download URL to an ia*.archive.org host without matching CORS headers. media.php follows that redirect server-side and returns the requested bytes to Womo with CORS enabled.
+Why v2 changes both PHP files:
+- playback.php still verifies Firebase Auth once and returns the AES key.
+- It also returns a 2-hour mediaToken.
+- media.php validates that mediaToken locally for segment/range requests, so a
+  movie does not cause hundreds of Firebase Auth REST calls while streaming.
 
-Security:
-- media.php requires a valid Firebase ID token.
-- media.php only accepts HTTPS URLs on archive.org / *.archive.org.
-- media.php only proxies paths ending in .wmo.
-- Range requests are forwarded, preparing WMO for progressive playback later.
+The media bridge remains restricted to HTTPS archive.org/*.archive.org URLs
+whose path ends in .wmo.

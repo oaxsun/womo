@@ -29,6 +29,11 @@ function respond(int $status, array $data): never
     exit;
 }
 
+function b64url(string $data): string
+{
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respond(405, ['ok' => false, 'error' => 'method_not_allowed']);
 }
@@ -42,7 +47,9 @@ if (!file_exists($dbFile)) respond(500, ['ok' => false, 'error' => 'database_mis
 
 $config = require $configFile;
 $firebaseApiKey = trim((string)($config['firebase_api_key'] ?? ''));
+$mediaSecret = trim((string)($config['register_token'] ?? ''));
 if ($firebaseApiKey === '') respond(500, ['ok' => false, 'error' => 'firebase_config_missing']);
+if ($mediaSecret === '') respond(500, ['ok' => false, 'error' => 'media_secret_missing']);
 
 $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
 if (!preg_match('/^Bearer\s+(.+)$/i', $authHeader, $matches)) {
@@ -73,6 +80,7 @@ $firebaseData = json_decode($firebaseResponse, true);
 if ($firebaseStatus !== 200 || !is_array($firebaseData) || empty($firebaseData['users'][0]['localId'])) {
     respond(401, ['ok' => false, 'error' => 'invalid_auth_token']);
 }
+$uid = (string)$firebaseData['users'][0]['localId'];
 
 $data = json_decode(file_get_contents('php://input'), true);
 if (!is_array($data)) respond(400, ['ok' => false, 'error' => 'invalid_json']);
@@ -88,7 +96,25 @@ try {
     $stmt->execute([':content_id' => $contentId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) respond(404, ['ok' => false, 'error' => 'content_not_found']);
-    respond(200, ['ok' => true, 'contentId' => $contentId, 'key' => $row['media_key']]);
+
+    // Short-lived bridge token. media.php can validate this locally, so every
+    // 4-second media segment does not need another round-trip to Firebase Auth.
+    $claims = [
+        'uid' => $uid,
+        'exp' => time() + 7200,
+        'v' => 2
+    ];
+    $payloadPart = b64url((string)json_encode($claims));
+    $signature = b64url(hash_hmac('sha256', $payloadPart, $mediaSecret, true));
+    $mediaToken = 'wmo2.' . $payloadPart . '.' . $signature;
+
+    respond(200, [
+        'ok' => true,
+        'contentId' => $contentId,
+        'key' => $row['media_key'],
+        'mediaToken' => $mediaToken,
+        'expiresIn' => 7200
+    ]);
 } catch (Throwable $e) {
     respond(500, ['ok' => false, 'error' => 'server_error']);
 }
