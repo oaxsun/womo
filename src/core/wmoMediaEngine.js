@@ -70,17 +70,23 @@
       return fullFileCache.slice(start, end + 1);
     }
 
+    // Use a CORS-simple POST to avoid cPanel/WAF preflight failures.
+    // The PHP bridge applies the byte Range upstream to Archive.org.
     const token = authToken || await getFirebaseIdToken(false);
-    const proxyUrl = `${MEDIA_ENDPOINT}?url=${encodeURIComponent(url)}`;
-    const response = await fetch(proxyUrl, {
-      method: "GET",
+    const response = await fetch(MEDIA_ENDPOINT, {
+      method: "POST",
       mode: "cors",
       credentials: "omit",
       cache: "no-store",
       headers: {
-        "Authorization": `Bearer ${token}`,
-        "Range": `bytes=${start}-${end}`
+        "Content-Type": "text/plain;charset=UTF-8"
       },
+      body: JSON.stringify({
+        url,
+        start,
+        end,
+        token
+      }),
       signal
     });
 
@@ -99,16 +105,17 @@
 
   async function getPlaybackSession(contentId, signal) {
     const idToken = await getFirebaseIdToken(false);
+    // text/plain keeps this a CORS-simple request, so Safari does not need
+    // an OPTIONS preflight against the shared hosting endpoint.
     const response = await fetch(KEY_ENDPOINT, {
       method: "POST",
       mode: "cors",
       credentials: "omit",
       cache: "no-store",
       headers: {
-        "Authorization": `Bearer ${idToken}`,
-        "Content-Type": "application/json"
+        "Content-Type": "text/plain;charset=UTF-8"
       },
-      body: JSON.stringify({ contentId }),
+      body: JSON.stringify({ contentId, idToken }),
       signal
     });
 

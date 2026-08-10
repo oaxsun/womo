@@ -11,18 +11,18 @@ if ($origin !== '' && in_array($origin, $allowedOrigins, true)) {
     header('Access-Control-Allow-Origin: ' . $origin);
     header('Vary: Origin');
 }
-header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Authorization, Range, Content-Type');
+header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, Range');
 header('Access-Control-Expose-Headers: Content-Range, Accept-Ranges, Content-Length, Content-Type');
 header('Access-Control-Max-Age: 86400');
 header('Cache-Control: private, no-store');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
 
-function fail_json(int $status, string $error): never
+function fail_json(int $status, string $error): void
 {
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
@@ -30,7 +30,7 @@ function fail_json(int $status, string $error): never
     exit;
 }
 
-function b64url_decode_strict(string $value): string|false
+function b64url_decode_strict(string $value)
 {
     $value = strtr($value, '-_', '+/');
     $pad = strlen($value) % 4;
@@ -38,7 +38,18 @@ function b64url_decode_strict(string $value): string|false
     return base64_decode($value, true);
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') fail_json(405, 'method_not_allowed');
+function is_allowed_archive_url(string $url): bool
+{
+    $parts = parse_url($url);
+    if (!is_array($parts)) return false;
+    if (($parts['scheme'] ?? '') !== 'https') return false;
+    $host = strtolower((string)($parts['host'] ?? ''));
+    if ($host === 'archive.org' || $host === 'www.archive.org') return true;
+    return substr($host, -12) === '.archive.org';
+}
+
+$method = $_SERVER['REQUEST_METHOD'] ?? '';
+if ($method !== 'POST' && $method !== 'GET') fail_json(405, 'method_not_allowed');
 
 $basePath   = '/home/gyu5la0fbzjq/private/data';
 $configFile = $basePath . '/config.php';
@@ -49,15 +60,36 @@ $mediaSecret = trim((string)($config['register_token'] ?? ''));
 if ($firebaseApiKey === '') fail_json(500, 'firebase_config_missing');
 if ($mediaSecret === '') fail_json(500, 'media_secret_missing');
 
-$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-if (!preg_match('/^Bearer\s+(.+)$/i', $authHeader, $matches)) fail_json(401, 'missing_auth_token');
-$authToken = trim($matches[1]);
+$source = '';
+$authToken = '';
+$start = null;
+$end = null;
+
+if ($method === 'POST') {
+    $data = json_decode((string)file_get_contents('php://input'), true);
+    if (!is_array($data)) fail_json(400, 'invalid_json');
+    $source = trim((string)($data['url'] ?? ''));
+    $authToken = trim((string)($data['token'] ?? ''));
+    if (isset($data['start'])) $start = (int)$data['start'];
+    if (isset($data['end'])) $end = (int)$data['end'];
+} else {
+    $source = trim((string)($_GET['url'] ?? ''));
+    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    if (preg_match('/^Bearer\s+(.+)$/i', $authHeader, $matches)) $authToken = trim($matches[1]);
+    $rangeHeader = trim((string)($_SERVER['HTTP_RANGE'] ?? ''));
+    if ($rangeHeader !== '' && preg_match('/^bytes=(\d+)-(\d*)$/', $rangeHeader, $m)) {
+        $start = (int)$m[1];
+        $end = $m[2] !== '' ? (int)$m[2] : null;
+    }
+}
+
+if ($source === '') fail_json(400, 'missing_url');
 if ($authToken === '') fail_json(401, 'missing_auth_token');
+if ($start === null || $start < 0) fail_json(416, 'invalid_range');
+if ($end !== null && $end < $start) fail_json(416, 'invalid_range');
 
 $authorized = false;
-
-// WMO v2 playback sessions use a locally verifiable HMAC token.
-if (str_starts_with($authToken, 'wmo2.')) {
+if (strpos($authToken, 'wmo2.') === 0) {
     $parts = explode('.', $authToken);
     if (count($parts) === 3 && $parts[0] === 'wmo2') {
         $payloadPart = $parts[1];
@@ -72,7 +104,6 @@ if (str_starts_with($authToken, 'wmo2.')) {
         }
     }
 } else {
-    // Bootstrap request (header) can still use a normal Firebase ID token.
     $firebaseUrl = 'https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' . urlencode($firebaseApiKey);
     $payload = json_encode(['idToken' => $authToken]);
     $authCurl = curl_init($firebaseUrl);
@@ -91,44 +122,29 @@ if (str_starts_with($authToken, 'wmo2.')) {
     }
     $firebaseStatus = curl_getinfo($authCurl, CURLINFO_HTTP_CODE);
     curl_close($authCurl);
-    $firebaseData = json_decode($firebaseResponse, true);
+    $firebaseData = json_decode((string)$firebaseResponse, true);
     if ($firebaseStatus === 200 && is_array($firebaseData) && !empty($firebaseData['users'][0]['localId'])) {
         $authorized = true;
     }
 }
 
 if (!$authorized) fail_json(401, 'invalid_auth_token');
-
-$source = trim((string)($_GET['url'] ?? ''));
-if ($source === '') fail_json(400, 'missing_url');
-
-function is_allowed_archive_url(string $url): bool
-{
-    $parts = parse_url($url);
-    if (!is_array($parts)) return false;
-    if (($parts['scheme'] ?? '') !== 'https') return false;
-    $host = strtolower((string)($parts['host'] ?? ''));
-    if ($host === 'archive.org' || $host === 'www.archive.org') return true;
-    if (str_ends_with($host, '.archive.org')) return true;
-    return false;
-}
-
 if (!is_allowed_archive_url($source)) fail_json(400, 'unsupported_media_host');
 $sourcePath = (string)(parse_url($source, PHP_URL_PATH) ?? '');
 if (!preg_match('/\.wmo$/i', $sourcePath)) fail_json(400, 'unsupported_media_type');
 
-$range = trim((string)($_SERVER['HTTP_RANGE'] ?? ''));
-if ($range !== '' && !preg_match('/^bytes=\d+-\d*$/', $range)) fail_json(416, 'invalid_range');
+$range = 'bytes=' . $start . '-' . ($end === null ? '' : $end);
 
-function request_archive(string $url, string $range, int $redirects = 0): never
+function request_archive(string $url, string $range, int $redirects = 0): void
 {
     if ($redirects > 5) fail_json(502, 'too_many_redirects');
     if (!is_allowed_archive_url($url)) fail_json(502, 'redirect_host_blocked');
 
-    $headers = [];
-    if ($range !== '') $headers[] = 'Range: ' . $range;
-    $headers[] = 'Accept: application/octet-stream,*/*;q=0.8';
-    $headers[] = 'User-Agent: WomoMediaBridge/2.0';
+    $headers = [
+        'Range: ' . $range,
+        'Accept: application/octet-stream,*/*;q=0.8',
+        'User-Agent: WomoMediaBridge/2.1'
+    ];
 
     $responseHeaders = [];
     $status = 0;
@@ -180,7 +196,7 @@ function request_archive(string $url, string $range, int $redirects = 0): never
         if (!preg_match('#^https://#i', $next)) {
             $base = parse_url($url);
             if (!is_array($base) || empty($base['host'])) fail_json(502, 'invalid_redirect');
-            if (str_starts_with($next, '/')) {
+            if (strpos($next, '/') === 0) {
                 $next = 'https://' . $base['host'] . $next;
             } else {
                 $dir = rtrim(dirname((string)($base['path'] ?? '/')), '/');
@@ -188,6 +204,7 @@ function request_archive(string $url, string $range, int $redirects = 0): never
             }
         }
         request_archive($next, $range, $redirects + 1);
+        return;
     }
 
     if ($status !== 200 && $status !== 206) {
