@@ -5,6 +5,7 @@
   const WMO_MAGIC = "WMO1";
   const INDEX_MAGIC = "WIDX";
   const KEY_ENDPOINT = "https://gruposegel.com/api/media/playback.php";
+  const MEDIA_ENDPOINT = "https://gruposegel.com/api/media/media.php";
 
   let activeObjectUrl = "";
   let activeAbortController = null;
@@ -52,18 +53,32 @@
     return out;
   }
 
+  async function getFirebaseIdToken() {
+    if (!window.firebase || !firebase.auth) {
+      throw new Error("Firebase Auth is not available");
+    }
+    const user = firebase.auth().currentUser;
+    if (!user) {
+      throw new Error("WMO playback requires an authenticated user");
+    }
+    return user.getIdToken(false);
+  }
+
   async function fetchRange(url, start, end, signal) {
     if (fullFileCache && activeSourceUrl === url) {
       return fullFileCache.slice(start, end + 1);
     }
 
-    const response = await fetch(url, {
+    const idToken = await getFirebaseIdToken();
+    const proxyUrl = `${MEDIA_ENDPOINT}?url=${encodeURIComponent(url)}`;
+    const response = await fetch(proxyUrl, {
       method: "GET",
       mode: "cors",
       credentials: "omit",
       cache: "no-store",
       headers: {
-        Range: `bytes=${start}-${end}`
+        "Authorization": `Bearer ${idToken}`,
+        "Range": `bytes=${start}-${end}`
       },
       signal
     });
@@ -89,16 +104,7 @@
   }
 
   async function getPlaybackKey(contentId, signal) {
-    if (!window.firebase || !firebase.auth) {
-      throw new Error("Firebase Auth is not available");
-    }
-
-    const user = firebase.auth().currentUser;
-    if (!user) {
-      throw new Error("WMO playback requires an authenticated user");
-    }
-
-    const idToken = await user.getIdToken(false);
+    const idToken = await getFirebaseIdToken();
 
     const response = await fetch(KEY_ENDPOINT, {
       method: "POST",
@@ -311,7 +317,8 @@
     load,
     destroy,
     isWmoUrl,
-    version: "1.0.0",
-    keyEndpoint: KEY_ENDPOINT
+    version: "1.0.1",
+    keyEndpoint: KEY_ENDPOINT,
+    mediaEndpoint: MEDIA_ENDPOINT
   };
 })();
