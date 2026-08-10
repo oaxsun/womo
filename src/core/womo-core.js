@@ -3933,7 +3933,19 @@ function openPlayer(item, options = {}) {
   resetTsPlayback(video);
   video.load();
 
-  if (window.Hls && Hls.isSupported() && url.includes(".m3u8")) {
+  if (window.WmoMediaEngine && WmoMediaEngine.isWmoUrl(url)) {
+    setPlayerLoading(true, "wmo");
+    WmoMediaEngine.load(url, video)
+      .then(() => {
+        setPlayerLoading(false, "wmo-ready");
+        video.play().catch(() => {});
+      })
+      .catch((error) => {
+        setPlayerLoading(false, "wmo-error");
+        console.error("WMO Media Engine playback failed", error);
+        alert("No se pudo reproducir este archivo WMO. " + (error?.message || "Error desconocido"));
+      });
+  } else if (window.Hls && Hls.isSupported() && url.includes(".m3u8")) {
     currentHls = new Hls();
     currentHls.loadSource(url);
     currentHls.attachMedia(video);
@@ -4049,6 +4061,9 @@ function closePlayer() {
 
   video.pause();
   resetTsPlayback(video);
+  if (window.WmoMediaEngine) {
+    try { WmoMediaEngine.destroy(); } catch (_) {}
+  }
   if (currentHls) {
     currentHls.destroy();
     currentHls = null;
