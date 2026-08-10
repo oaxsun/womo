@@ -17,5 +17,6 @@ where OPTIONS can be blocked or return HTTP 500.
 
 MIGRATION NOTE (2026-08-10):
 - New encryption keys are registered in Cloudflare D1 via womo-media-api.
-- playback.php is retained only as a legacy fallback for WMO files encoded before the migration.
+- playback.php is no longer used by Womo Web for keys. Cloudflare /playback is the only key source.
+- media.php remains temporarily required only as the Archive.org byte-range bridge.
 - media.php remains required as the Archive.org byte-range bridge.

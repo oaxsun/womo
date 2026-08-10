@@ -5,7 +5,6 @@
   const WMO_MAGIC = "WMO1";
   const INDEX_MAGIC = "WIDX";
   const KEY_ENDPOINT = "https://womo-media-api.jmnz-music.workers.dev/playback";
-  const LEGACY_KEY_ENDPOINT = "https://gruposegel.com/api/media/playback.php";
   const MEDIA_ENDPOINT = "https://gruposegel.com/api/media/media.php";
   const START_BUFFER_SECONDS = 12;
   const TARGET_BUFFER_SECONDS = 30;
@@ -122,36 +121,9 @@
     return { response, payload };
   }
 
-  async function requestLegacyPlayback(contentId, idToken, signal) {
-    // Legacy fallback keeps older WMO files usable while their keys still
-    // live in cPanel. text/plain avoids shared-hosting preflight issues.
-    const response = await fetch(LEGACY_KEY_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      credentials: "omit",
-      cache: "no-store",
-      headers: {
-        "Content-Type": "text/plain;charset=UTF-8"
-      },
-      body: JSON.stringify({ contentId, idToken }),
-      signal
-    });
-    let payload = null;
-    try { payload = await response.json(); } catch (_) {}
-    return { response, payload };
-  }
-
   async function getPlaybackSession(contentId, signal) {
     const idToken = await getFirebaseIdToken(false);
-
-    let { response, payload } = await requestCloudflarePlayback(contentId, idToken, signal);
-
-    // During migration, previously encoded titles can still have their key
-    // only in the legacy SQLite database. Fall back only when Cloudflare
-    // explicitly says that contentId is not present.
-    if (response.status === 404 && payload?.error === "content_not_found") {
-      ({ response, payload } = await requestLegacyPlayback(contentId, idToken, signal));
-    }
+    const { response, payload } = await requestCloudflarePlayback(contentId, idToken, signal);
 
     if (!response.ok || !payload || !payload.ok || !payload.key) {
       const reason = payload?.error || `HTTP ${response.status}`;
