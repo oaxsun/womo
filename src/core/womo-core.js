@@ -3933,9 +3933,24 @@ function openPlayer(item, options = {}) {
   resetTsPlayback(video);
   video.load();
 
-  if (window.WmoMediaEngine && WmoMediaEngine.isWmoUrl(url)) {
+  const hasExplicitStartAt = Object.prototype.hasOwnProperty.call(options, "startAt");
+  const shouldIgnoreSavedProgress = Boolean(options.shuffleMode || options.noProgress || options.fromShuffle || options.saveProgress === false);
+  const savedProgress = shouldIgnoreSavedProgress
+    ? 0
+    : (episode
+      ? Number(loadEpisodeProgress()[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] || episode.progress || 0)
+      : getItemProgress(item));
+  const isWmoPlayback = Boolean(window.WmoMediaEngine && WmoMediaEngine.isWmoUrl(url));
+  const wmoStartTime = hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0
+    ? Number(options.startAt)
+    : null;
+
+  if (isWmoPlayback) {
     setPlayerLoading(true, "wmo");
-    WmoMediaEngine.load(url, video)
+    WmoMediaEngine.load(url, video, {
+      startTime: wmoStartTime,
+      startProgress: shouldIgnoreSavedProgress ? 0 : savedProgress
+    })
       .then(() => {
         setPlayerLoading(false, "wmo-ready");
         video.play().catch(() => {});
@@ -3996,22 +4011,19 @@ function openPlayer(item, options = {}) {
   // reject fullscreen when it is first requested by a later async event.
   womoTryMobileNativeFullscreen(video);
 
-  const hasExplicitStartAt = Object.prototype.hasOwnProperty.call(options, "startAt");
-  const shouldIgnoreSavedProgress = Boolean(options.shuffleMode || options.noProgress || options.fromShuffle || options.saveProgress === false);
-  const savedProgress = shouldIgnoreSavedProgress
-    ? 0
-    : (episode
-      ? Number(loadEpisodeProgress()[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] || episode.progress || 0)
-      : getItemProgress(item));
-
   video.onloadedmetadata = () => {
     if (!currentHls) womoRefreshNativeAudioTracks(video);
-    if (hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0) {
-      video.currentTime = Number(options.startAt);
-    } else if (savedProgress > 0 && savedProgress < 98 && video.duration && isFinite(video.duration)) {
-      video.currentTime = (savedProgress / 100) * video.duration;
-    } else if (shouldIgnoreSavedProgress) {
-      video.currentTime = 0;
+    // WMO applies resume before it starts filling its MediaSource buffer.
+    // Seeking here after the engine already buffered from 0 caused Safari to
+    // restart WMO titles instead of resuming at the saved position.
+    if (!isWmoPlayback) {
+      if (hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0) {
+        video.currentTime = Number(options.startAt);
+      } else if (savedProgress > 0 && savedProgress < 98 && video.duration && isFinite(video.duration)) {
+        video.currentTime = (savedProgress / 100) * video.duration;
+      } else if (shouldIgnoreSavedProgress) {
+        video.currentTime = 0;
+      }
     }
     womoTryMobileNativeFullscreen(video);
     video.play().catch(() => {});

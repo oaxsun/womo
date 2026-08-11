@@ -109,7 +109,11 @@ function runPackaging(input, tempDir) {
     "-y", "-hide_banner", "-loglevel", "error",
     "-i", input,
     "-map", "0:v:0", "-map", "0:a:0?",
-    "-c", "copy",
+    "-map_metadata", "-1", "-map_chapters", "-1",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+    "-pix_fmt", "yuv420p", "-profile:v", "high", "-level:v", "4.1",
+    "-force_key_frames", "expr:gte(t,n_forced*4)",
+    "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
     "-f", "hls",
     "-hls_time", "4",
     "-hls_playlist_type", "vod",
@@ -122,7 +126,7 @@ function runPackaging(input, tempDir) {
 
   const result = spawnSync("ffmpeg", args, { stdio: "inherit" });
   if (result.status !== 0) {
-    throw new Error("FFmpeg could not package this file as fragmented MP4. H.264/AAC MP4 is recommended for WMO v2.");
+    throw new Error("FFmpeg could not package this file as fragmented MP4. The input could not be normalized to browser-compatible H.264/AAC for WMO v2.");
   }
   return playlist;
 }

@@ -23,6 +23,21 @@
     emit("wmo:media-progress", { percent, stage });
   }
 
+  function resetMediaOnly(video) {
+    if (activeStreamCleanup) {
+      try { activeStreamCleanup(); } catch (_) {}
+      activeStreamCleanup = null;
+    }
+    if (activeObjectUrl) {
+      try { URL.revokeObjectURL(activeObjectUrl); } catch (_) {}
+      activeObjectUrl = "";
+    }
+    if (video) {
+      try { video.pause(); } catch (_) {}
+      try { video.removeAttribute("src"); video.load(); } catch (_) {}
+    }
+  }
+
   function destroy() {
     if (activeAbortController) {
       try { activeAbortController.abort(); } catch (_) {}
@@ -273,6 +288,9 @@
 
   function detectMp4Mime(initBytes) {
     const avcC = findAscii(initBytes, "avcC");
+    const hvcC = findAscii(initBytes, "hvcC");
+    const hev1 = findAscii(initBytes, "hev1");
+    const hvc1 = findAscii(initBytes, "hvc1");
     const mp4a = findAscii(initBytes, "mp4a");
     const codecs = [];
 
@@ -281,20 +299,55 @@
       const compat = initBytes[avcC + 6].toString(16).padStart(2, "0");
       const level = initBytes[avcC + 7].toString(16).padStart(2, "0");
       codecs.push(`avc1.${profile}${compat}${level}`);
+    } else if (hvcC >= 0 || hvc1 >= 0 || hev1 >= 0) {
+      // Safari may support HEVC while Chrome/Windows often does not. Keep a
+      // precise codec label so MediaSource can reject it cleanly instead of
+      // failing later during appendBuffer.
+      codecs.push(hvc1 >= 0 ? "hvc1" : "hev1");
     }
     if (mp4a >= 0) codecs.push("mp4a.40.2");
 
-    const candidates = [];
-    if (codecs.length) candidates.push(`video/mp4; codecs="${codecs.join(", ")}"`);
-    candidates.push("video/mp4");
-
+    const precise = codecs.length ? `video/mp4; codecs="${codecs.join(", ")}"` : "";
     const MS = window.MediaSource || window.ManagedMediaSource;
-    for (const mime of candidates) {
+    if (precise && MS && typeof MS.isTypeSupported === "function") {
       try {
-        if (!MS || typeof MS.isTypeSupported !== "function" || MS.isTypeSupported(mime)) return mime;
+        if (MS.isTypeSupported(precise)) return precise;
       } catch (_) {}
+      throw new Error(`WMO codec is not supported by this browser (${precise})`);
     }
+    if (precise) return precise;
+    try {
+      if (!MS || typeof MS.isTypeSupported !== "function" || MS.isTypeSupported("video/mp4")) return "video/mp4";
+    } catch (_) {}
     throw new Error("This browser cannot play the codecs inside this WMO file");
+  }
+
+  function waitForLoadedMetadata(video, signal) {
+    return new Promise((resolve, reject) => {
+      if (video.readyState >= 1 && Number.isFinite(video.duration)) return resolve();
+      const onLoaded = () => cleanup(resolve);
+      const onError = () => cleanup(() => reject(new Error("WMO media metadata failed to load")));
+      const onAbort = () => cleanup(() => reject(new DOMException("Aborted", "AbortError")));
+      function cleanup(done) {
+        video.removeEventListener("loadedmetadata", onLoaded);
+        video.removeEventListener("error", onError);
+        if (signal) signal.removeEventListener("abort", onAbort);
+        done();
+      }
+      video.addEventListener("loadedmetadata", onLoaded, { once: true });
+      video.addEventListener("error", onError, { once: true });
+      if (signal) signal.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  function resolveStartTime(options, duration) {
+    const explicit = Number(options?.startTime);
+    if (Number.isFinite(explicit) && explicit >= 0) return Math.min(explicit, Math.max(0, duration - 0.05));
+    const progress = Number(options?.startProgress);
+    if (Number.isFinite(progress) && progress > 0 && progress < 98 && duration > 0) {
+      return Math.min((progress / 100) * duration, Math.max(0, duration - 0.05));
+    }
+    return 0;
   }
 
   function waitForSourceOpen(mediaSource, signal) {
@@ -366,7 +419,7 @@
     return Math.min(best, mediaEntries.length - 1);
   }
 
-  async function loadV1Memory(url, video, header, entries, session, signal) {
+  async function loadV1Memory(url, video, header, entries, session, signal, options = {}) {
     const plainParts = new Array(entries.length);
     let plainBytes = 0;
     const authToken = session.mediaToken || await getFirebaseIdToken(false);
@@ -386,11 +439,16 @@
     activeObjectUrl = URL.createObjectURL(blob);
     video.src = activeObjectUrl;
     video.load();
+    await waitForLoadedMetadata(video, signal);
+    const startTime = resolveStartTime(options, Number(video.duration || 0));
+    if (startTime > 0) {
+      try { video.currentTime = startTime; } catch (_) {}
+    }
     setLoadingProgress(100, "ready");
-    return { contentId: header.contentId, originalSize: header.originalSize, chunks: header.chunkCount, mode: "memory-blob-v1" };
+    return { contentId: header.contentId, originalSize: header.originalSize, chunks: header.chunkCount, mode: "memory-blob-v1", startTime };
   }
 
-  async function loadV2Stream(url, video, header, entries, session, signal) {
+  async function loadV2Stream(url, video, header, entries, session, signal, options = {}) {
     const MS = window.MediaSource || window.ManagedMediaSource;
     if (!MS) throw new Error("This browser does not support MediaSource streaming");
 
@@ -416,6 +474,11 @@
 
     if (Number.isFinite(header.duration) && header.duration > 0) {
       try { mediaSource.duration = header.duration; } catch (_) {}
+    }
+
+    const desiredStart = resolveStartTime(options, Number(header.duration || 0));
+    if (desiredStart > 0) {
+      try { video.currentTime = desiredStart; } catch (_) {}
     }
 
     let filling = false;
@@ -512,11 +575,50 @@
       mediaSegments: mediaEntries.length,
       duration: header.duration,
       mode: "media-source-v2",
-      mime
+      mime,
+      startTime: desiredStart
     };
   }
 
-  async function load(url, video) {
+  async function loadV2Memory(url, video, header, entries, session, signal, options = {}, cause = null) {
+    resetMediaOnly(video);
+    const initEntry = entries.find(entry => entry.type === 0);
+    const mediaEntries = entries.filter(entry => entry.type === 1).sort((a, b) => a.startTime - b.startTime);
+    if (!initEntry || !mediaEntries.length) throw cause || new Error("WMO v2 is missing its init or media segments");
+
+    const authToken = session.mediaToken || await getFirebaseIdToken(false);
+    const ordered = [initEntry, ...mediaEntries];
+    const plainParts = [];
+    for (let i = 0; i < ordered.length; i++) {
+      const entry = ordered[i];
+      const encrypted = await fetchRange(url, entry.offset, entry.offset + entry.totalLength - 1, signal, authToken);
+      plainParts.push(await decryptChunk(encrypted, entry, session.key));
+      setLoadingProgress(Math.min(99, 10 + Math.round(((i + 1) / ordered.length) * 88)), "compat");
+    }
+
+    const blob = new Blob(plainParts, { type: "video/mp4" });
+    activeObjectUrl = URL.createObjectURL(blob);
+    video.src = activeObjectUrl;
+    video.load();
+    await waitForLoadedMetadata(video, signal);
+    const startTime = resolveStartTime(options, Number(video.duration || header.duration || 0));
+    if (startTime > 0) {
+      try { video.currentTime = startTime; } catch (_) {}
+    }
+    setLoadingProgress(100, "ready");
+    return {
+      contentId: header.contentId,
+      originalSize: header.originalSize,
+      chunks: header.chunkCount,
+      mediaSegments: mediaEntries.length,
+      duration: header.duration,
+      mode: "memory-blob-v2-compat",
+      startTime,
+      fallbackReason: cause ? String(cause.message || cause) : ""
+    };
+  }
+
+  async function load(url, video, options = {}) {
     destroy();
     if (!window.crypto?.subtle) throw new Error("This browser does not support WebCrypto");
     if (!video) throw new Error("WMO player element is missing");
@@ -538,8 +640,16 @@
     const indexBuffer = await fetchRange(url, header.indexOffset, header.indexOffset + header.indexSize - 1, signal, indexAuth);
     const entries = parseIndex(indexBuffer, header);
 
-    if (header.version === 2) return loadV2Stream(url, video, header, entries, session, signal);
-    return loadV1Memory(url, video, header, entries, session, signal);
+    if (header.version === 2) {
+      try {
+        return await loadV2Stream(url, video, header, entries, session, signal, options);
+      } catch (error) {
+        if (signal.aborted || error?.name === "AbortError") throw error;
+        console.warn("WMO MediaSource mode failed; using compatibility memory fallback.", error);
+        return loadV2Memory(url, video, header, entries, session, signal, options, error);
+      }
+    }
+    return loadV1Memory(url, video, header, entries, session, signal, options);
   }
 
   function isWmoUrl(url) {
@@ -555,8 +665,8 @@
     load,
     destroy,
     isWmoUrl,
-    version: "2.1.0",
-    keyProvider: "cloudflare-d1-with-legacy-fallback",
+    version: "2.2.0",
+    keyProvider: "cloudflare-d1",
     keyEndpoint: KEY_ENDPOINT,
     mediaEndpoint: MEDIA_ENDPOINT
   };
