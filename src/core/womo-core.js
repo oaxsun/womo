@@ -2323,14 +2323,24 @@ function getItemProgress(item) {
   return Number(entry?.progress ?? item.progress ?? 0);
 }
 
+function getWomoEffectiveDuration(video) {
+  if (!video) return 0;
+  const nativeDuration = Number(video.duration || 0);
+  if (Number.isFinite(nativeDuration) && nativeDuration > 0) return nativeDuration;
+  const wmoDuration = Number(video.dataset?.wmoDuration || 0);
+  return Number.isFinite(wmoDuration) && wmoDuration > 0 ? wmoDuration : 0;
+}
+
 function savePlayerProgress() {
   if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
   if (window.__womoShuffleNoProgress || womoGlobalShuffleNoProgress) return;
   if (currentPlayerContext?.saveProgress === false || currentPlayerContext?.shuffleMode || currentPlayerContext?.fromShuffle || currentPlayerContext?.noProgress) return;
   const video = document.getElementById('womoPlayer');
-  if (!video || !currentPlayerContext || !video.duration || !isFinite(video.duration)) return;
+  if (!video || !currentPlayerContext) return;
+  const duration = getWomoEffectiveDuration(video);
+  if (!duration) return;
 
-  const progress = Math.max(0, Math.min(100, (video.currentTime / video.duration) * 100));
+  const progress = Math.max(0, Math.min(100, (video.currentTime / duration) * 100));
   const { item, episode } = currentPlayerContext;
 
   if (item.type === 'series' && episode) {
@@ -2564,7 +2574,7 @@ function saveActiveEpisodeProgress(forceCompleted = false) {
     if (!video || !currentPlayerItem) return;
 
     const isEpisodePlayback = Boolean(currentPlayerEpisode);
-    const duration = Number(video.duration || 0);
+    const duration = getWomoEffectiveDuration(video);
     const current = Number(video.currentTime || 0);
 
     if (!forceCompleted) {
@@ -3941,6 +3951,9 @@ function openPlayer(item, options = {}) {
       ? Number(loadEpisodeProgress()[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] || episode.progress || 0)
       : getItemProgress(item));
   const isWmoPlayback = Boolean(window.WmoMediaEngine && WmoMediaEngine.isWmoUrl(url));
+  if (!isWmoPlayback) {
+    try { delete video.dataset.wmoDuration; } catch (_) {}
+  }
   const wmoStartTime = hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0
     ? Number(options.startAt)
     : null;

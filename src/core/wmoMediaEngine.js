@@ -180,8 +180,9 @@
     const indexSize = Number(view.getBigUint64(56, true));
     const duration = version >= 2 ? view.getFloat64(64, true) : 0;
     const mediaSegmentCount = version >= 2 ? view.getUint32(72, true) : 0;
+    const audioSegmentCount = version >= 3 ? view.getUint32(76, true) : 0;
 
-    if ((version !== 1 && version !== 2) || headerSize !== HEADER_SIZE) {
+    if ((version !== 1 && version !== 2 && version !== 3) || headerSize !== HEADER_SIZE) {
       throw new Error(`Unsupported WMO version ${version}`);
     }
     if ((flags & 1) !== 1) throw new Error("This WMO file is not encrypted as expected");
@@ -189,7 +190,7 @@
 
     return {
       version, flags, contentId, originalSize, chunkSize, chunkCount,
-      indexOffset, indexSize, duration, mediaSegmentCount
+      indexOffset, indexSize, duration, mediaSegmentCount, audioSegmentCount
     };
   }
 
@@ -368,10 +369,10 @@
     });
   }
 
-  function appendBuffer(sourceBuffer, bytes, signal) {
+  function appendBuffer(sourceBuffer, bytes, signal, label = "media") {
     return new Promise((resolve, reject) => {
       const onEnd = () => cleanup(resolve);
-      const onError = () => cleanup(() => reject(new Error("WMO SourceBuffer append failed")));
+      const onError = () => cleanup(() => reject(new Error(`WMO ${label} SourceBuffer append failed`)));
       const onAbort = () => cleanup(() => reject(new DOMException("Aborted", "AbortError")));
       function cleanup(done) {
         sourceBuffer.removeEventListener("updateend", onEnd);
@@ -382,7 +383,10 @@
       sourceBuffer.addEventListener("updateend", onEnd, { once: true });
       sourceBuffer.addEventListener("error", onError, { once: true });
       if (signal) signal.addEventListener("abort", onAbort, { once: true });
-      try { sourceBuffer.appendBuffer(bytes); } catch (error) { cleanup(() => reject(error)); }
+      try { sourceBuffer.appendBuffer(bytes); }
+      catch (error) {
+        cleanup(() => reject(new Error(`WMO ${label} append threw: ${error?.name || "Error"}: ${error?.message || error}`)));
+      }
     });
   }
 
@@ -448,6 +452,171 @@
     return { contentId: header.contentId, originalSize: header.originalSize, chunks: header.chunkCount, mode: "memory-blob-v1", startTime };
   }
 
+
+  function detectVideoMime(initBytes) {
+    const avcC = findAscii(initBytes, "avcC");
+    if (avcC < 0 || avcC + 8 >= initBytes.length) throw new Error("WMO video init segment does not contain AVC configuration");
+    const profile = initBytes[avcC + 5].toString(16).padStart(2, "0");
+    const compat = initBytes[avcC + 6].toString(16).padStart(2, "0");
+    const level = initBytes[avcC + 7].toString(16).padStart(2, "0");
+    const mime = `video/mp4; codecs="avc1.${profile}${compat}${level}"`;
+    const MS = window.MediaSource || window.ManagedMediaSource;
+    if (MS && typeof MS.isTypeSupported === "function" && !MS.isTypeSupported(mime)) {
+      throw new Error(`WMO video codec is not supported by this browser (${mime})`);
+    }
+    return mime;
+  }
+
+  function detectAudioMime(initBytes) {
+    if (findAscii(initBytes, "mp4a") < 0) throw new Error("WMO audio init segment does not contain AAC audio");
+    const mime = 'audio/mp4; codecs="mp4a.40.2"';
+    const MS = window.MediaSource || window.ManagedMediaSource;
+    if (MS && typeof MS.isTypeSupported === "function" && !MS.isTypeSupported(mime)) {
+      throw new Error(`WMO audio codec is not supported by this browser (${mime})`);
+    }
+    return mime;
+  }
+
+  function bufferAhead(sourceBuffer, time) {
+    return Math.max(0, bufferedEndAt(sourceBuffer, time) - time);
+  }
+
+  async function loadV3Stream(url, video, header, entries, session, signal, options = {}) {
+    const MS = window.MediaSource || window.ManagedMediaSource;
+    if (!MS) throw new Error("This browser does not support MediaSource streaming");
+
+    const videoInit = entries.find(e => e.type === 0);
+    const videoEntries = entries.filter(e => e.type === 1).sort((a,b) => a.startTime - b.startTime);
+    const audioInit = entries.find(e => e.type === 2);
+    const audioEntries = entries.filter(e => e.type === 3).sort((a,b) => a.startTime - b.startTime);
+    if (!videoInit || !videoEntries.length) throw new Error("WMO v3 is missing its video track");
+
+    const authToken = session.mediaToken || await getFirebaseIdToken(false);
+    setLoadingProgress(5, "init");
+    const videoInitPlain = await decryptChunk(
+      await fetchRange(url, videoInit.offset, videoInit.offset + videoInit.totalLength - 1, signal, authToken),
+      videoInit, session.key
+    );
+    const audioInitPlain = audioInit ? await decryptChunk(
+      await fetchRange(url, audioInit.offset, audioInit.offset + audioInit.totalLength - 1, signal, authToken),
+      audioInit, session.key
+    ) : null;
+
+    const videoMime = detectVideoMime(videoInitPlain);
+    const audioMime = audioInitPlain ? detectAudioMime(audioInitPlain) : "";
+    const mediaSource = new MS();
+    activeObjectUrl = URL.createObjectURL(mediaSource);
+    video.src = activeObjectUrl;
+    video.load();
+    await waitForSourceOpen(mediaSource, signal);
+
+    const videoBuffer = mediaSource.addSourceBuffer(videoMime);
+    const audioBuffer = audioInitPlain ? mediaSource.addSourceBuffer(audioMime) : null;
+    try { videoBuffer.mode = "segments"; } catch (_) {}
+    try { if (audioBuffer) audioBuffer.mode = "segments"; } catch (_) {}
+    await appendBuffer(videoBuffer, videoInitPlain, signal, "video init");
+    if (audioBuffer) await appendBuffer(audioBuffer, audioInitPlain, signal, "audio init");
+
+    if (Number.isFinite(header.duration) && header.duration > 0) {
+      try { mediaSource.duration = header.duration; } catch (_) {}
+    }
+
+    const desiredStart = resolveStartTime(options, Number(header.duration || 0));
+    let destroyed = false;
+    let filling = false;
+    let initialReady = false;
+    let firstReadyResolve, firstReadyReject;
+    const firstReady = new Promise((resolve,reject) => { firstReadyResolve=resolve; firstReadyReject=reject; });
+
+    async function appendEntry(sb, entry, label) {
+      const encrypted = await fetchRange(url, entry.offset, entry.offset + entry.totalLength - 1, signal, authToken);
+      const plain = await decryptChunk(encrypted, entry, session.key);
+      await appendBuffer(sb, plain, signal, label);
+    }
+
+    async function ensureTrackBuffered(sb, list, time, targetAhead, label) {
+      if (!sb || !list.length) return;
+      let guard = 0;
+      let idx = findMediaEntryIndex(list, time);
+      if (idx < 0) idx = 0;
+      while (!destroyed && !signal.aborted && guard++ < 20) {
+        if (bufferAhead(sb, time) >= targetAhead) break;
+        while (idx < list.length) {
+          const entry = list[idx];
+          const probe = entry.startTime + Math.max(0.04, Math.min(entry.duration * 0.5, 0.4));
+          if (!isTimeBuffered(sb, probe)) break;
+          idx++;
+        }
+        if (idx >= list.length) break;
+        await appendEntry(sb, list[idx], label);
+        idx++;
+      }
+    }
+
+    async function fillBuffer(forceTime = null) {
+      if (filling || destroyed || signal.aborted || mediaSource.readyState !== "open") return;
+      filling = true;
+      try {
+        // On initial resume, do not trust video.currentTime before the target
+        // range exists. Safari may clamp an early seek back to zero.
+        const baseTime = Number.isFinite(forceTime) ? forceTime : (Number.isFinite(video.currentTime) ? video.currentTime : 0);
+        const target = initialReady ? TARGET_BUFFER_SECONDS : START_BUFFER_SECONDS;
+        await ensureTrackBuffered(videoBuffer, videoEntries, baseTime, target, "video");
+        if (audioBuffer) await ensureTrackBuffered(audioBuffer, audioEntries, baseTime, target, "audio");
+
+        const vAhead = bufferAhead(videoBuffer, baseTime);
+        const aAhead = audioBuffer ? bufferAhead(audioBuffer, baseTime) : vAhead;
+        const readyAhead = Math.min(vAhead, aAhead);
+
+        if (!initialReady && readyAhead > 0.25) {
+          initialReady = true;
+          if (desiredStart > 0) {
+            try { video.currentTime = desiredStart; } catch (_) {}
+          }
+          setLoadingProgress(100, "ready");
+          firstReadyResolve();
+        }
+      } catch (error) {
+        if (!initialReady) firstReadyReject(error);
+        else console.error("WMO v3 background buffer failed", error);
+      } finally {
+        filling = false;
+      }
+    }
+
+    const onSeeking = () => fillBuffer(Number(video.currentTime || 0)).catch(() => {});
+    const onTime = () => fillBuffer(null).catch(() => {});
+    video.addEventListener("seeking", onSeeking);
+    video.addEventListener("timeupdate", onTime);
+    video.addEventListener("waiting", onTime);
+    video.addEventListener("playing", onTime);
+
+    activeStreamCleanup = () => {
+      destroyed = true;
+      video.removeEventListener("seeking", onSeeking);
+      video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("waiting", onTime);
+      video.removeEventListener("playing", onTime);
+      try { if (mediaSource.readyState === "open" && !videoBuffer.updating && (!audioBuffer || !audioBuffer.updating)) mediaSource.endOfStream(); } catch (_) {}
+    };
+
+    setLoadingProgress(8, "stream");
+    await fillBuffer(desiredStart);
+    await firstReady;
+
+    return {
+      contentId: header.contentId,
+      originalSize: header.originalSize,
+      chunks: header.chunkCount,
+      mediaSegments: videoEntries.length,
+      audioSegments: audioEntries.length,
+      duration: header.duration,
+      mode: "media-source-v3-split-tracks",
+      videoMime, audioMime,
+      startTime: desiredStart
+    };
+  }
+
   async function loadV2Stream(url, video, header, entries, session, signal, options = {}) {
     const MS = window.MediaSource || window.ManagedMediaSource;
     if (!MS) throw new Error("This browser does not support MediaSource streaming");
@@ -477,9 +646,7 @@
     }
 
     const desiredStart = resolveStartTime(options, Number(header.duration || 0));
-    if (desiredStart > 0) {
-      try { video.currentTime = desiredStart; } catch (_) {}
-    }
+    let initialBufferTime = desiredStart;
 
     let filling = false;
     let destroyed = false;
@@ -503,7 +670,9 @@
       try {
         let guard = 0;
         while (!destroyed && !signal.aborted && guard++ < 30) {
-          const currentTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+          const currentTime = !firstReadyResolved && Number.isFinite(initialBufferTime)
+            ? initialBufferTime
+            : (Number.isFinite(video.currentTime) ? video.currentTime : 0);
           const end = bufferedEndAt(sourceBuffer, currentTime);
           const ahead = Math.max(0, end - currentTime);
 
@@ -530,6 +699,10 @@
 
           if (!firstReadyResolved && (afterAhead >= START_BUFFER_SECONDS || index === mediaEntries.length - 1)) {
             firstReadyResolved = true;
+            if (desiredStart > 0) {
+              try { video.currentTime = desiredStart; } catch (_) {}
+            }
+            initialBufferTime = null;
             setLoadingProgress(100, "ready");
             firstReadyResolve();
           }
@@ -631,6 +804,10 @@
     const firebaseToken = await getFirebaseIdToken(false);
     const headerBuffer = await fetchRange(url, 0, HEADER_SIZE - 1, signal, firebaseToken);
     const header = parseHeader(headerBuffer);
+    try {
+      if (Number.isFinite(header.duration) && header.duration > 0) video.dataset.wmoDuration = String(header.duration);
+      else delete video.dataset.wmoDuration;
+    } catch (_) {}
 
     setLoadingProgress(2, "key");
     const session = await getPlaybackSession(header.contentId, signal);
@@ -640,6 +817,9 @@
     const indexBuffer = await fetchRange(url, header.indexOffset, header.indexOffset + header.indexSize - 1, signal, indexAuth);
     const entries = parseIndex(indexBuffer, header);
 
+    if (header.version === 3) {
+      return loadV3Stream(url, video, header, entries, session, signal, options);
+    }
     if (header.version === 2) {
       try {
         return await loadV2Stream(url, video, header, entries, session, signal, options);
@@ -665,7 +845,7 @@
     load,
     destroy,
     isWmoUrl,
-    version: "2.2.0",
+    version: "3.0.0",
     keyProvider: "cloudflare-d1",
     keyEndpoint: KEY_ENDPOINT,
     mediaEndpoint: MEDIA_ENDPOINT
