@@ -1730,6 +1730,61 @@ function renderPreviewRecommendationsForItem(item) {
 
 const COMPLETED_KEY = "womo_completed_items";
 const EPISODE_PROGRESS_KEY = "womo_episode_progress";
+const PLAYBACK_POSITION_KEY = "womo_playback_positions_v1";
+
+function womoPlaybackPositionKey(item, episode = null) {
+  if (!item) return "";
+  if (item.type === "series" && episode) {
+    const season = Number(episode.season || episode.seasonNumber || 1);
+    const number = Number(episode.episodeNumber || episode.episode || 1);
+    return `series:${item.id}:S${season}:E${number}:${episode.id || ""}`;
+  }
+  return `${item.type || "item"}:${item.id || ""}`;
+}
+
+function loadWomoPlaybackPositions() {
+  try {
+    const value = JSON.parse(localStorage.getItem(PLAYBACK_POSITION_KEY) || "{}");
+    return value && typeof value === "object" ? value : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function getWomoSavedPosition(item, episode = null) {
+  const key = womoPlaybackPositionKey(item, episode);
+  if (!key) return 0;
+  const entry = loadWomoPlaybackPositions()[key];
+  const seconds = Number(entry?.seconds || 0);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+}
+
+function saveWomoExactPosition(item, episode, video, forceCompleted = false) {
+  try {
+    if (!item || !video) return;
+    const key = womoPlaybackPositionKey(item, episode);
+    if (!key) return;
+    const map = loadWomoPlaybackPositions();
+    if (forceCompleted) {
+      delete map[key];
+      localStorage.setItem(PLAYBACK_POSITION_KEY, JSON.stringify(map));
+      return;
+    }
+    const seconds = Number(video.currentTime || 0);
+    const duration = getWomoEffectiveDuration(video);
+    if (!Number.isFinite(seconds) || seconds < 1) return;
+    if (duration > 0 && seconds >= duration - 8) {
+      delete map[key];
+    } else {
+      map[key] = {
+        seconds,
+        duration: Number.isFinite(duration) ? duration : 0,
+        updatedAt: Date.now()
+      };
+    }
+    localStorage.setItem(PLAYBACK_POSITION_KEY, JSON.stringify(map));
+  } catch (_) {}
+}
 let currentPreviewSeriesIdForEpisodes = null;
 let currentPreviewEpisodesCache = [];
 let currentPlayerItem = null;
@@ -2342,6 +2397,7 @@ function savePlayerProgress() {
 
   const progress = Math.max(0, Math.min(100, (video.currentTime / duration) * 100));
   const { item, episode } = currentPlayerContext;
+  saveWomoExactPosition(item, episode, video, progress >= 98);
 
   if (item.type === 'series' && episode) {
     currentPlayerEpisode.progress = progress;
@@ -2587,6 +2643,7 @@ function saveActiveEpisodeProgress(forceCompleted = false) {
       : Math.max(0, Math.min(100, Math.round((current / duration) * 100)));
 
     const progress = calculated >= 98 ? 100 : calculated;
+    saveWomoExactPosition(currentPlayerItem, currentPlayerEpisode, video, forceCompleted || progress >= 98);
 
     if (isEpisodePlayback) {
       const key = episodeKey(
@@ -3950,13 +4007,14 @@ function openPlayer(item, options = {}) {
     : (episode
       ? Number(loadEpisodeProgress()[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] || episode.progress || 0)
       : getItemProgress(item));
+  const savedPositionSeconds = shouldIgnoreSavedProgress ? 0 : getWomoSavedPosition(item, episode);
   const isWmoPlayback = Boolean(window.WmoMediaEngine && WmoMediaEngine.isWmoUrl(url));
   if (!isWmoPlayback) {
     try { delete video.dataset.wmoDuration; } catch (_) {}
   }
   const wmoStartTime = hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0
     ? Number(options.startAt)
-    : null;
+    : (savedPositionSeconds > 0 ? savedPositionSeconds : null);
 
   if (isWmoPlayback) {
     setPlayerLoading(true, "wmo");
@@ -4032,6 +4090,8 @@ function openPlayer(item, options = {}) {
     if (!isWmoPlayback) {
       if (hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0) {
         video.currentTime = Number(options.startAt);
+      } else if (savedPositionSeconds > 0 && video.duration && isFinite(video.duration)) {
+        video.currentTime = Math.min(savedPositionSeconds, Math.max(0, video.duration - 0.25));
       } else if (savedProgress > 0 && savedProgress < 98 && video.duration && isFinite(video.duration)) {
         video.currentTime = (savedProgress / 100) * video.duration;
       } else if (shouldIgnoreSavedProgress) {

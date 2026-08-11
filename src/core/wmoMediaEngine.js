@@ -446,7 +446,7 @@
     await waitForLoadedMetadata(video, signal);
     const startTime = resolveStartTime(options, Number(video.duration || 0));
     if (startTime > 0) {
-      try { video.currentTime = startTime; } catch (_) {}
+      await applyResumeSeek(video, startTime, [], signal);
     }
     setLoadingProgress(100, "ready");
     return { contentId: header.contentId, originalSize: header.originalSize, chunks: header.chunkCount, mode: "memory-blob-v1", startTime };
@@ -479,6 +479,44 @@
 
   function bufferAhead(sourceBuffer, time) {
     return Math.max(0, bufferedEndAt(sourceBuffer, time) - time);
+  }
+
+  function bufferedSeekTarget(buffers, desired) {
+    let candidate = Number(desired || 0);
+    for (const sb of buffers.filter(Boolean)) {
+      try {
+        const ranges = sb.buffered;
+        let found = false;
+        for (let i = 0; i < ranges.length; i++) {
+          const start = ranges.start(i);
+          const end = ranges.end(i);
+          if (candidate >= start - 0.15 && candidate <= end + 0.15) {
+            candidate = Math.max(candidate, start + 0.03);
+            found = true;
+            break;
+          }
+        }
+        if (!found) return 0;
+      } catch (_) { return 0; }
+    }
+    return candidate;
+  }
+
+  async function applyResumeSeek(video, desired, buffers = [], signal = null) {
+    if (!Number.isFinite(desired) || desired <= 0) return 0;
+    const target = buffers.length ? bufferedSeekTarget(buffers, desired) : desired;
+    if (!target) return 0;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      try {
+        if (typeof video.fastSeek === "function" && attempt > 1) video.fastSeek(target);
+        else video.currentTime = target;
+      } catch (_) {}
+      await new Promise(resolve => setTimeout(resolve, 60 + attempt * 40));
+      const current = Number(video.currentTime || 0);
+      if (Number.isFinite(current) && Math.abs(current - target) < 1.25) return current;
+    }
+    return Number(video.currentTime || 0);
   }
 
   async function loadV3Stream(url, video, header, entries, session, signal, options = {}) {
@@ -569,10 +607,10 @@
         const readyAhead = Math.min(vAhead, aAhead);
 
         if (!initialReady && readyAhead > 0.25) {
-          initialReady = true;
           if (desiredStart > 0) {
-            try { video.currentTime = desiredStart; } catch (_) {}
+            await applyResumeSeek(video, desiredStart, [videoBuffer, audioBuffer], signal);
           }
+          initialReady = true;
           setLoadingProgress(100, "ready");
           firstReadyResolve();
         }
@@ -698,10 +736,10 @@
           setLoadingProgress(percent, "stream");
 
           if (!firstReadyResolved && (afterAhead >= START_BUFFER_SECONDS || index === mediaEntries.length - 1)) {
-            firstReadyResolved = true;
             if (desiredStart > 0) {
-              try { video.currentTime = desiredStart; } catch (_) {}
+              await applyResumeSeek(video, desiredStart, [sourceBuffer], signal);
             }
+            firstReadyResolved = true;
             initialBufferTime = null;
             setLoadingProgress(100, "ready");
             firstReadyResolve();
@@ -776,7 +814,7 @@
     await waitForLoadedMetadata(video, signal);
     const startTime = resolveStartTime(options, Number(video.duration || header.duration || 0));
     if (startTime > 0) {
-      try { video.currentTime = startTime; } catch (_) {}
+      await applyResumeSeek(video, startTime, [], signal);
     }
     setLoadingProgress(100, "ready");
     return {
