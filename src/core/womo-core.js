@@ -2956,7 +2956,7 @@ function womoRecoverFrozenTsSeek(video) {
             video.currentTime = fallbackTime;
           }
         } catch (_) {}
-        video.play().catch(() => {});
+        womoAutoPlay(video, 'wmo-ready');
         womoTsIsRecovering = false;
       };
     } catch (_) {
@@ -3894,6 +3894,56 @@ function womoDecorateShuffleButtons() {
   } catch (_) {}
 })();
 
+
+function womoMarkExplicitPause(video) {
+  if (!video) return;
+  try { video.dataset.womoExplicitPause = 'true'; } catch (_) {}
+}
+
+function womoClearExplicitPause(video) {
+  if (!video) return;
+  try { delete video.dataset.womoExplicitPause; } catch (_) {}
+}
+
+function womoHasExplicitPause(video) {
+  try { return Boolean(video && video.dataset && video.dataset.womoExplicitPause === 'true'); } catch (_) { return false; }
+}
+
+function womoAutoPlay(video, reason = 'auto') {
+  if (!video) return Promise.resolve(false);
+  if (womoHasExplicitPause(video)) return Promise.resolve(false);
+  try {
+    const result = video.play();
+    return result && typeof result.catch === 'function' ? result.catch(() => false) : Promise.resolve(true);
+  } catch (_) {
+    return Promise.resolve(false);
+  }
+}
+
+function womoBindExplicitPauseGuard(video) {
+  if (!video || video.dataset.womoExplicitPauseGuardBound === 'true') return;
+  video.dataset.womoExplicitPauseGuardBound = 'true';
+
+  // Native controls do not expose a dedicated "user pause" event. Once WMO
+  // is actively playing, a pause while we are not seeking is treated as an
+  // explicit pause intent. Auto-resume helpers must honor it until the user
+  // presses Play again.
+  video.addEventListener('pause', function(){
+    const overlay = document.getElementById('playerOverlay');
+    const isOpen = Boolean(overlay && overlay.classList.contains('open'));
+    if (!isOpen || video.seeking || video.ended) return;
+    if (Number(video.currentTime || 0) <= 0.05 && Number(video.readyState || 0) < 2) return;
+    womoMarkExplicitPause(video);
+  });
+
+  // A genuine Play action (native controls, keyboard, remote, etc.) clears the
+  // guard. Programmatic auto-play never reaches this point while the guard is
+  // set because womoAutoPlay() refuses to call play().
+  video.addEventListener('play', function(){
+    if (womoHasExplicitPause(video)) womoClearExplicitPause(video);
+  });
+}
+
 function openPlayer(item, options = {}) {
   window.__womoPlayerOpenedAt = Date.now();
   womoResetAudioSelector();
@@ -3921,6 +3971,8 @@ function openPlayer(item, options = {}) {
 
   const overlay = document.getElementById('playerOverlay');
   const video = document.getElementById('womoPlayer');
+  womoClearExplicitPause(video);
+  womoBindExplicitPauseGuard(video);
   document.body.classList.add('player-open');
   overlay.classList.add('is-video-loading');
   womoResetMobileFullscreenAttempt(video);
@@ -4024,7 +4076,7 @@ function openPlayer(item, options = {}) {
     })
       .then(() => {
         setPlayerLoading(false, "wmo-ready");
-        video.play().catch(() => {});
+        womoAutoPlay(video, 'wmo-ready');
       })
       .catch((error) => {
         setPlayerLoading(false, "wmo-error");
@@ -4099,7 +4151,7 @@ function openPlayer(item, options = {}) {
       }
     }
     womoTryMobileNativeFullscreen(video);
-    video.play().catch(() => {});
+    if (!isWmoPlayback) womoAutoPlay(video, 'loadedmetadata');
   };
 
   clearInterval(playerSaveTimer);
@@ -6603,10 +6655,11 @@ setTimeout(() => { if (window.__womoAuthResolved) window.womoHideSkeleton?.(); }
     function tryResume(reason){
       if (!playerIsOpen()) return;
       if (!shouldResumeAfterSeek) return;
+      if (typeof womoHasExplicitPause === 'function' && womoHasExplicitPause(video)) return;
       if (!video.src && !video.currentSrc) return;
       if (video.ended) return;
       try {
-        const playPromise = video.play();
+        const playPromise = (typeof womoAutoPlay === 'function') ? womoAutoPlay(video, 'seek-resume-' + reason) : video.play();
         if (playPromise && typeof playPromise.catch === 'function') {
           playPromise.catch(function(error){
             // If autoplay is blocked, leave native controls enabled instead of freezing behind the loader.
@@ -6620,7 +6673,7 @@ setTimeout(() => { if (window.__womoAuthResolved) window.womoHideSkeleton?.(); }
     }
 
     video.addEventListener('seeking', function(){
-      shouldResumeAfterSeek = !video.paused && !video.ended;
+      shouldResumeAfterSeek = !video.paused && !video.ended && !(typeof womoHasExplicitPause === 'function' && womoHasExplicitPause(video));
       clearWatchdog();
       seekWatchdog = setTimeout(function(){
         if (shouldResumeAfterSeek && playerIsOpen() && (video.paused || video.readyState < 2)) {
