@@ -5,9 +5,10 @@
   const WMO_MAGIC = "WMO1";
   const INDEX_MAGIC = "WIDX";
   const KEY_ENDPOINT = "https://womo-media-api.jmnz-music.workers.dev/playback";
-  const MEDIA_ENDPOINT = "https://gruposegel.com/api/media/media.php";
+  const MEDIA_ENDPOINT = "https://womo-media-api.jmnz-music.workers.dev/media";
   const START_BUFFER_SECONDS = 12;
   const TARGET_BUFFER_SECONDS = 30;
+  const MEDIA_BATCH_SEGMENTS = 12; // ~48 s at 4 s/segment, one Worker request per batch/track
 
   let activeObjectUrl = "";
   let activeAbortController = null;
@@ -116,6 +117,22 @@
     }
 
     return buffer;
+  }
+
+  async function fetchEntriesRange(url, entries, signal, authToken) {
+    if (!entries || !entries.length) return [];
+    const start = entries[0].offset;
+    const last = entries[entries.length - 1];
+    const end = last.offset + last.totalLength - 1;
+    const block = await fetchRange(url, start, end, signal, authToken);
+    return entries.map(entry => {
+      const relativeStart = entry.offset - start;
+      const relativeEnd = relativeStart + entry.totalLength;
+      if (relativeStart < 0 || relativeEnd > block.byteLength) {
+        throw new Error("WMO media batch returned an incomplete range");
+      }
+      return block.slice(relativeStart, relativeEnd);
+    });
   }
 
   async function requestCloudflarePlayback(contentId, idToken, signal) {
@@ -566,18 +583,12 @@
     let firstReadyResolve, firstReadyReject;
     const firstReady = new Promise((resolve,reject) => { firstReadyResolve=resolve; firstReadyReject=reject; });
 
-    async function appendEntry(sb, entry, label) {
-      const encrypted = await fetchRange(url, entry.offset, entry.offset + entry.totalLength - 1, signal, authToken);
-      const plain = await decryptChunk(encrypted, entry, session.key);
-      await appendBuffer(sb, plain, signal, label);
-    }
-
     async function ensureTrackBuffered(sb, list, time, targetAhead, label) {
       if (!sb || !list.length) return;
       let guard = 0;
       let idx = findMediaEntryIndex(list, time);
       if (idx < 0) idx = 0;
-      while (!destroyed && !signal.aborted && guard++ < 20) {
+      while (!destroyed && !signal.aborted && guard++ < 10) {
         if (bufferAhead(sb, time) >= targetAhead) break;
         while (idx < list.length) {
           const entry = list[idx];
@@ -586,8 +597,25 @@
           idx++;
         }
         if (idx >= list.length) break;
-        await appendEntry(sb, list[idx], label);
-        idx++;
+
+        const batch = [];
+        let projectedAhead = bufferAhead(sb, time);
+        for (let j = idx; j < list.length && batch.length < MEDIA_BATCH_SEGMENTS; j++) {
+          const entry = list[j];
+          const probe = entry.startTime + Math.max(0.04, Math.min(entry.duration * 0.5, 0.4));
+          if (isTimeBuffered(sb, probe)) continue;
+          batch.push(entry);
+          projectedAhead += Math.max(0, Number(entry.duration || 0));
+          if (projectedAhead >= Math.max(targetAhead, 48)) break;
+        }
+        if (!batch.length) break;
+
+        const encryptedParts = await fetchEntriesRange(url, batch, signal, authToken);
+        for (let k = 0; k < batch.length; k++) {
+          const plain = await decryptChunk(encryptedParts[k], batch[k], session.key);
+          await appendBuffer(sb, plain, signal, label);
+        }
+        idx = list.indexOf(batch[batch.length - 1]) + 1;
       }
     }
 
@@ -696,10 +724,12 @@
       firstReadyReject = reject;
     });
 
-    async function fetchAndAppend(entry) {
-      const encrypted = await fetchRange(url, entry.offset, entry.offset + entry.totalLength - 1, signal, authToken);
-      const plain = await decryptChunk(encrypted, entry, session.key);
-      await appendBuffer(sourceBuffer, plain, signal);
+    async function fetchAndAppendBatch(batch) {
+      const encryptedParts = await fetchEntriesRange(url, batch, signal, authToken);
+      for (let i = 0; i < batch.length; i++) {
+        const plain = await decryptChunk(encryptedParts[i], batch[i], session.key);
+        await appendBuffer(sourceBuffer, plain, signal);
+      }
     }
 
     async function fillBuffer() {
@@ -727,7 +757,19 @@
           }
 
           if (index >= mediaEntries.length) break;
-          await fetchAndAppend(mediaEntries[index]);
+          const batch = [];
+          let projectedAhead = ahead;
+          for (let j = index; j < mediaEntries.length && batch.length < MEDIA_BATCH_SEGMENTS; j++) {
+            const entry = mediaEntries[j];
+            const probe = entry.startTime + Math.max(0.05, Math.min(entry.duration * 0.5, 0.5));
+            if (isTimeBuffered(sourceBuffer, probe)) continue;
+            batch.push(entry);
+            projectedAhead += Math.max(0, Number(entry.duration || 0));
+            if (projectedAhead >= Math.max(TARGET_BUFFER_SECONDS, 48)) break;
+          }
+          if (!batch.length) break;
+          await fetchAndAppendBatch(batch);
+          index = mediaEntries.indexOf(batch[batch.length - 1]);
 
           const afterEnd = bufferedEndAt(sourceBuffer, currentTime);
           const afterAhead = Math.max(0, afterEnd - currentTime);
@@ -883,7 +925,7 @@
     load,
     destroy,
     isWmoUrl,
-    version: "3.0.0",
+    version: "3.1.0-cloudflare-media",
     keyProvider: "cloudflare-d1",
     keyEndpoint: KEY_ENDPOINT,
     mediaEndpoint: MEDIA_ENDPOINT
