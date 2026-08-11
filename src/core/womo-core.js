@@ -3924,23 +3924,79 @@ function womoBindExplicitPauseGuard(video) {
   if (!video || video.dataset.womoExplicitPauseGuardBound === 'true') return;
   video.dataset.womoExplicitPauseGuardBound = 'true';
 
-  // Native controls do not expose a dedicated "user pause" event. Once WMO
-  // is actively playing, a pause while we are not seeking is treated as an
-  // explicit pause intent. Auto-resume helpers must honor it until the user
-  // presses Play again.
-  video.addEventListener('pause', function(){
+  let userPauseIntent = false;
+  let userPlayIntentUntil = 0;
+  let rePauseTimer = null;
+
+  const playerIsOpen = () => {
     const overlay = document.getElementById('playerOverlay');
-    const isOpen = Boolean(overlay && overlay.classList.contains('open'));
-    if (!isOpen || video.seeking || video.ended) return;
-    if (Number(video.currentTime || 0) <= 0.05 && Number(video.readyState || 0) < 2) return;
-    womoMarkExplicitPause(video);
+    return Boolean(overlay && (overlay.classList.contains('open') || document.body.classList.contains('player-open')));
+  };
+
+  const isCurrentWmo = () => {
+    try {
+      return Boolean(window.WmoMediaEngine && WmoMediaEngine.isWmoUrl(window.womoCurrentPlaybackUrl || womoCurrentPlaybackUrl || ''));
+    } catch (_) { return false; }
+  };
+
+  const noteControlIntent = () => {
+    if (!playerIsOpen() || !isCurrentWmo()) return;
+    // Native media controls live in the browser shadow UI, but pointer/touch
+    // interaction is still observable on the video element. Snapshot the state
+    // before the control changes it so we know whether the user intended Pause
+    // or Play.
+    if (video.paused || video.ended) {
+      userPauseIntent = false;
+      userPlayIntentUntil = Date.now() + 1500;
+      womoClearExplicitPause(video);
+    } else {
+      userPauseIntent = true;
+      userPlayIntentUntil = 0;
+    }
+  };
+
+  ['pointerdown','mousedown','touchstart'].forEach((name) => {
+    video.addEventListener(name, noteControlIntent, { capture:true, passive:true });
   });
 
-  // A genuine Play action (native controls, keyboard, remote, etc.) clears the
-  // guard. Programmatic auto-play never reaches this point while the guard is
-  // set because womoAutoPlay() refuses to call play().
+  document.addEventListener('keydown', function(event){
+    if (!playerIsOpen() || !isCurrentWmo()) return;
+    const key = String(event.key || '').toLowerCase();
+    if (key !== ' ' && key !== 'k' && key !== 'mediaplaypause') return;
+    noteControlIntent();
+  }, true);
+
+  video.addEventListener('pause', function(){
+    if (!playerIsOpen() || !isCurrentWmo() || video.ended) return;
+    // Treat any settled WMO pause as explicit. This is intentionally stronger
+    // than the old guard because MediaSource seek/buffer helpers may emit extra
+    // play attempts after the user has already pressed Pause.
+    if (!video.seeking || userPauseIntent) {
+      userPauseIntent = true;
+      userPlayIntentUntil = 0;
+      womoMarkExplicitPause(video);
+    }
+  });
+
   video.addEventListener('play', function(){
-    if (womoHasExplicitPause(video)) womoClearExplicitPause(video);
+    if (!playerIsOpen() || !isCurrentWmo()) return;
+    const userReallyPressedPlay = Date.now() <= userPlayIntentUntil;
+    if (userReallyPressedPlay) {
+      userPauseIntent = false;
+      userPlayIntentUntil = 0;
+      womoClearExplicitPause(video);
+      return;
+    }
+
+    // If playback restarts while the explicit pause latch is set, it came from
+    // an internal autoplay/seek recovery path. Cancel it immediately.
+    if (userPauseIntent || womoHasExplicitPause(video)) {
+      clearTimeout(rePauseTimer);
+      rePauseTimer = setTimeout(() => {
+        try { if (!video.paused) video.pause(); } catch (_) {}
+        womoMarkExplicitPause(video);
+      }, 0);
+    }
   });
 }
 
