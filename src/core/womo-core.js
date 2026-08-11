@@ -6044,6 +6044,16 @@ setTimeout(() => { if (window.__womoAuthResolved) window.womoHideSkeleton?.(); }
           "#womoAutoNextPlay, #womoAutoNextCancel, #womoShuffleNextPlay, #womoShuffleNextCancel, #womoShuffleSkipPlay, #womoShuffleSkipCancel"
         );
         if (interactiveAutoNext) return;
+
+        // IMPORTANT: never intercept native media-control interaction.
+        // In Safari/Chrome clicks from the browser's shadow media controls
+        // surface with the <video> element as the event target. Stopping the
+        // event during capture prevents the native Play/Pause button from
+        // receiving the click at all. This was the real cause of WMO videos
+        // appearing to have a broken Pause button.
+        const nativeMediaTarget = event.target && event.target.closest && event.target.closest('#womoPlayer, video, audio');
+        if (nativeMediaTarget) return;
+
         event.stopPropagation();
       }, true);
     }
