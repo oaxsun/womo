@@ -801,3 +801,25 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
 .media-health-pill.ok{background:rgba(105,216,129,.12);color:#69d881}.media-health-pill.bad{background:rgba(255,107,107,.12);color:#ff7d7d}.media-health-pill.missing{background:rgba(214,168,95,.12);color:#e5bb79}
 .media-health-meta{font-size:12px;color:var(--muted);text-align:right;white-space:nowrap}
 @media(max-width:760px){.media-health-summary{grid-template-columns:1fr 1fr}.media-health-row{grid-template-columns:1fr}.media-health-meta{text-align:left}.media-health-toolbar{align-items:flex-start;flex-direction:column}}
+
+
+/* Media health grouped series */
+.media-health-series{background:#111;border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.media-health-series.ok{border-color:rgba(105,216,129,.28)}
+.media-health-series.bad{border-color:rgba(255,107,107,.35)}
+.media-health-series.missing{border-color:rgba(214,168,95,.3)}
+.media-health-series-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px;background:transparent;border:0;color:#fff;text-align:left;cursor:pointer}
+.media-health-series-toggle:hover{background:rgba(255,255,255,.025)}
+.media-health-series-heading{min-width:0;display:grid;gap:7px}
+.media-health-series-heading>span{color:var(--muted);font-size:12px}
+.media-health-chevron{font-size:22px;line-height:1;color:var(--muted);transition:transform .18s ease;flex:0 0 auto}
+.media-health-series.expanded .media-health-chevron{transform:rotate(180deg)}
+.media-health-series-episodes{display:grid;gap:8px;padding:0 12px 12px 28px;border-top:1px solid rgba(255,255,255,.055)}
+.media-health-row.nested{border-radius:12px;background:#0c0c0d;padding:12px 14px}
+.media-health-row.nested:first-child{margin-top:12px}
+.media-health-row.nested .media-health-title strong{font-size:13px}
+.media-health-row.nested .media-health-main>span{font-size:11px}
+@media(max-width:760px){
+  .media-health-series-toggle{align-items:flex-start}
+  .media-health-series-episodes{padding-left:12px}
+}

@@ -76,7 +76,7 @@ const state = {
   analyticsLoading: false,
   analyticsUsers: [],
   analyticsTitles: [],
-  mediaHealth: { running: false, results: [], scannedAt: null }
+  mediaHealth: { running: false, results: [], scannedAt: null, expandedSeries: new Set() }
 };
 
 const $ = (id) => document.getElementById(id);
@@ -1133,11 +1133,13 @@ async function collectMediaLinks() {
   const rows = [];
   state.movies.forEach(item => rows.push({
     key: `movie:${item.id}`, type: "Película", title: item.title || item.id,
-    subtitle: item.id, url: String(item.hlsUrl || "").trim()
+    subtitle: item.id, contentType: "movie", contentId: item.id,
+    url: String(item.hlsUrl || "").trim()
   }));
   state.concerts.forEach(item => rows.push({
     key: `concert:${item.id}`, type: "Concierto", title: item.title || item.id,
-    subtitle: item.id, url: String(item.hlsUrl || "").trim()
+    subtitle: item.id, contentType: "concert", contentId: item.id,
+    url: String(item.hlsUrl || "").trim()
   }));
 
   for (const series of state.series) {
@@ -1152,6 +1154,14 @@ async function collectMediaLinks() {
           type: "Episodio",
           title: `${series.title || series.id} · T${season} E${number || "?"}`,
           subtitle: data.title || ep.id,
+          seriesId: series.id,
+          episodeId: ep.id,
+          contentType: "episode",
+          contentId: ep.id,
+          seriesTitle: series.title || series.id,
+          seasonNumber: season,
+          episodeNumber: number || null,
+          episodeTitle: data.title || ep.id,
           url: String(data.hlsUrl || data.videoUrl || data.url || "").trim()
         });
       });
@@ -1203,6 +1213,67 @@ async function verifyMediaLink(item, idToken) {
   }
 }
 
+
+async function autoUnpublishFailedMedia(results) {
+  const failures = (results || []).filter(item => item.status === "bad" || item.status === "missing");
+  if (!failures.length) return { changed: 0, titles: 0, episodes: 0, series: 0 };
+
+  let changed = 0;
+  let titles = 0;
+  let episodes = 0;
+  let seriesCount = 0;
+  const touchedSeries = new Set();
+
+  for (const item of failures) {
+    try {
+      if (item.contentType === "movie" && item.contentId) {
+        await setDoc(doc(db, "movies", item.contentId), {
+          published: false,
+          mediaHealthStatus: item.status,
+          mediaHealthCheckedAt: serverTimestamp()
+        }, { merge: true });
+        changed++; titles++;
+      } else if (item.contentType === "concert" && item.contentId) {
+        await setDoc(doc(db, "concerts", item.contentId), {
+          published: false,
+          mediaHealthStatus: item.status,
+          mediaHealthCheckedAt: serverTimestamp()
+        }, { merge: true });
+        changed++; titles++;
+      } else if (item.contentType === "episode" && item.seriesId && item.episodeId) {
+        await setDoc(doc(db, "series", item.seriesId, "episodes", item.episodeId), {
+          published: false,
+          mediaHealthStatus: item.status,
+          mediaHealthCheckedAt: serverTimestamp()
+        }, { merge: true });
+        touchedSeries.add(item.seriesId);
+        changed++; episodes++;
+      }
+    } catch (error) {
+      console.warn("No se pudo despublicar automáticamente:", item.key, error);
+    }
+  }
+
+  // If a series has no healthy episode left after the scan, unpublish the series too.
+  for (const seriesId of touchedSeries) {
+    const episodeResults = (results || []).filter(item => item.seriesId === seriesId && item.contentType === "episode");
+    if (episodeResults.length && episodeResults.every(item => item.status === "bad" || item.status === "missing")) {
+      try {
+        await setDoc(doc(db, "series", seriesId), {
+          published: false,
+          mediaHealthStatus: "bad",
+          mediaHealthCheckedAt: serverTimestamp()
+        }, { merge: true });
+        changed++; seriesCount++;
+      } catch (error) {
+        console.warn("No se pudo despublicar la serie sin episodios reproducibles:", seriesId, error);
+      }
+    }
+  }
+
+  return { changed, titles, episodes, series: seriesCount };
+}
+
 async function scanMediaLinks() {
   if (state.mediaHealth.running) return;
   const user = auth.currentUser;
@@ -1230,7 +1301,12 @@ async function scanMediaLinks() {
       }
     }
     await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, items.length)) }, () => worker()));
+    const unpublished = await autoUnpublishFailedMedia(state.mediaHealth.results);
     state.mediaHealth.scannedAt = Date.now();
+    if (unpublished.changed) {
+      showStatus(`Escaneo completo · ${unpublished.changed} elemento${unpublished.changed === 1 ? "" : "s"} despublicado${unpublished.changed === 1 ? "" : "s"} automáticamente`);
+      await loadAll();
+    }
   } catch (error) {
     console.error("Media health scan failed:", error);
     showStatus(`Error al escanear: ${error?.message || error}`);
@@ -1238,6 +1314,42 @@ async function scanMediaLinks() {
     state.mediaHealth.running = false;
     renderMediaHealth();
   }
+}
+
+function mediaHealthStatusLabel(status) {
+  if (status === "ok") return "Activo";
+  if (status === "bad") return "Falla";
+  if (status === "missing") return "Sin URL";
+  return "Pendiente";
+}
+
+function mediaHealthDetails(item) {
+  return item.status === "ok"
+    ? `${escapeHtml(mediaKind(item.url))} · ${escapeHtml(item.message || "Disponible")}${item.elapsed ? ` · ${item.elapsed} ms` : ""}`
+    : escapeHtml(item.message || item.error || "Comprobando…");
+}
+
+function seriesHealthStatus(items) {
+  if (items.some(item => item.status === "bad")) return "bad";
+  if (items.some(item => item.status === "missing")) return "missing";
+  if (items.some(item => item.status === "pending")) return "pending";
+  return items.length && items.every(item => item.status === "ok") ? "ok" : "pending";
+}
+
+function renderMediaHealthRow(item, nested = false) {
+  const label = mediaHealthStatusLabel(item.status);
+  const episodeLabel = nested && item.seriesId
+    ? `T${item.seasonNumber || "?"} E${item.episodeNumber || "?"}${item.episodeTitle ? ` · ${escapeHtml(item.episodeTitle)}` : ""}`
+    : escapeHtml(item.title);
+  const subtitle = nested && item.seriesId ? "Episodio" : `${escapeHtml(item.type)} · ${escapeHtml(item.subtitle || "")}`;
+  return `<article class="media-health-row ${item.status}${nested ? " nested" : ""}">
+    <div class="media-health-main">
+      <div class="media-health-title"><span class="media-health-pill ${item.status}">${label}</span><strong>${episodeLabel}</strong></div>
+      <span>${subtitle}</span>
+      ${item.url ? `<code title="${escapeHtml(item.url)}">${escapeHtml(item.url)}</code>` : ""}
+    </div>
+    <div class="media-health-meta">${mediaHealthDetails(item)}</div>
+  </article>`;
 }
 
 function renderMediaHealth(updateStatus = true) {
@@ -1264,26 +1376,53 @@ function renderMediaHealth(updateStatus = true) {
       else status.textContent = "Pulsa “Escanear enlaces” para iniciar.";
     }
   }
+
   const filter = $("mediaHealthFilter")?.value || "all";
-  const visible = filter === "all" ? results : results.filter(r => r.status === filter);
-  if (!visible.length) {
+  const matchesFilter = item => filter === "all" || item.status === filter;
+  const standalone = results.filter(item => !item.seriesId && matchesFilter(item));
+  const seriesMap = new Map();
+  results.filter(item => item.seriesId).forEach(item => {
+    if (!seriesMap.has(item.seriesId)) seriesMap.set(item.seriesId, { id: item.seriesId, title: item.seriesTitle || item.seriesId, items: [] });
+    seriesMap.get(item.seriesId).items.push(item);
+  });
+  const seriesGroups = [...seriesMap.values()].filter(group => filter === "all" || group.items.some(matchesFilter));
+
+  if (!standalone.length && !seriesGroups.length) {
     container.innerHTML = results.length ? `<p class="helper">No hay resultados para este filtro.</p>` : `<p class="helper">Todavía no se ha ejecutado un escaneo.</p>`;
     return;
   }
-  container.innerHTML = visible.map(item => {
-    const label = item.status === "ok" ? "Activo" : item.status === "bad" ? "Falla" : item.status === "missing" ? "Sin URL" : "Pendiente";
-    const details = item.status === "ok"
-      ? `${escapeHtml(mediaKind(item.url))} · ${escapeHtml(item.message || "Disponible")}${item.elapsed ? ` · ${item.elapsed} ms` : ""}`
-      : escapeHtml(item.message || item.error || "Comprobando…");
-    return `<article class="media-health-row ${item.status}">
-      <div class="media-health-main">
-        <div class="media-health-title"><span class="media-health-pill ${item.status}">${label}</span><strong>${escapeHtml(item.title)}</strong></div>
-        <span>${escapeHtml(item.type)} · ${escapeHtml(item.subtitle || "")}</span>
-        ${item.url ? `<code title="${escapeHtml(item.url)}">${escapeHtml(item.url)}</code>` : ""}
-      </div>
-      <div class="media-health-meta">${details}</div>
-    </article>`;
+
+  const standaloneHtml = standalone.map(item => renderMediaHealthRow(item)).join("");
+  const seriesHtml = seriesGroups.map(group => {
+    const allItems = group.items;
+    const childItems = filter === "all" ? allItems : allItems.filter(matchesFilter);
+    const groupStatus = seriesHealthStatus(allItems);
+    const activeCount = allItems.filter(item => item.status === "ok").length;
+    const badCount = allItems.filter(item => item.status === "bad").length;
+    const missingCount = allItems.filter(item => item.status === "missing").length;
+    const pendingCount = allItems.filter(item => item.status === "pending").length;
+    const expanded = state.mediaHealth.expandedSeries.has(group.id);
+    const counts = [
+      `${allItems.length} episodio${allItems.length === 1 ? "" : "s"}`,
+      activeCount ? `${activeCount} activo${activeCount === 1 ? "" : "s"}` : "",
+      badCount ? `${badCount} con falla` : "",
+      missingCount ? `${missingCount} sin URL` : "",
+      pendingCount ? `${pendingCount} pendiente${pendingCount === 1 ? "" : "s"}` : ""
+    ].filter(Boolean).join(" · ");
+    const label = groupStatus === "ok" ? "Activo" : groupStatus === "bad" ? `${badCount} falla${badCount === 1 ? "" : "s"}` : groupStatus === "missing" ? "Revisar" : "Pendiente";
+    return `<section class="media-health-series ${groupStatus}${expanded ? " expanded" : ""}" data-series-id="${escapeHtml(group.id)}">
+      <button class="media-health-series-toggle" type="button" data-health-series-toggle="${escapeHtml(group.id)}" aria-expanded="${expanded ? "true" : "false"}">
+        <div class="media-health-series-heading">
+          <div class="media-health-title"><span class="media-health-pill ${groupStatus}">${label}</span><strong>${escapeHtml(group.title)}</strong></div>
+          <span>Serie · ${escapeHtml(counts)}</span>
+        </div>
+        <span class="media-health-chevron" aria-hidden="true">⌄</span>
+      </button>
+      ${expanded ? `<div class="media-health-series-episodes">${childItems.map(item => renderMediaHealthRow(item, true)).join("")}</div>` : ""}
+    </section>`;
   }).join("");
+
+  container.innerHTML = standaloneHtml + seriesHtml;
 }
 
 function setView(view) {
@@ -1685,7 +1824,7 @@ function renderEpisodesList() {
 
   $("episodesList").innerHTML = episodes.map(ep => `
     <div class="episode-item" data-id="${ep.id}">
-      <div><strong>${ep.title || ep.id}</strong><br><span>T${ep.seasonNumber} · E${ep.episodeNumber}</span></div>
+      <div><strong>${ep.title || ep.id}</strong>${ep.published === false ? ' <span class="status-badge unpublished">No publicado</span>' : ''}<br><span>T${ep.seasonNumber} · E${ep.episodeNumber}</span></div>
       <span>${ep.duration || 0} min</span>
     </div>
   `).join("") || `<p class="helper">No hay episodios en la temporada ${season}. Usa “Agregar episodio” para crear el primero.</p>`;
@@ -1713,6 +1852,7 @@ function fillEpisodeForm(data = {}) {
   $("episodeDuration").value = data.duration || "";
   $("episodeHlsUrl").value = data.hlsUrl || data.videoUrl || data.url || "";
   $("episodeSynopsis").value = data.synopsis || data.overview || data.description || "";
+  if ($("episodePublished")) $("episodePublished").checked = data.published !== false;
 }
 
 function openEpisodeEditor(ep = null) {
@@ -1807,6 +1947,7 @@ async function saveEpisode(e) {
     duration: Number($("episodeDuration").value) || 0,
     synopsis: $("episodeSynopsis").value.trim(),
     hlsUrl: $("episodeHlsUrl").value.trim(),
+    published: $("episodePublished") ? $("episodePublished").checked : true,
     updatedAt: serverTimestamp(),
   };
   if (!state.editingEpisodeId) data.createdAt = serverTimestamp();
@@ -1877,6 +2018,15 @@ function handleCardActivation(target) {
 document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
 $("scanMediaLinksBtn")?.addEventListener("click", scanMediaLinks);
 $("mediaHealthFilter")?.addEventListener("change", () => renderMediaHealth());
+$("mediaHealthResults")?.addEventListener("click", event => {
+  const button = event.target.closest("[data-health-series-toggle]");
+  if (!button) return;
+  const seriesId = button.dataset.healthSeriesToggle;
+  if (!seriesId) return;
+  if (state.mediaHealth.expandedSeries.has(seriesId)) state.mediaHealth.expandedSeries.delete(seriesId);
+  else state.mediaHealth.expandedSeries.add(seriesId);
+  renderMediaHealth(false);
+});
 primaryAction.addEventListener("click", () => openEditor(state.view === "series" ? "series" : state.view === "concerts" ? "concert" : "movie"));
 $("importMovieBtn").addEventListener("click", () => $("importMovieInput").click());
 $("importMovieInput").addEventListener("change", (e) => { const files = e.target.files; if (files?.length) importMoviesFromJsonFiles(files); });

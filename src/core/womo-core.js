@@ -1775,7 +1775,9 @@ function episodeKey(seriesId, season, episodeNumber, episodeId = "") {
 async function readSeriesEpisodes(seriesId) {
   try {
     const snapshot = await db.collection("series").doc(seriesId).collection("episodes").get();
-    return snapshot.docs.map((doc, index) => {
+    return snapshot.docs
+      .filter(doc => (doc.data() || {}).published !== false)
+      .map((doc, index) => {
       const data = doc.data() || {};
       const season = Number(data.season || data.seasonNumber || data.temporada || 1);
       const episodeNumber = Number(data.episode || data.episodeNumber || data.number || data.episodio || index + 1);
