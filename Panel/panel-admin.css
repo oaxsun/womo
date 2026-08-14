@@ -781,3 +781,23 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
     padding:9px 12px;
   }
 }
+
+
+/* Media health */
+.media-health-panel{display:grid;gap:18px}
+.media-health-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.media-health-summary article{background:#151515;border:1px solid var(--border);border-radius:18px;padding:18px;display:grid;gap:6px}
+.media-health-summary strong{font-size:30px;line-height:1}
+.media-health-summary span{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.media-health-summary .health-ok strong{color:#69d881}.media-health-summary .health-bad strong{color:#ff6b6b}.media-health-summary .health-missing strong{color:#d6a85f}
+.media-health-toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px}
+.media-health-toolbar select{background:#1c1c1e;color:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+.media-health-results{display:grid;gap:10px}
+.media-health-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;background:#111;border:1px solid var(--border);border-radius:16px;padding:14px 16px}
+.media-health-row.ok{border-color:rgba(105,216,129,.28)}.media-health-row.bad{border-color:rgba(255,107,107,.35)}.media-health-row.missing{border-color:rgba(214,168,95,.3)}
+.media-health-main{min-width:0;display:grid;gap:6px}.media-health-main>span{color:var(--muted);font-size:12px}.media-health-main code{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#9b9ba1;font-size:11px}
+.media-health-title{display:flex;align-items:center;gap:9px;min-width:0}.media-health-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.media-health-pill{display:inline-flex;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;background:#28282a;color:#c7c7cc;flex:0 0 auto}
+.media-health-pill.ok{background:rgba(105,216,129,.12);color:#69d881}.media-health-pill.bad{background:rgba(255,107,107,.12);color:#ff7d7d}.media-health-pill.missing{background:rgba(214,168,95,.12);color:#e5bb79}
+.media-health-meta{font-size:12px;color:var(--muted);text-align:right;white-space:nowrap}
+@media(max-width:760px){.media-health-summary{grid-template-columns:1fr 1fr}.media-health-row{grid-template-columns:1fr}.media-health-meta{text-align:left}.media-health-toolbar{align-items:flex-start;flex-direction:column}}

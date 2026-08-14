@@ -75,11 +75,12 @@ const state = {
   analyticsLoaded: false,
   analyticsLoading: false,
   analyticsUsers: [],
-  analyticsTitles: []
+  analyticsTitles: [],
+  mediaHealth: { running: false, results: [], scannedAt: null }
 };
 
 const $ = (id) => document.getElementById(id);
-const views = { home: $("homeView"), movies: $("moviesView"), series: $("seriesView"), concerts: $("concertsView"), analytics: $("analyticsView") };
+const views = { home: $("homeView"), movies: $("moviesView"), series: $("seriesView"), concerts: $("concertsView"), analytics: $("analyticsView"), mediaHealth: $("mediaHealthView") };
 const pageTitle = $("pageTitle");
 const primaryAction = $("primaryAction");
 const statusBox = $("status");
@@ -387,7 +388,6 @@ function normalizeMovieFromJson(rawMovie, index = 0) {
       duration: Number(rawMovie.duration) || 0,
       synopsis: String(rawMovie.synopsis || rawMovie.overview || rawMovie.description || "").trim(),
       posterUrl: String(rawMovie.posterUrl || rawMovie.posterURL || rawMovie.poster || "").trim(),
-      backdropUrl: String(rawMovie.backdropUrl || rawMovie.backdropURL || rawMovie.backdrop || rawMovie.horizontalPoster || rawMovie.landscapePoster || rawMovie.bannerUrl || rawMovie.banner || "").trim(),
       hlsUrl: String(rawMovie.hlsUrl || rawMovie.movieURL || rawMovie.videoUrl || rawMovie.url || "").trim(),
       type: "movie",
       isFavorite: Boolean(rawMovie.isFavorite),
@@ -426,7 +426,6 @@ function normalizeSeriesFromJson(rawSeries, index = 0) {
       actors,
       synopsis: String(rawSeries.synopsis || rawSeries.overview || rawSeries.description || "").trim(),
       posterUrl: String(rawSeries.posterUrl || rawSeries.posterURL || rawSeries.poster || "").trim(),
-      backdropUrl: String(rawSeries.backdropUrl || rawSeries.backdropURL || rawSeries.backdrop || rawSeries.horizontalPoster || rawSeries.landscapePoster || rawSeries.bannerUrl || rawSeries.banner || "").trim(),
       type: "series",
       isFavorite: Boolean(rawSeries.isFavorite),
       popularity: Number(rawSeries.popularity) || 0,
@@ -1119,19 +1118,187 @@ async function loadAll() {
   render();
 }
 
+
+const MEDIA_HEALTH_ENDPOINT = "https://womo-media-api.jmnz-music.workers.dev/check-media";
+
+function mediaKind(url) {
+  const clean = String(url || "").split(/[?#]/)[0].toLowerCase();
+  if (clean.endsWith(".wmo")) return "WMO";
+  if (clean.endsWith(".m3u8")) return "HLS";
+  if (clean.endsWith(".mp4")) return "MP4";
+  return "Media";
+}
+
+async function collectMediaLinks() {
+  const rows = [];
+  state.movies.forEach(item => rows.push({
+    key: `movie:${item.id}`, type: "Película", title: item.title || item.id,
+    subtitle: item.id, url: String(item.hlsUrl || "").trim()
+  }));
+  state.concerts.forEach(item => rows.push({
+    key: `concert:${item.id}`, type: "Concierto", title: item.title || item.id,
+    subtitle: item.id, url: String(item.hlsUrl || "").trim()
+  }));
+
+  for (const series of state.series) {
+    try {
+      const snap = await getDocs(collection(db, "series", series.id, "episodes"));
+      snap.docs.forEach(ep => {
+        const data = ep.data() || {};
+        const season = Number(data.seasonNumber || data.season || 1);
+        const number = Number(data.episodeNumber || data.episode || 0);
+        rows.push({
+          key: `episode:${series.id}:${ep.id}`,
+          type: "Episodio",
+          title: `${series.title || series.id} · T${season} E${number || "?"}`,
+          subtitle: data.title || ep.id,
+          url: String(data.hlsUrl || data.videoUrl || data.url || "").trim()
+        });
+      });
+    } catch (error) {
+      console.warn("No se pudieron cargar episodios para health check:", series.id, error);
+      rows.push({
+        key: `series-error:${series.id}`,
+        type: "Serie",
+        title: series.title || series.id,
+        subtitle: "No se pudieron leer sus episodios",
+        url: "",
+        forcedStatus: "bad",
+        error: error?.message || "episode_read_failed"
+      });
+    }
+  }
+  return rows;
+}
+
+async function verifyMediaLink(item, idToken) {
+  if (item.forcedStatus) return { ...item, status: item.forcedStatus };
+  if (!item.url) return { ...item, status: "missing", message: "Sin URL de reproducción" };
+  const started = performance.now();
+  try {
+    const response = await fetch(MEDIA_HEALTH_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${idToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ url: item.url })
+    });
+    const data = await response.json().catch(() => ({}));
+    const elapsed = Math.round(performance.now() - started);
+    if (!response.ok || !data.ok) {
+      return { ...item, status: "bad", httpStatus: data.status || response.status, elapsed, message: data.error || `HTTP ${response.status}` };
+    }
+    return {
+      ...item,
+      status: "ok",
+      httpStatus: data.status || 200,
+      elapsed,
+      contentType: data.contentType || "",
+      finalUrl: data.finalUrl || item.url,
+      message: data.method ? `${data.method} · ${data.status}` : `HTTP ${data.status || 200}`
+    };
+  } catch (error) {
+    return { ...item, status: "bad", elapsed: Math.round(performance.now() - started), message: error?.message || "network_error" };
+  }
+}
+
+async function scanMediaLinks() {
+  if (state.mediaHealth.running) return;
+  const user = auth.currentUser;
+  if (!user) return showStatus("Debes iniciar sesión");
+  state.mediaHealth.running = true;
+  state.mediaHealth.results = [];
+  renderMediaHealth();
+  try {
+    const idToken = await user.getIdToken(true);
+    const items = await collectMediaLinks();
+    state.mediaHealth.results = items.map(item => ({ ...item, status: "pending" }));
+    renderMediaHealth();
+    const concurrency = 4;
+    let cursor = 0;
+    let completed = 0;
+    async function worker() {
+      while (true) {
+        const index = cursor++;
+        if (index >= items.length) return;
+        state.mediaHealth.results[index] = await verifyMediaLink(items[index], idToken);
+        completed++;
+        const status = $("mediaHealthStatus");
+        if (status) status.textContent = `Comprobando ${completed}/${items.length}…`;
+        renderMediaHealth(false);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, items.length)) }, () => worker()));
+    state.mediaHealth.scannedAt = Date.now();
+  } catch (error) {
+    console.error("Media health scan failed:", error);
+    showStatus(`Error al escanear: ${error?.message || error}`);
+  } finally {
+    state.mediaHealth.running = false;
+    renderMediaHealth();
+  }
+}
+
+function renderMediaHealth(updateStatus = true) {
+  const container = $("mediaHealthResults");
+  if (!container) return;
+  const results = state.mediaHealth.results || [];
+  const ok = results.filter(r => r.status === "ok").length;
+  const bad = results.filter(r => r.status === "bad").length;
+  const missing = results.filter(r => r.status === "missing").length;
+  $("mediaHealthTotal").textContent = String(results.length);
+  $("mediaHealthOk").textContent = String(ok);
+  $("mediaHealthBad").textContent = String(bad);
+  $("mediaHealthMissing").textContent = String(missing);
+  const btn = $("scanMediaLinksBtn");
+  if (btn) {
+    btn.disabled = state.mediaHealth.running;
+    btn.textContent = state.mediaHealth.running ? "Escaneando…" : "Escanear enlaces";
+  }
+  if (updateStatus) {
+    const status = $("mediaHealthStatus");
+    if (status) {
+      if (state.mediaHealth.running) status.textContent = results.length ? `Escaneando ${results.length} enlaces…` : "Preparando escaneo…";
+      else if (state.mediaHealth.scannedAt) status.textContent = `Último escaneo: ${new Date(state.mediaHealth.scannedAt).toLocaleString("es-MX")}`;
+      else status.textContent = "Pulsa “Escanear enlaces” para iniciar.";
+    }
+  }
+  const filter = $("mediaHealthFilter")?.value || "all";
+  const visible = filter === "all" ? results : results.filter(r => r.status === filter);
+  if (!visible.length) {
+    container.innerHTML = results.length ? `<p class="helper">No hay resultados para este filtro.</p>` : `<p class="helper">Todavía no se ha ejecutado un escaneo.</p>`;
+    return;
+  }
+  container.innerHTML = visible.map(item => {
+    const label = item.status === "ok" ? "Activo" : item.status === "bad" ? "Falla" : item.status === "missing" ? "Sin URL" : "Pendiente";
+    const details = item.status === "ok"
+      ? `${escapeHtml(mediaKind(item.url))} · ${escapeHtml(item.message || "Disponible")}${item.elapsed ? ` · ${item.elapsed} ms` : ""}`
+      : escapeHtml(item.message || item.error || "Comprobando…");
+    return `<article class="media-health-row ${item.status}">
+      <div class="media-health-main">
+        <div class="media-health-title"><span class="media-health-pill ${item.status}">${label}</span><strong>${escapeHtml(item.title)}</strong></div>
+        <span>${escapeHtml(item.type)} · ${escapeHtml(item.subtitle || "")}</span>
+        ${item.url ? `<code title="${escapeHtml(item.url)}">${escapeHtml(item.url)}</code>` : ""}
+      </div>
+      <div class="media-health-meta">${details}</div>
+    </article>`;
+  }).join("");
+}
+
 function setView(view) {
   state.view = view;
   Object.entries(views).forEach(([key, el]) => el.classList.toggle("active", key === view));
   document.querySelectorAll(".nav-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
 
-  const titles = { home: "Home", movies: "Películas", series: "Series", concerts: "Conciertos", analytics: "Analytics" };
+  const titles = { home: "Home", movies: "Películas", series: "Series", concerts: "Conciertos", analytics: "Analytics", mediaHealth: "Estado de medios" };
   pageTitle.textContent = titles[view] || "Home";
 
   if (view === "series") primaryAction.textContent = "Agregar serie";
   else if (view === "concerts") primaryAction.textContent = "Agregar concierto";
   else primaryAction.textContent = "Agregar película";
 
-  primaryAction.style.visibility = (view === "home" || view === "analytics") ? "hidden" : "visible";
+  primaryAction.style.visibility = (view === "home" || view === "analytics" || view === "mediaHealth") ? "hidden" : "visible";
   $("importMovieBtn").classList.toggle("hidden", view !== "movies");
   $("pasteMovieCodeBtn").classList.toggle("hidden", view !== "movies");
   $("importSeriesBtn").classList.toggle("hidden", view !== "series");
@@ -1139,6 +1306,7 @@ function setView(view) {
   $("importConcertBtn").classList.toggle("hidden", view !== "concerts");
   $("pasteConcertCodeBtn").classList.toggle("hidden", view !== "concerts");
   if (view === "analytics" && !state.analyticsLoaded) loadAnalytics();
+  if (view === "mediaHealth") renderMediaHealth();
   render();
 }
 
@@ -1148,6 +1316,7 @@ function render() {
   renderCards("seriesList", state.series, "series");
   renderCards("concertsList", state.concerts, "concert");
   renderAnalytics();
+  renderMediaHealth();
 }
 
 function renderHome() {
@@ -1386,7 +1555,6 @@ function openEditor(type, item = null) {
   if ($("director")) $("director").value = item?.director ?? "";
   if ($("actors")) $("actors").value = formatListForInput(item?.actors);
   $("posterUrl").value = item?.posterUrl ?? "";
-  if ($("backdropUrl")) $("backdropUrl").value = item?.backdropUrl ?? item?.backdrop ?? "";
   $("hlsUrl").value = item?.hlsUrl ?? "";
   $("synopsis").value = item?.synopsis ?? "";
   $("showInNew").checked = false;
@@ -1418,7 +1586,6 @@ async function saveEditor(e) {
     actors: splitList($("actors")?.value || ""),
     synopsis: $("synopsis").value.trim(),
     posterUrl: $("posterUrl").value.trim(),
-    backdropUrl: ($("backdropUrl")?.value || "").trim(),
     type,
     published: $("published") ? $("published").checked : true,
     updatedAt: serverTimestamp(),
@@ -1708,6 +1875,8 @@ function handleCardActivation(target) {
 }
 
 document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
+$("scanMediaLinksBtn")?.addEventListener("click", scanMediaLinks);
+$("mediaHealthFilter")?.addEventListener("change", () => renderMediaHealth());
 primaryAction.addEventListener("click", () => openEditor(state.view === "series" ? "series" : state.view === "concerts" ? "concert" : "movie"));
 $("importMovieBtn").addEventListener("click", () => $("importMovieInput").click());
 $("importMovieInput").addEventListener("change", (e) => { const files = e.target.files; if (files?.length) importMoviesFromJsonFiles(files); });

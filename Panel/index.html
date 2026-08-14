@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Admin</title>
-  <link rel="stylesheet" href="/Panel/panel-admin.css?v=34" />
+  <link rel="stylesheet" href="/Panel/panel-admin.css?v=36" />
 </head>
 <body>
   <section id="loginScreen" class="login-screen">
@@ -31,6 +31,7 @@
       <button class="nav-btn" data-view="series">Series</button>
       <button class="nav-btn" data-view="concerts">Conciertos</button>
       <button class="nav-btn" data-view="analytics">Analytics</button>
+      <button class="nav-btn" data-view="mediaHealth">Estado de medios</button>
     </nav>
 
     <div class="sidebar-user">
@@ -206,6 +207,38 @@
       </div>
     </section>
 
+
+    <section id="mediaHealthView" class="view">
+      <div class="panel media-health-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Diagnóstico</p>
+            <h2>Estado de medios</h2>
+          </div>
+          <button id="scanMediaLinksBtn" class="primary-btn small" type="button">Escanear enlaces</button>
+        </div>
+        <p class="helper">Comprueba que las URLs de reproducción de películas, conciertos y episodios sigan respondiendo. La verificación consulta el enlace desde Cloudflare y no reproduce ni descarga el contenido completo.</p>
+
+        <div class="media-health-summary">
+          <article><strong id="mediaHealthTotal">0</strong><span>Total</span></article>
+          <article class="health-ok"><strong id="mediaHealthOk">0</strong><span>Activos</span></article>
+          <article class="health-bad"><strong id="mediaHealthBad">0</strong><span>Con falla</span></article>
+          <article class="health-missing"><strong id="mediaHealthMissing">0</strong><span>Sin URL</span></article>
+        </div>
+
+        <div class="media-health-toolbar">
+          <span id="mediaHealthStatus" class="helper">Pulsa “Escanear enlaces” para iniciar.</span>
+          <select id="mediaHealthFilter" aria-label="Filtrar estado">
+            <option value="all">Todos</option>
+            <option value="ok">Activos</option>
+            <option value="bad">Con falla</option>
+            <option value="missing">Sin URL</option>
+          </select>
+        </div>
+        <div id="mediaHealthResults" class="media-health-results"></div>
+      </div>
+    </section>
+
   </main>
 
   <dialog id="editorDialog" class="editor">
@@ -254,10 +287,6 @@
         <label class="full">
           Poster URL
           <input id="posterUrl" placeholder="https://..." />
-        </label>
-        <label class="full">
-          Backdrop URL / imagen horizontal
-          <input id="backdropUrl" placeholder="https://.../backdrop.jpg" />
         </label>
         <label class="full movie-only">
           Media URL (MP4 / HLS / WMO)
@@ -397,6 +426,6 @@
     <div id="analyticsUserBody" class="analytics-detail"></div>
   </dialog>
 
-  <script type="module" src="/Panel/panel-admin.js?v=35"></script>
+  <script type="module" src="/Panel/panel-admin.js?v=36"></script>
 </body>
 </html>
