@@ -148,9 +148,9 @@ function womoFlushDeferredPlaybackUiWork() {
   try { refreshCurrentPreviewEpisodes(); } catch (_) {}
 }
 
-function upsertContinueItem(item, progress = null) {
+async function upsertContinueItem(item, progress = null, playback = null) {
   if (window.__womoShuffleNoProgress || window.womoGlobalShuffleNoProgress) return;
-  if (item && (isItemCompleted(item) || Number(progress || item.progress || 0) >= 98)) {
+  if (item && (isItemCompleted(item) || Number(progress ?? item.progress ?? 0) >= 98)) {
     markPlayableCompleted(item);
     return;
   }
@@ -159,17 +159,18 @@ function upsertContinueItem(item, progress = null) {
   const newEntry = {
     id: item.id,
     type: item.type,
-    progress: progress ?? item.progress ?? 5,
+    progress: Number(progress ?? item.progress ?? 5),
     lastWatchedAt: Date.now()
   };
   const state = loadContinueState().filter(entry => !(entry.id === item.id && entry.type === item.type));
   state.unshift(newEntry);
+  // Local Continue Watching is UI cache only: never persist exact seconds here.
   saveContinueState(state);
   const now = Date.now();
   const progressNumber = Number(newEntry.progress || 0);
-  if (!womoShouldDeferPlaybackUiWork() || progressNumber >= 98 || now - womoLastContinueCloudSaveAt > 15000) {
+  if (playback || !womoShouldDeferPlaybackUiWork() || progressNumber >= 98 || now - womoLastContinueCloudSaveAt > 15000) {
     womoLastContinueCloudSaveAt = now;
-    saveContinueEntryToCloud(newEntry);
+    await saveContinueEntryToCloud(newEntry, playback);
   }
   womoRequestContinueRefresh();
   try {
@@ -1730,61 +1731,11 @@ function renderPreviewRecommendationsForItem(item) {
 
 const COMPLETED_KEY = "womo_completed_items";
 const EPISODE_PROGRESS_KEY = "womo_episode_progress";
-const PLAYBACK_POSITION_KEY = "womo_playback_positions_v1";
 
-function womoPlaybackPositionKey(item, episode = null) {
-  if (!item) return "";
-  if (item.type === "series" && episode) {
-    const season = Number(episode.season || episode.seasonNumber || 1);
-    const number = Number(episode.episodeNumber || episode.episode || 1);
-    return `series:${item.id}:S${season}:E${number}:${episode.id || ""}`;
-  }
-  return `${item.type || "item"}:${item.id || ""}`;
-}
+// Playback position is cloud-only. Remove the legacy local exact-position cache
+// left by older Womo Web builds, but never read or write it again.
+try { localStorage.removeItem("womo_playback_positions_v1"); } catch (_) {}
 
-function loadWomoPlaybackPositions() {
-  try {
-    const value = JSON.parse(localStorage.getItem(PLAYBACK_POSITION_KEY) || "{}");
-    return value && typeof value === "object" ? value : {};
-  } catch (_) {
-    return {};
-  }
-}
-
-function getWomoSavedPosition(item, episode = null) {
-  const key = womoPlaybackPositionKey(item, episode);
-  if (!key) return 0;
-  const entry = loadWomoPlaybackPositions()[key];
-  const seconds = Number(entry?.seconds || 0);
-  return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
-}
-
-function saveWomoExactPosition(item, episode, video, forceCompleted = false) {
-  try {
-    if (!item || !video) return;
-    const key = womoPlaybackPositionKey(item, episode);
-    if (!key) return;
-    const map = loadWomoPlaybackPositions();
-    if (forceCompleted) {
-      delete map[key];
-      localStorage.setItem(PLAYBACK_POSITION_KEY, JSON.stringify(map));
-      return;
-    }
-    const seconds = Number(video.currentTime || 0);
-    const duration = getWomoEffectiveDuration(video);
-    if (!Number.isFinite(seconds) || seconds < 1) return;
-    if (duration > 0 && seconds >= duration - 8) {
-      delete map[key];
-    } else {
-      map[key] = {
-        seconds,
-        duration: Number.isFinite(duration) ? duration : 0,
-        updatedAt: Date.now()
-      };
-    }
-    localStorage.setItem(PLAYBACK_POSITION_KEY, JSON.stringify(map));
-  } catch (_) {}
-}
 let currentPreviewSeriesIdForEpisodes = null;
 let currentPreviewEpisodesCache = [];
 let currentPlayerItem = null;
@@ -2324,8 +2275,7 @@ async function openPreview(item) {
     const restartBtn = actions.querySelector('[data-preview-restart]');
     if (playBtn) playBtn.onclick = () => openPlayer(item);
     if (restartBtn) restartBtn.onclick = () => {
-      upsertContinueItem(item, 0);
-      openPlayer(item);
+      openPlayer(item, { startAt: 0 });
     };
 
     renderPreviewRecommendationsForItem(item);
@@ -2386,43 +2336,133 @@ function getWomoEffectiveDuration(video) {
   return Number.isFinite(wmoDuration) && wmoDuration > 0 ? wmoDuration : 0;
 }
 
-function savePlayerProgress() {
-  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
-  if (window.__womoShuffleNoProgress || womoGlobalShuffleNoProgress) return;
-  if (currentPlayerContext?.saveProgress === false || currentPlayerContext?.shuffleMode || currentPlayerContext?.fromShuffle || currentPlayerContext?.noProgress) return;
+let womoLastPlaybackPersistAt = 0;
+let womoPlaybackSaveInFlight = false;
+let womoPlaybackSaveQueued = false;
+
+function womoPlaybackProgressDisabled() {
+  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return true;
+  if (window.__womoShuffleNoProgress || womoGlobalShuffleNoProgress) return true;
+  return Boolean(currentPlayerContext?.saveProgress === false || currentPlayerContext?.shuffleMode || currentPlayerContext?.fromShuffle || currentPlayerContext?.noProgress);
+}
+
+function womoBuildPlaybackSnapshot(video, forceCompleted = false) {
+  if (!video) return null;
+  const duration = getWomoEffectiveDuration(video);
+  const current = Number(video.currentTime || 0);
+  if (!forceCompleted && (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(current) || current < 0)) return null;
+  const rawProgress = forceCompleted ? 100 : Math.max(0, Math.min(100, (current / duration) * 100));
+  const completed = forceCompleted || rawProgress >= 98;
+  return {
+    progress: completed ? 100 : rawProgress,
+    positionSeconds: completed ? 0 : Math.max(0, current),
+    durationSeconds: Number.isFinite(duration) && duration > 0 ? duration : 0,
+    positionUpdatedAt: Date.now(),
+    completed
+  };
+}
+
+async function womoPersistPlaybackProgress(forceCompleted = false, forceWrite = false) {
+  if (womoPlaybackProgressDisabled()) return;
   const video = document.getElementById('womoPlayer');
   if (!video || !currentPlayerContext) return;
-  const duration = getWomoEffectiveDuration(video);
-  if (!duration) return;
 
-  const progress = Math.max(0, Math.min(100, (video.currentTime / duration) * 100));
-  const { item, episode } = currentPlayerContext;
-  saveWomoExactPosition(item, episode, video, progress >= 98);
+  const now = Date.now();
+  if (!forceCompleted && !forceWrite && now - womoLastPlaybackPersistAt < 5000) return;
+  const snapshot = womoBuildPlaybackSnapshot(video, forceCompleted);
+  if (!snapshot) return;
 
-  if (item.type === 'series' && episode) {
-    currentPlayerEpisode.progress = progress;
-    currentPlayerItem.progress = progress;
-    const entry = {
-      id: item.id,
-      type: item.type,
-      progress,
-      season: episode.season,
-      episode: episode.episodeNumber,
-      episodeId: episode.id,
-      lastWatchedAt: Date.now()
-    };
-    const state = loadContinueState().filter(value => !(value.id === item.id && value.type === item.type));
-    state.unshift(entry);
-    saveContinueState(state);
-    saveContinueEntryToCloud(entry);
-
-    const map = loadEpisodeProgress();
-    map[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] = progress;
-    localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
-    saveEpisodeProgressToCloud(item.id, episode, progress);
-  } else {
-    upsertContinueItem(item, progress);
+  if (womoPlaybackSaveInFlight) {
+    womoPlaybackSaveQueued = true;
+    return;
   }
+  womoPlaybackSaveInFlight = true;
+  womoLastPlaybackPersistAt = now;
+
+  try {
+    const { item, episode } = currentPlayerContext;
+    const progress = snapshot.progress;
+
+    if (item.type === 'series' && episode) {
+      currentPlayerEpisode.progress = progress;
+      currentPlayerItem.progress = progress;
+
+      // Percentage may be cached locally for UI, never exact seconds.
+      const map = loadEpisodeProgress();
+      map[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] = progress;
+      localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
+
+      const cached = currentPreviewEpisodesCache.find(ep =>
+        ep.id === episode.id ||
+        (Number(ep.season || ep.seasonNumber || 1) === Number(episode.season || episode.seasonNumber || 1) &&
+         Number(ep.episodeNumber || ep.episode || 1) === Number(episode.episodeNumber || episode.episode || 1))
+      );
+      if (cached) cached.progress = progress;
+
+      const continueEntry = {
+        id: item.id,
+        type: item.type,
+        progress,
+        season: episode.season,
+        episode: episode.episodeNumber,
+        episodeId: episode.id,
+        lastWatchedAt: Date.now()
+      };
+
+      if (snapshot.completed) {
+        await saveEpisodeProgressToCloud(item.id, episode, 100, snapshot);
+      } else {
+        await saveEpisodeProgressToCloud(item.id, episode, progress, snapshot);
+      }
+      // Continue Watching for a series keeps ordering/current episode metadata.
+      await saveContinueEntryToCloud(continueEntry, snapshot);
+
+      const state = loadContinueState().filter(value => !(value.id === item.id && value.type === item.type));
+      state.unshift(continueEntry);
+      saveContinueState(state);
+      if (snapshot.completed) {
+        const nextEpisode = getEpisodeAfter(item.id, episode) || getFirstUnfinishedEpisode();
+        if (!womoShouldDeferPlaybackUiWork()) {
+          refreshCurrentPreviewEpisodes();
+          setSeriesPreviewButtonForEpisode(nextEpisode);
+        } else {
+          womoContinueRefreshPending = true;
+        }
+      }
+      return;
+    }
+
+    // Movies / concerts.
+    if (snapshot.completed) {
+      // Remove Continue Watching entirely so merge:true can never resurrect old seconds.
+      await deleteContinueEntryFromCloud({ id: item.id, type: item.type });
+      markPlayableCompleted(item);
+      return;
+    }
+
+    setItemCompleted(item, false);
+    item.completed = false;
+    item.progress = progress;
+    await upsertContinueItem(item, progress, snapshot);
+    if (forceWrite || !womoShouldDeferPlaybackUiWork()) {
+      refreshContinueWatchingRow();
+      setMovieConcertPreviewPlayableState(item);
+    } else {
+      womoContinueRefreshPending = true;
+    }
+  } catch (error) {
+    console.warn("No se pudo guardar el progreso en Firebase.", error);
+  } finally {
+    womoPlaybackSaveInFlight = false;
+    if (womoPlaybackSaveQueued) {
+      womoPlaybackSaveQueued = false;
+      setTimeout(() => womoPersistPlaybackProgress(false, true), 0);
+    }
+  }
+}
+
+function savePlayerProgress(forceWrite = false) {
+  return womoPersistPlaybackProgress(false, Boolean(forceWrite));
 }
 
 function getPlayableUrl(item, episode = null) {
@@ -2621,89 +2661,8 @@ function refreshCurrentPreviewEpisodes() {
   }
 }
 
-function saveActiveEpisodeProgress(forceCompleted = false) {
-  if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
-  if (window.__womoShuffleNoProgress || womoGlobalShuffleNoProgress) return;
-  if (currentPlayerContext?.saveProgress === false || currentPlayerContext?.shuffleMode || currentPlayerContext?.fromShuffle || currentPlayerContext?.noProgress) return;
-  try {
-    const video = getWomoPlayerVideo();
-    if (!video || !currentPlayerItem) return;
-
-    const isEpisodePlayback = Boolean(currentPlayerEpisode);
-    const duration = getWomoEffectiveDuration(video);
-    const current = Number(video.currentTime || 0);
-
-    if (!forceCompleted) {
-      if (!duration || !Number.isFinite(duration) || duration <= 0) return;
-      if (!current || !Number.isFinite(current) || current <= 0) return;
-    }
-
-    const calculated = forceCompleted
-      ? 100
-      : Math.max(0, Math.min(100, Math.round((current / duration) * 100)));
-
-    const progress = calculated >= 98 ? 100 : calculated;
-    saveWomoExactPosition(currentPlayerItem, currentPlayerEpisode, video, forceCompleted || progress >= 98);
-
-    if (isEpisodePlayback) {
-      const key = episodeKey(
-        currentPlayerItem.id,
-        currentPlayerEpisode.season,
-        currentPlayerEpisode.episodeNumber,
-        currentPlayerEpisode.id
-      );
-
-      const map = loadEpisodeProgress();
-      const previousProgress = Number(map[key] ?? currentPlayerEpisode.progress ?? 0) || 0;
-      const finalProgress = Math.max(previousProgress, progress);
-
-      if (finalProgress < 1) return;
-
-      map[key] = finalProgress >= 98 ? 100 : finalProgress;
-      localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
-
-      currentPlayerEpisode.progress = map[key];
-
-      const cached = currentPreviewEpisodesCache.find(ep =>
-        ep.id === currentPlayerEpisode.id ||
-        (Number(ep.season || ep.seasonNumber || 1) === Number(currentPlayerEpisode.season || currentPlayerEpisode.seasonNumber || 1) &&
-         Number(ep.episodeNumber || ep.episode || 1) === Number(currentPlayerEpisode.episodeNumber || currentPlayerEpisode.episode || 1))
-      );
-      if (cached) cached.progress = map[key];
-
-      const nextEpisode = map[key] >= 98
-        ? getEpisodeAfter(currentPlayerItem.id, currentPlayerEpisode)
-        : getFirstUnfinishedEpisode();
-
-      if (forceCompleted || !womoShouldDeferPlaybackUiWork()) {
-        refreshCurrentPreviewEpisodes();
-        setSeriesPreviewButtonForEpisode(nextEpisode);
-      } else {
-        womoContinueRefreshPending = true;
-      }
-
-      return;
-    }
-
-    // Movies / concerts
-    if (progress >= 98) {
-      markPlayableCompleted(currentPlayerItem);
-      return;
-    }
-
-    setItemCompleted(currentPlayerItem, false);
-    currentPlayerItem.completed = false;
-    currentPlayerItem.progress = progress;
-    upsertContinueItem(currentPlayerItem, progress);
-    if (forceCompleted || !womoShouldDeferPlaybackUiWork()) {
-      refreshContinueWatchingRow();
-      setMovieConcertPreviewPlayableState(currentPlayerItem);
-    } else {
-      womoContinueRefreshPending = true;
-    }
-  } catch (error) {
-    console.warn("No se pudo guardar el progreso.", error);
-  }
+function saveActiveEpisodeProgress(forceCompleted = false, forceWrite = false) {
+  return womoPersistPlaybackProgress(Boolean(forceCompleted), Boolean(forceWrite || forceCompleted));
 }
 
 
@@ -2737,12 +2696,12 @@ function bindWomoPlayerProgressEvents() {
 
   video.addEventListener("timeupdate", () => {
     if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
-    saveActiveEpisodeProgress(false);
+    saveActiveEpisodeProgress(false, false);
   });
 
   video.addEventListener("pause", () => {
     if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
-    saveActiveEpisodeProgress(false);
+    saveActiveEpisodeProgress(false, true);
   });
 
   video.addEventListener("ended", () => {
@@ -2755,7 +2714,7 @@ function bindWomoPlayerProgressEvents() {
       refreshCurrentPreviewEpisodes();
       return;
     }
-    saveActiveEpisodeProgress(true);
+    saveActiveEpisodeProgress(true, true);
     hideWomoPlayerOverlay();
     refreshCurrentPreviewEpisodes();
   });
@@ -4000,7 +3959,12 @@ function womoBindExplicitPauseGuard(video) {
   });
 }
 
-function openPlayer(item, options = {}) {
+async function openPlayer(item, options = {}) {
+  // If the player is switching directly to another item/episode, persist the
+  // previous playhead before replacing the active context.
+  if (currentPlayerContext && !womoPlaybackProgressDisabled()) {
+    try { await saveActiveEpisodeProgress(false, true); } catch (_) {}
+  }
   window.__womoPlayerOpenedAt = Date.now();
   womoResetAudioSelector();
   currentPlayerItem = item;
@@ -4109,27 +4073,50 @@ function openPlayer(item, options = {}) {
   video.load();
 
   const hasExplicitStartAt = Object.prototype.hasOwnProperty.call(options, "startAt");
+  const explicitStartAt = hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0
+    ? Number(options.startAt)
+    : null;
   const shouldIgnoreSavedProgress = Boolean(options.shuffleMode || options.noProgress || options.fromShuffle || options.saveProgress === false);
-  const savedProgress = shouldIgnoreSavedProgress
-    ? 0
-    : (episode
-      ? Number(loadEpisodeProgress()[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] || episode.progress || 0)
-      : getItemProgress(item));
-  const savedPositionSeconds = shouldIgnoreSavedProgress ? 0 : getWomoSavedPosition(item, episode);
+
+  let savedProgress = 0;
+  let savedPositionSeconds = null;
+  let hasExactCloudPosition = false;
+
+  if (!shouldIgnoreSavedProgress && explicitStartAt === null) {
+    const resume = await loadPlaybackResumeDirectFromCloud(item, episode);
+    if (resume.ok) {
+      savedProgress = resume.progress;
+      savedPositionSeconds = resume.positionSeconds;
+      hasExactCloudPosition = resume.hasExactPosition;
+    } else {
+      // Firebase is the only source of truth. On failure, start from zero.
+      savedProgress = 0;
+      savedPositionSeconds = null;
+    }
+  } else if (!shouldIgnoreSavedProgress && explicitStartAt === 0) {
+    // Reiniciar is authoritative: clear any stale cloud position before playback.
+    await resetPlaybackProgressInCloud(item, episode);
+  }
+
   const isWmoPlayback = Boolean(window.WmoMediaEngine && WmoMediaEngine.isWmoUrl(url));
   if (!isWmoPlayback) {
     try { delete video.dataset.wmoDuration; } catch (_) {}
   }
-  const wmoStartTime = hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0
-    ? Number(options.startAt)
-    : (savedPositionSeconds > 0 ? savedPositionSeconds : null);
 
   if (isWmoPlayback) {
     setPlayerLoading(true, "wmo");
-    WmoMediaEngine.load(url, video, {
-      startTime: wmoStartTime,
-      startProgress: shouldIgnoreSavedProgress ? 0 : savedProgress
-    })
+    const wmoLoadOptions = {};
+    if (explicitStartAt !== null) {
+      wmoLoadOptions.startTime = explicitStartAt;
+    } else if (hasExactCloudPosition && savedPositionSeconds !== null) {
+      wmoLoadOptions.startTime = savedPositionSeconds;
+    } else if (!shouldIgnoreSavedProgress && savedProgress > 0 && savedProgress < 98) {
+      // Legacy Firebase rows may only contain percentage.
+      wmoLoadOptions.startProgress = savedProgress;
+    } else if (shouldIgnoreSavedProgress) {
+      wmoLoadOptions.startTime = 0;
+    }
+    WmoMediaEngine.load(url, video, wmoLoadOptions)
       .then(() => {
         setPlayerLoading(false, "wmo-ready");
         womoAutoPlay(video, 'wmo-ready');
@@ -4196,9 +4183,9 @@ function openPlayer(item, options = {}) {
     // Seeking here after the engine already buffered from 0 caused Safari to
     // restart WMO titles instead of resuming at the saved position.
     if (!isWmoPlayback) {
-      if (hasExplicitStartAt && Number.isFinite(Number(options.startAt)) && Number(options.startAt) >= 0) {
-        video.currentTime = Number(options.startAt);
-      } else if (savedPositionSeconds > 0 && video.duration && isFinite(video.duration)) {
+      if (explicitStartAt !== null) {
+        video.currentTime = explicitStartAt;
+      } else if (hasExactCloudPosition && savedPositionSeconds !== null && savedPositionSeconds > 0 && video.duration && isFinite(video.duration)) {
         video.currentTime = Math.min(savedPositionSeconds, Math.max(0, video.duration - 0.25));
       } else if (savedProgress > 0 && savedProgress < 98 && video.duration && isFinite(video.duration)) {
         video.currentTime = (savedProgress / 100) * video.duration;
@@ -4241,13 +4228,12 @@ function closePlayer() {
   womoTsIsRecovering = false;
   const isShuffleNoProgress = typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback();
   if (!isShuffleNoProgress) {
-    saveActiveEpisodeProgress(false);
-    saveActiveEpisodeProgress(false);
+    saveActiveEpisodeProgress(false, true);
   }
   const overlay = document.getElementById('playerOverlay');
   const video = document.getElementById('womoPlayer');
 
-  if (!isShuffleNoProgress) savePlayerProgress();
+
   try { if (overlay) overlay.dataset.shuffleNoProgress = "false"; } catch (_) {}
   clearInterval(playerSaveTimer);
   playerSaveTimer = null;
@@ -4296,20 +4282,12 @@ function setupPlayerControls() {
     }
   });
 
-  video.addEventListener('pause', savePlayerProgress);
+  video.addEventListener('pause', () => savePlayerProgress(true));
 
   video.addEventListener('ended', () => {
     if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
     if (!currentPlayerContext || currentPlayerContext.saveProgress === false || currentPlayerContext.shuffleMode || currentPlayerContext.fromShuffle || currentPlayerContext.noProgress) return;
-    const { item, episode } = currentPlayerContext;
-    if (item.type === 'series' && episode) {
-      const map = loadEpisodeProgress();
-      map[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] = 100;
-      localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
-      saveEpisodeProgressToCloud(item.id, episode, 100);
-    } else {
-      upsertContinueItem(item, 100);
-    }
+    saveActiveEpisodeProgress(true, true);
   });
 
   let hideTimer = null;
@@ -4505,7 +4483,7 @@ async function loadFavoritesFromCloud() {
   saveFavoriteState(items);
 }
 
-async function saveContinueEntryToCloud(entry) {
+async function saveContinueEntryToCloud(entry, playback = null) {
   const ref = getUserDocRef();
   if (!ref || !entry) return;
 
@@ -4513,12 +4491,26 @@ async function saveContinueEntryToCloud(entry) {
     email: firebase.auth().currentUser?.email || "",
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
-  await ref.collection("continueWatching").doc(userItemDocId(entry)).set({
+
+  const payload = {
     ...entry,
+    progress: Number(entry.progress || 0),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
+  };
+  if (playback) {
+    payload.positionSeconds = Number(playback.positionSeconds || 0);
+    payload.durationSeconds = Number(playback.durationSeconds || 0);
+    payload.positionUpdatedAt = Number(playback.positionUpdatedAt || Date.now());
+  }
+
+  await ref.collection("continueWatching").doc(userItemDocId(entry)).set(payload, { merge: true });
 }
 
+async function deleteContinueEntryFromCloud(entry) {
+  const ref = getUserDocRef();
+  if (!ref || !entry) return;
+  try { await ref.collection("continueWatching").doc(userItemDocId(entry)).delete(); } catch (_) {}
+}
 
 async function savePlayEventToCloud(item, episode = null) {
   const ref = getUserDocRef();
@@ -4553,19 +4545,32 @@ async function savePlayEventToCloud(item, episode = null) {
   }
 }
 
+function womoStripContinueForLocalCache(data) {
+  return {
+    id: data.id,
+    type: data.type,
+    progress: Number(data.progress || 0),
+    season: data.season,
+    episode: data.episode,
+    episodeId: data.episodeId,
+    lastWatchedAt: data.lastWatchedAt || 0
+  };
+}
+
 async function loadContinueFromCloud() {
   const ref = getUserDocRef();
   if (!ref) return;
 
-  const snapshot = await ref.collection("continueWatching").orderBy("lastWatchedAt", "desc").get();
-  const items = snapshot.docs.map(doc => doc.data()).filter(entry => entry.id && entry.type);
+  const snapshot = await ref.collection("continueWatching").orderBy("lastWatchedAt", "desc").get({ source: "server" });
+  // UI cache intentionally strips exact playback position.
+  const items = snapshot.docs.map(doc => womoStripContinueForLocalCache(doc.data() || {})).filter(entry => entry.id && entry.type);
   saveContinueState(items);
 
   if (items.length) localStorage.removeItem(MEMORY_CLEARED_KEY);
   else localStorage.setItem(MEMORY_CLEARED_KEY, "true");
 }
 
-async function saveEpisodeProgressToCloud(seriesId, episode, progress) {
+async function saveEpisodeProgressToCloud(seriesId, episode, progress, playback = null) {
   const ref = getUserDocRef();
   if (!ref || !seriesId || !episode) return;
 
@@ -4574,30 +4579,98 @@ async function saveEpisodeProgressToCloud(seriesId, episode, progress) {
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
 
+  const payload = {
+    seriesId,
+    episodeId: episode.id,
+    season: episode.season,
+    episodeNumber: episode.episodeNumber,
+    progress: Number(progress || 0),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  if (playback) {
+    payload.positionSeconds = Number(playback.positionSeconds || 0);
+    payload.durationSeconds = Number(playback.durationSeconds || 0);
+    payload.positionUpdatedAt = Number(playback.positionUpdatedAt || Date.now());
+  }
+
   await ref.collection("episodeProgress")
     .doc(userEpisodeDocId(seriesId, episode.season, episode.episodeNumber, episode.id))
-    .set({
-      seriesId,
-      episodeId: episode.id,
-      season: episode.season,
-      episodeNumber: episode.episodeNumber,
-      progress,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    .set(payload, { merge: true });
 }
 
 async function loadEpisodeProgressFromCloud() {
   const ref = getUserDocRef();
   if (!ref) return;
 
-  const snapshot = await ref.collection("episodeProgress").get();
+  const snapshot = await ref.collection("episodeProgress").get({ source: "server" });
   const map = {};
   snapshot.docs.forEach(doc => {
     const data = doc.data() || {};
     if (!data.seriesId) return;
+    // Local cache is percentage-only for UI. Exact seconds remain cloud-only.
     map[episodeKey(data.seriesId, data.season, data.episodeNumber, data.episodeId)] = Number(data.progress || 0);
   });
   localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
+}
+
+async function loadPlaybackResumeDirectFromCloud(item, episode = null) {
+  const ref = getUserDocRef();
+  if (!ref || !item) return { ok: false, progress: 0, positionSeconds: null, durationSeconds: 0, hasExactPosition: false };
+
+  try {
+    const docRef = item.type === "series" && episode
+      ? ref.collection("episodeProgress").doc(userEpisodeDocId(item.id, episode.season, episode.episodeNumber, episode.id))
+      : ref.collection("continueWatching").doc(userItemDocId(item));
+    const snapshot = await docRef.get({ source: "server" });
+    if (!snapshot.exists) return { ok: true, progress: 0, positionSeconds: null, durationSeconds: 0, hasExactPosition: false };
+
+    const data = snapshot.data() || {};
+    const progress = Math.max(0, Math.min(100, Number(data.progress || 0)));
+    if (progress >= 98) return { ok: true, progress: 0, positionSeconds: 0, durationSeconds: Number(data.durationSeconds || 0), hasExactPosition: true };
+
+    const hasExact = Object.prototype.hasOwnProperty.call(data, "positionSeconds")
+      && data.positionSeconds !== null
+      && data.positionSeconds !== undefined
+      && data.positionSeconds !== ""
+      && Number.isFinite(Number(data.positionSeconds))
+      && Number(data.positionSeconds) > 0;
+
+    return {
+      ok: true,
+      progress,
+      positionSeconds: hasExact ? Number(data.positionSeconds) : null,
+      durationSeconds: Number(data.durationSeconds || 0),
+      hasExactPosition: hasExact
+    };
+  } catch (error) {
+    console.warn("No se pudo leer la posición directamente desde Firebase; se inicia desde cero.", error);
+    return { ok: false, progress: 0, positionSeconds: null, durationSeconds: 0, hasExactPosition: false };
+  }
+}
+
+async function resetPlaybackProgressInCloud(item, episode = null) {
+  if (!item) return;
+  const playback = { positionSeconds: 0, durationSeconds: 0, positionUpdatedAt: Date.now() };
+  if (item.type === "series" && episode) {
+    await saveEpisodeProgressToCloud(item.id, episode, 0, playback);
+    await saveContinueEntryToCloud({
+      id: item.id,
+      type: item.type,
+      progress: 0,
+      season: episode.season,
+      episode: episode.episodeNumber,
+      episodeId: episode.id,
+      lastWatchedAt: Date.now()
+    }, playback);
+    const map = loadEpisodeProgress();
+    map[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] = 0;
+    localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
+  } else {
+    await saveContinueEntryToCloud({ id: item.id, type: item.type, progress: 0, lastWatchedAt: Date.now() }, playback);
+    const state = loadContinueState().filter(entry => !(entry.id === item.id && entry.type === item.type));
+    state.unshift({ id: item.id, type: item.type, progress: 0, lastWatchedAt: Date.now() });
+    saveContinueState(state);
+  }
 }
 
 
@@ -4610,7 +4683,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 window.addEventListener("beforeunload", () => {
   if (typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback()) return;
-  saveActiveEpisodeProgress(false);
+  saveActiveEpisodeProgress(false, true);
 });
 
 
@@ -4640,7 +4713,7 @@ document.addEventListener("timeupdate", (event) => {
   if (!duration || !current) return;
   const pct = (current / duration) * 100;
   if (pct >= 98) {
-    saveActiveEpisodeProgress(true);
+    saveActiveEpisodeProgress(true, true);
   }
 }, true);
 
@@ -5616,8 +5689,7 @@ async function womoAutoNextPlayNow() {
 
   try {
     if (!womoAutoNextIsShuffle()) {
-      if (typeof saveActiveEpisodeProgress === "function") saveActiveEpisodeProgress(true);
-      if (typeof savePlayerProgress === "function") savePlayerProgress();
+      if (typeof saveActiveEpisodeProgress === "function") saveActiveEpisodeProgress(true, true);
     }
   } catch (_) {}
 

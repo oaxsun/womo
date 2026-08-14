@@ -359,8 +359,17 @@
   }
 
   function resolveStartTime(options, duration) {
-    const explicit = Number(options?.startTime);
-    if (Number.isFinite(explicit) && explicit >= 0) return Math.min(explicit, Math.max(0, duration - 0.05));
+    const hasExplicitStartTime = Boolean(options)
+      && Object.prototype.hasOwnProperty.call(options, "startTime")
+      && options.startTime !== null
+      && options.startTime !== undefined
+      && options.startTime !== "";
+    if (hasExplicitStartTime) {
+      const explicit = Number(options.startTime);
+      if (Number.isFinite(explicit) && explicit >= 0) {
+        return Math.min(explicit, Math.max(0, duration - 0.05));
+      }
+    }
     const progress = Number(options?.startProgress);
     if (Number.isFinite(progress) && progress > 0 && progress < 98 && duration > 0) {
       return Math.min((progress / 100) * duration, Math.max(0, duration - 0.05));
