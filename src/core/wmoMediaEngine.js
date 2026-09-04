@@ -8,7 +8,7 @@
   const MEDIA_ENDPOINT = "https://womo-media-api.jmnz-music.workers.dev/media";
   const START_BUFFER_SECONDS = 12;
   const TARGET_BUFFER_SECONDS = 30;
-  const MEDIA_BATCH_SEGMENTS = 12; // ~48 s at 4 s/segment, one Worker request per batch/track
+  const MEDIA_BATCH_SEGMENTS = 4; // smaller WMO media batches reduce Archive/Worker 502s on long playback
 
   let activeObjectUrl = "";
   let activeAbortController = null;
@@ -81,42 +81,100 @@
     return user.getIdToken(forceRefresh);
   }
 
-  async function fetchRange(url, start, end, signal, authToken) {
-    if (fullFileCache && activeSourceUrl === url) {
-      return fullFileCache.slice(start, end + 1);
+  class WmoMediaRequestError extends Error {
+    constructor(message, status = 0, detail = "") {
+      super(message);
+      this.name = "WmoMediaRequestError";
+      this.status = Number(status || 0);
+      this.detail = detail || "";
+    }
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function isTransientMediaError(error) {
+    const status = Number(error?.status || 0);
+    return status === 0 || status === 408 || status === 409 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+  }
+
+  async function fetchRangeOnce(url, start, end, signal, authToken) {
+    // Use a CORS-simple POST to avoid preflight failures.
+    // The media bridge applies the byte Range upstream to Archive.org.
+    const token = authToken || await getFirebaseIdToken(false);
+    let response;
+    try {
+      response = await fetch(MEDIA_ENDPOINT, {
+        method: "POST",
+        mode: "cors",
+        credentials: "omit",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "text/plain;charset=UTF-8"
+        },
+        body: JSON.stringify({
+          url,
+          start,
+          end,
+          token
+        }),
+        signal
+      });
+    } catch (error) {
+      if (signal?.aborted || error?.name === "AbortError") throw error;
+      throw new WmoMediaRequestError(`WMO media request failed (${error?.message || "network error"})`, 0);
     }
 
-    // Use a CORS-simple POST to avoid cPanel/WAF preflight failures.
-    // The PHP bridge applies the byte Range upstream to Archive.org.
-    const token = authToken || await getFirebaseIdToken(false);
-    const response = await fetch(MEDIA_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      credentials: "omit",
-      cache: "no-store",
-      headers: {
-        "Content-Type": "text/plain;charset=UTF-8"
-      },
-      body: JSON.stringify({
-        url,
-        start,
-        end,
-        token
-      }),
-      signal
-    });
+    if (!response.ok) {
+      let detail = "";
+      try { detail = (await response.text()).slice(0, 180); } catch (_) {}
+      throw new WmoMediaRequestError(`WMO media request failed (HTTP ${response.status})`, response.status, detail);
+    }
 
-    if (!response.ok) throw new Error(`WMO media request failed (HTTP ${response.status})`);
     const buffer = await response.arrayBuffer();
 
     if (response.status === 200) {
       fullFileCache = buffer;
       activeSourceUrl = url;
-      if (buffer.byteLength < end + 1) throw new Error("WMO source returned an incomplete file");
+      if (buffer.byteLength < end + 1) throw new WmoMediaRequestError("WMO source returned an incomplete file", 0);
       return buffer.slice(start, end + 1);
     }
 
+    const expectedLength = Math.max(0, end - start + 1);
+    if (expectedLength > 0 && buffer.byteLength < expectedLength) {
+      throw new WmoMediaRequestError("WMO media request returned an incomplete range", 0);
+    }
+
     return buffer;
+  }
+
+  async function fetchRange(url, start, end, signal, authToken) {
+    if (fullFileCache && activeSourceUrl === url) {
+      return fullFileCache.slice(start, end + 1);
+    }
+
+    const maxAttempts = 5;
+    let lastError = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      try {
+        return await fetchRangeOnce(url, start, end, signal, authToken);
+      } catch (error) {
+        if (signal?.aborted || error?.name === "AbortError") throw error;
+        lastError = error;
+        if (!isTransientMediaError(error) || attempt === maxAttempts - 1) break;
+        const delay = 250 + attempt * 450 + Math.floor(Math.random() * 160);
+        console.warn("WMO media range failed; retrying", {
+          status: error?.status || 0,
+          attempt: attempt + 1,
+          start,
+          end
+        });
+        await sleep(delay);
+      }
+    }
+    throw lastError || new Error("WMO media request failed");
   }
 
   async function fetchEntriesRange(url, entries, signal, authToken) {
@@ -124,15 +182,36 @@
     const start = entries[0].offset;
     const last = entries[entries.length - 1];
     const end = last.offset + last.totalLength - 1;
-    const block = await fetchRange(url, start, end, signal, authToken);
-    return entries.map(entry => {
-      const relativeStart = entry.offset - start;
-      const relativeEnd = relativeStart + entry.totalLength;
-      if (relativeStart < 0 || relativeEnd > block.byteLength) {
-        throw new Error("WMO media batch returned an incomplete range");
+
+    try {
+      const block = await fetchRange(url, start, end, signal, authToken);
+      return entries.map(entry => {
+        const relativeStart = entry.offset - start;
+        const relativeEnd = relativeStart + entry.totalLength;
+        if (relativeStart < 0 || relativeEnd > block.byteLength) {
+          throw new WmoMediaRequestError("WMO media batch returned an incomplete range", 0);
+        }
+        return block.slice(relativeStart, relativeEnd);
+      });
+    } catch (error) {
+      if (signal?.aborted || error?.name === "AbortError") throw error;
+      // A batch request can be large enough to make Archive/Worker return 502
+      // even though each WMO segment is valid. Split the batch and retry so
+      // playback can continue without blaming the encoded file.
+      if (entries.length > 1 && isTransientMediaError(error)) {
+        const middle = Math.ceil(entries.length / 2);
+        console.warn("WMO media batch failed; splitting range", {
+          status: error?.status || 0,
+          count: entries.length,
+          start,
+          end
+        });
+        const left = await fetchEntriesRange(url, entries.slice(0, middle), signal, authToken);
+        const right = await fetchEntriesRange(url, entries.slice(middle), signal, authToken);
+        return left.concat(right);
       }
-      return block.slice(relativeStart, relativeEnd);
-    });
+      throw error;
+    }
   }
 
   async function requestCloudflarePlayback(contentId, idToken, signal) {
@@ -934,7 +1013,7 @@
     load,
     destroy,
     isWmoUrl,
-    version: "3.1.0-cloudflare-media",
+    version: "3.1.1-cloudflare-media-retry",
     keyProvider: "cloudflare-d1",
     keyEndpoint: KEY_ENDPOINT,
     mediaEndpoint: MEDIA_ENDPOINT
