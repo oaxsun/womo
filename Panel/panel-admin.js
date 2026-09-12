@@ -705,6 +705,16 @@ function contentKey(type, id) {
   return `${type}:${id}`;
 }
 
+function safeAnalyticsDocId(value) {
+  return String(value || "")
+    .replace(/[\/#?\[\]]/g, "_")
+    .slice(0, 140);
+}
+
+function analyticsUserItemDocId(entry) {
+  return safeAnalyticsDocId(`${entry.type}_${entry.id}`);
+}
+
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -1035,6 +1045,44 @@ function analyticsEntryLabel(entry) {
   return `${escapeHtml(title)} <small>${typeLabel(entry.type)}</small>`;
 }
 
+async function resetUserPlaybackProgress(uid, entry) {
+  if (!uid || !entry?.id || !entry?.type) return;
+  const userRef = doc(db, "users", uid);
+  const candidateIds = Array.from(new Set([
+    entry.docId,
+    analyticsUserItemDocId(entry),
+    `${entry.type}:${entry.id}`,
+    entry.id
+  ].filter(Boolean)));
+
+  const deletes = [];
+  candidateIds.forEach(id => {
+    deletes.push(deleteDoc(doc(db, "users", uid, "continueWatching", id)).catch(() => {}));
+    deletes.push(deleteDoc(doc(db, "users", uid, "completed", id)).catch(() => {}));
+  });
+
+  const user = state.analyticsUsers.find(item => item.uid === uid);
+  if (user?.episodeProgress?.length && entry.type === "series") {
+    user.episodeProgress
+      .filter(progress => String(progress.seriesId || progress.id || "") === String(entry.id))
+      .forEach(progress => {
+        if (progress.docId) deletes.push(deleteDoc(doc(db, "users", uid, "episodeProgress", progress.docId)).catch(() => {}));
+      });
+  }
+
+  await Promise.all(deletes);
+
+  if (user) {
+    user.continueWatching = user.continueWatching.filter(item => !(item.id === entry.id && item.type === entry.type));
+    user.completed = user.completed.filter(item => !(item.id === entry.id && item.type === entry.type));
+    if (entry.type === "series") {
+      user.episodeProgress = (user.episodeProgress || []).filter(progress => String(progress.seriesId || progress.id || "") !== String(entry.id));
+    }
+    openAnalyticsUser(uid);
+    renderAnalyticsUsers();
+  }
+}
+
 function openAnalyticsUser(uid) {
   const user = state.analyticsUsers.find(item => item.uid === uid);
   if (!user) return;
@@ -1043,7 +1091,18 @@ function openAnalyticsUser(uid) {
     .map(entry => `<li><span>${analyticsEntryLabel(entry)}</span><em>${formatAnalyticsDate(entry.addedAt || entry.updatedAt)}</em></li>`)
     .join("") || `<li><span>Sin favoritos</span><em>—</em></li>`;
   const continueHtml = user.continueWatching
-    .map(entry => `<li><span>${analyticsEntryLabel(entry)}</span><em>${Math.round(Number(entry.progress || 0))}% · ${formatAnalyticsDate(entry.lastWatchedAt || entry.updatedAt)}</em></li>`)
+    .map(entry => `
+      <li class="analytics-continue-item">
+        <span>${analyticsEntryLabel(entry)}</span>
+        <em>${Math.round(Number(entry.progress || 0))}% · ${formatAnalyticsDate(entry.lastWatchedAt || entry.updatedAt)}</em>
+        <button class="analytics-danger-mini" type="button"
+          data-user-reset-progress="true"
+          data-user-id="${escapeHtml(user.uid)}"
+          data-entry-type="${escapeHtml(entry.type)}"
+          data-entry-id="${escapeHtml(entry.id)}"
+          data-entry-doc-id="${escapeHtml(entry.docId || "")}">Borrar progreso</button>
+      </li>
+    `)
     .join("") || `<li><span>Sin contenido en progreso</span><em>—</em></li>`;
   const historyHtml = sortByRecentDate(user.history)
     .map(entry => `<li><span>${analyticsEntryLabel(entry)}</span><strong>${Number(entry.playCount || 1)} play${Number(entry.playCount || 1) === 1 ? "" : "s"}</strong><em>${formatAnalyticsDate(entry.lastPlayedAt || entry.lastWatchedAt || entry.updatedAt)}</em></li>`)
@@ -2179,6 +2238,31 @@ $("closeAnalyticsTitle")?.addEventListener("click", () => $("analyticsTitleDialo
 $("closeAnalyticsUser")?.addEventListener("click", () => $("analyticsUserDialog")?.close());
 
 document.addEventListener("click", async (e) => {
+  const resetProgressBtn = e.target.closest("[data-user-reset-progress]");
+  if (resetProgressBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    const uid = resetProgressBtn.dataset.userId || "";
+    const entry = {
+      type: normalizeAnalyticsType(resetProgressBtn.dataset.entryType || ""),
+      id: resetProgressBtn.dataset.entryId || "",
+      docId: resetProgressBtn.dataset.entryDocId || ""
+    };
+    const ok = window.confirm("¿Borrar el progreso de este título para este usuario? El título volverá a aparecer como no reproducido para ese usuario.");
+    if (!ok) return;
+    resetProgressBtn.disabled = true;
+    resetProgressBtn.textContent = "Borrando...";
+    try {
+      await resetUserPlaybackProgress(uid, entry);
+    } catch (error) {
+      console.error("No se pudo borrar progreso del usuario", error);
+      alert("No se pudo borrar el progreso. Revisa reglas de Firebase para permitir escritura admin en users/{uid}.");
+      resetProgressBtn.disabled = false;
+      resetProgressBtn.textContent = "Borrar progreso";
+    }
+    return;
+  }
+
   const detailTab = e.target.closest("[data-user-detail-tab]");
   if (detailTab) {
     const tabName = detailTab.dataset.userDetailTab;

@@ -53,6 +53,9 @@ const CONTINUE_KEY = "womo_continue_watching";
 const MEMORY_CLEARED_KEY = "womo_memory_cleared";
 const MEMORY_CLEAR_SEEN_KEY = "womo_memory_clear_seen";
 
+// Womo completion threshold. Lowered from 98/95 to 90 so long credits do not keep titles stuck as in progress.
+const WOMO_COMPLETION_PROGRESS = 90;
+
 const FAVORITES_KEY = "womo_favorites";
 
 function loadFavoriteState() {
@@ -150,7 +153,7 @@ function womoFlushDeferredPlaybackUiWork() {
 
 async function upsertContinueItem(item, progress = null, playback = null) {
   if (window.__womoShuffleNoProgress || window.womoGlobalShuffleNoProgress) return;
-  if (item && (isItemCompleted(item) || Number(progress ?? item.progress ?? 0) >= 98)) {
+  if (item && (isItemCompleted(item) || Number(progress ?? item.progress ?? 0) >= WOMO_COMPLETION_PROGRESS)) {
     markPlayableCompleted(item);
     return;
   }
@@ -168,7 +171,7 @@ async function upsertContinueItem(item, progress = null, playback = null) {
   saveContinueState(state);
   const now = Date.now();
   const progressNumber = Number(newEntry.progress || 0);
-  if (playback || !womoShouldDeferPlaybackUiWork() || progressNumber >= 98 || now - womoLastContinueCloudSaveAt > 15000) {
+  if (playback || !womoShouldDeferPlaybackUiWork() || progressNumber >= WOMO_COMPLETION_PROGRESS || now - womoLastContinueCloudSaveAt > 15000) {
     womoLastContinueCloudSaveAt = now;
     await saveContinueEntryToCloud(newEntry, playback);
   }
@@ -606,7 +609,7 @@ function normalizeMovie(docSnap) {
     isFavorite: Boolean(data.isFavorite),
     createdAt: toMillis(data.createdAt),
     progress: data.progress || 0,
-    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= 98),
+    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= WOMO_COMPLETION_PROGRESS),
     published: data.published !== false,
     type: genre.toLowerCase().includes("concierto") ? "concert" : "movie"
   };
@@ -645,8 +648,8 @@ function normalizeSeries(docSnap) {
     isFavorite: Boolean(data.isFavorite),
     createdAt: toMillis(data.createdAt),
     progress: data.progress || 0,
-    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= 98),
-    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= 98),
+    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= WOMO_COMPLETION_PROGRESS),
+    completed: Boolean(data.completed || data.isCompleted || Number(data.progress || 0) >= WOMO_COMPLETION_PROGRESS),
     published: data.published !== false,
     type: "series"
   };
@@ -1820,7 +1823,7 @@ function getSeriesContinueLabel(item, episodes) {
     target = sorted.find(ep => {
       const key = episodeKey(item.id, ep.season, ep.episodeNumber, ep.id);
       const progress = Number(progressMap[key] ?? ep.progress ?? 0);
-      return progress > 0 && progress < 98;
+      return progress > 0 && progress < WOMO_COMPLETION_PROGRESS;
     });
   }
 
@@ -1828,7 +1831,7 @@ function getSeriesContinueLabel(item, episodes) {
     target = sorted.find(ep => {
       const key = episodeKey(item.id, ep.season, ep.episodeNumber, ep.id);
       const progress = Number(progressMap[key] ?? ep.progress ?? 0);
-      return progress < 98;
+      return progress < WOMO_COMPLETION_PROGRESS;
     }) || sorted[0];
   }
 
@@ -1836,7 +1839,7 @@ function getSeriesContinueLabel(item, episodes) {
   const episode = target?.episodeNumber || target?.episode || 1;
   const key = target ? episodeKey(item.id, target.season, target.episodeNumber, target.id) : "";
   const progress = target ? Number(progressMap[key] ?? target.progress ?? 0) : 0;
-  const started = Boolean(state) || (progress > 0 && progress < 98) || Number(item.progress || 0) > 0;
+  const started = Boolean(state) || (progress > 0 && progress < WOMO_COMPLETION_PROGRESS) || Number(item.progress || 0) > 0;
 
   return `${started ? "Continuar" : "Reproducir"} T${season} E${episode}`;
 }
@@ -1892,7 +1895,7 @@ function setPreviewButtonModeForItem(item) {
   primary.dataset.previewId = item.id;
   primary.dataset.seriesMode = "";
 
-  if (completed || progress >= 98) {
+  if (completed || progress >= WOMO_COMPLETION_PROGRESS) {
     primary.textContent = "Volver a ver";
     primary.dataset.completed = "true";
     if (restart) {
@@ -1902,7 +1905,7 @@ function setPreviewButtonModeForItem(item) {
     return;
   }
 
-  if (progress > 0 && progress < 98) {
+  if (progress > 0 && progress < WOMO_COMPLETION_PROGRESS) {
     primary.textContent = "Continuar";
     primary.dataset.completed = "false";
     if (restart) {
@@ -1997,7 +2000,7 @@ function getFirstUnfinishedEpisode() {
   if (!currentPreviewSeriesIdForEpisodes || !Array.isArray(currentPreviewEpisodesCache)) return null;
 
   return getSortedPreviewEpisodes().find(ep =>
-    getEpisodeStoredProgress(currentPreviewSeriesIdForEpisodes, ep) < 98
+    getEpisodeStoredProgress(currentPreviewSeriesIdForEpisodes, ep) < WOMO_COMPLETION_PROGRESS
   ) || null;
 }
 
@@ -2012,7 +2015,7 @@ function setSeriesPreviewButtonForEpisode(episode) {
   const progressMap = loadEpisodeProgress();
   const key = currentPreviewItem ? episodeKey(currentPreviewItem.id, episode.season, episode.episodeNumber, episode.id) : "";
   const progress = Number(progressMap[key] ?? episode.progress ?? 0);
-  const started = progress > 0 && progress < 98;
+  const started = progress > 0 && progress < WOMO_COMPLETION_PROGRESS;
 
   primary.textContent = `${started ? "Continuar" : "Reproducir"} T${episode.season || 1} E${episode.episodeNumber || episode.episode || 1}`;
   primary.dataset.seriesMode = "true";
@@ -2354,7 +2357,7 @@ function womoBuildPlaybackSnapshot(video, forceCompleted = false) {
   const current = Number(video.currentTime || 0);
   if (!forceCompleted && (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(current) || current < 0)) return null;
   const rawProgress = forceCompleted ? 100 : Math.max(0, Math.min(100, (current / duration) * 100));
-  const completed = forceCompleted || rawProgress >= 98;
+  const completed = forceCompleted || rawProgress >= WOMO_COMPLETION_PROGRESS;
   return {
     progress: completed ? 100 : rawProgress,
     positionSeconds: completed ? 0 : Math.max(0, current),
@@ -2549,6 +2552,40 @@ async function saveCompletedItemToCloud(item) {
   }
 }
 
+async function clearCompletedItemFromCloud(item) {
+  if (!item || !item.id || !item.type) return;
+  try {
+    const userRef = getUserDocRef && getUserDocRef();
+    if (!userRef) return;
+    const ids = [
+      `${item.type}:${item.id}`,
+      safeDocId(`${item.type}_${item.id}`),
+      item.id
+    ].filter(Boolean);
+    await Promise.all(ids.map(id => userRef.collection("completed").doc(id).delete().catch(() => {})));
+  } catch (error) {
+    console.warn("No se pudo limpiar completado en cloud.", error);
+  }
+}
+
+async function prepareReplayAsNewProgress(item, episode = null) {
+  if (!item || item.type === "series") return;
+  try {
+    setItemCompleted(item, false);
+    item.completed = false;
+    item.progress = 1;
+    await clearCompletedItemFromCloud(item);
+    await upsertContinueItem(item, 1, {
+      positionSeconds: 0,
+      durationSeconds: 0,
+      positionUpdatedAt: Date.now(),
+      completed: false
+    });
+  } catch (error) {
+    console.warn("No se pudo preparar replay como progreso nuevo.", error);
+  }
+}
+
 function markPlayableCompleted(item) {
   if (!item) return;
   setItemCompleted(item, true);
@@ -2581,7 +2618,7 @@ function completedKeyForItem(item) {
 
 function isItemCompleted(item) {
   if (!item) return false;
-  if (item.completed === true || Number(item.progress || 0) >= 98) return true;
+  if (item.completed === true || Number(item.progress || 0) >= WOMO_COMPLETION_PROGRESS) return true;
   const map = loadCompletedItems();
   return Boolean(map[completedKeyForItem(item)]);
 }
@@ -2598,7 +2635,7 @@ function setItemCompleted(item, completed = true) {
 }
 
 function isWomoComplete(progress) {
-  return Number(progress || 0) >= 98;
+  return Number(progress || 0) >= WOMO_COMPLETION_PROGRESS;
 }
 
 function removeContinueItemFor(item) {
@@ -4039,6 +4076,15 @@ async function openPlayer(item, options = {}) {
     noProgress: Boolean(options.noProgress)
   };
 
+  const replayingCompletedPlayable = !episode
+    && !isShufflePlayback
+    && item?.type !== "series"
+    && (isItemCompleted(item) || Number(item?.progress || 0) >= WOMO_COMPLETION_PROGRESS)
+    && (!Object.prototype.hasOwnProperty.call(options, "startAt") || Number(options.startAt) === 0);
+  if (replayingCompletedPlayable) {
+    await prepareReplayAsNewProgress(item, null);
+  }
+
   try {
     if (overlay) overlay.dataset.shuffleNoProgress = isShufflePlayback ? "true" : "false";
 
@@ -4112,7 +4158,7 @@ async function openPlayer(item, options = {}) {
       wmoLoadOptions.startTime = explicitStartAt;
     } else if (hasExactCloudPosition && savedPositionSeconds !== null) {
       wmoLoadOptions.startTime = savedPositionSeconds;
-    } else if (!shouldIgnoreSavedProgress && savedProgress > 0 && savedProgress < 98) {
+    } else if (!shouldIgnoreSavedProgress && savedProgress > 0 && savedProgress < WOMO_COMPLETION_PROGRESS) {
       // Legacy Firebase rows may only contain percentage.
       wmoLoadOptions.startProgress = savedProgress;
     } else if (shouldIgnoreSavedProgress) {
@@ -4189,7 +4235,7 @@ async function openPlayer(item, options = {}) {
         video.currentTime = explicitStartAt;
       } else if (hasExactCloudPosition && savedPositionSeconds !== null && savedPositionSeconds > 0 && video.duration && isFinite(video.duration)) {
         video.currentTime = Math.min(savedPositionSeconds, Math.max(0, video.duration - 0.25));
-      } else if (savedProgress > 0 && savedProgress < 98 && video.duration && isFinite(video.duration)) {
+      } else if (savedProgress > 0 && savedProgress < WOMO_COMPLETION_PROGRESS && video.duration && isFinite(video.duration)) {
         video.currentTime = (savedProgress / 100) * video.duration;
       } else if (shouldIgnoreSavedProgress) {
         video.currentTime = 0;
@@ -4628,7 +4674,7 @@ async function loadPlaybackResumeDirectFromCloud(item, episode = null) {
 
     const data = snapshot.data() || {};
     const progress = Math.max(0, Math.min(100, Number(data.progress || 0)));
-    if (progress >= 98) return { ok: true, progress: 0, positionSeconds: 0, durationSeconds: Number(data.durationSeconds || 0), hasExactPosition: true };
+    if (progress >= WOMO_COMPLETION_PROGRESS) return { ok: true, progress: 0, positionSeconds: 0, durationSeconds: Number(data.durationSeconds || 0), hasExactPosition: true };
 
     const hasExact = Object.prototype.hasOwnProperty.call(data, "positionSeconds")
       && data.positionSeconds !== null
@@ -4668,6 +4714,10 @@ async function resetPlaybackProgressInCloud(item, episode = null) {
     map[episodeKey(item.id, episode.season, episode.episodeNumber, episode.id)] = 0;
     localStorage.setItem(EPISODE_PROGRESS_KEY, JSON.stringify(map));
   } else {
+    setItemCompleted(item, false);
+    item.completed = false;
+    item.progress = 0;
+    await clearCompletedItemFromCloud(item);
     await saveContinueEntryToCloud({ id: item.id, type: item.type, progress: 0, lastWatchedAt: Date.now() }, playback);
     const state = loadContinueState().filter(entry => !(entry.id === item.id && entry.type === item.type));
     state.unshift({ id: item.id, type: item.type, progress: 0, lastWatchedAt: Date.now() });
@@ -4714,7 +4764,7 @@ document.addEventListener("timeupdate", (event) => {
   const current = Number(video.currentTime || 0);
   if (!duration || !current) return;
   const pct = (current / duration) * 100;
-  if (pct >= 98) {
+  if (pct >= WOMO_COMPLETION_PROGRESS) {
     saveActiveEpisodeProgress(true, true);
   }
 }, true);
@@ -4745,7 +4795,7 @@ document.addEventListener("DOMContentLoaded", () => {
   try {
     const filtered = getContinueStorageList().filter(entry => {
       const item = allItemsByContinueKey.get(`${entry.type}:${entry.id}`);
-      return item && !isItemCompleted(item) && Number(entry.progress || item.progress || 0) < 98;
+      return item && !isItemCompleted(item) && Number(entry.progress || item.progress || 0) < WOMO_COMPLETION_PROGRESS;
     });
     setContinueStorageList(filtered);
     refreshContinueWatchingRow();

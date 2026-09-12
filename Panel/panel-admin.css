@@ -823,3 +823,36 @@ dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgb
   .media-health-series-toggle{align-items:flex-start}
   .media-health-series-episodes{padding-left:12px}
 }
+
+/* Analytics progress reset */
+.analytics-continue-item{
+  grid-template-columns:minmax(0,1fr) auto auto;
+  align-items:center;
+}
+.analytics-danger-mini{
+  border:1px solid rgba(255,91,91,.55);
+  background:rgba(255,91,91,.08);
+  color:#ff8f8f;
+  border-radius:999px;
+  padding:7px 10px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.analytics-danger-mini:hover{
+  background:rgba(255,91,91,.16);
+}
+.analytics-danger-mini:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+@media(max-width:760px){
+  .analytics-continue-item{
+    grid-template-columns:1fr;
+    align-items:start;
+  }
+  .analytics-danger-mini{
+    width:max-content;
+  }
+}
