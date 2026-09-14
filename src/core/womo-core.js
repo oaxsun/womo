@@ -1483,6 +1483,209 @@ async function sendPasswordResetEmail() {
   }
 }
 
+
+/* Womo TV Receiver session - phone/controller side */
+const WOMO_TV_SESSION_ID_KEY = "womo_tv_session_id";
+const WOMO_TV_SESSION_CODE_KEY = "womo_tv_session_code";
+
+function womoGetStoredTvSessionId() {
+  return localStorage.getItem(WOMO_TV_SESSION_ID_KEY) || "";
+}
+
+function womoGetStoredTvSessionCode() {
+  return localStorage.getItem(WOMO_TV_SESSION_CODE_KEY) || "";
+}
+
+function womoHasStoredTvSession() {
+  return Boolean(womoGetStoredTvSessionId());
+}
+
+function womoSetTvSessionStatus(message, connected = false) {
+  const status = document.getElementById("tvSessionStatus");
+  const disconnect = document.getElementById("disconnectTvSessionBtn");
+  if (status) {
+    status.textContent = message || "Vincula una Smart TV con el código que aparece en pantalla.";
+    status.classList.toggle("is-connected", Boolean(connected));
+  }
+  if (disconnect) disconnect.hidden = !connected;
+}
+
+async function womoRefreshTvSessionStatus() {
+  const sessionId = womoGetStoredTvSessionId();
+  const code = womoGetStoredTvSessionCode();
+  if (!sessionId) {
+    womoSetTvSessionStatus("Vincula una Smart TV con el código que aparece en pantalla.", false);
+    return false;
+  }
+
+  try {
+    const user = firebase.auth().currentUser;
+    const snap = await db.collection("tvSessions").doc(sessionId).get();
+    const data = snap.exists ? (snap.data() || {}) : null;
+    if (!data || (data.pairedBy && user && data.pairedBy !== user.uid)) {
+      localStorage.removeItem(WOMO_TV_SESSION_ID_KEY);
+      localStorage.removeItem(WOMO_TV_SESSION_CODE_KEY);
+      womoSetTvSessionStatus("Vincula una Smart TV con el código que aparece en pantalla.", false);
+      return false;
+    }
+    const label = code || data.code || sessionId.slice(-6);
+    womoSetTvSessionStatus(`TV vinculada · código ${label}`, true);
+    return true;
+  } catch (error) {
+    console.warn("No se pudo verificar la sesión TV.", error);
+    womoSetTvSessionStatus("TV vinculada localmente. Si no responde, desvincula y vuelve a intentar.", true);
+    return true;
+  }
+}
+
+async function womoStartTvSessionFromCode() {
+  const user = firebase.auth().currentUser;
+  if (!user) {
+    alert("Inicia sesión para vincular una TV.");
+    return;
+  }
+
+  const raw = prompt("Ingresa el código que aparece en tu TV");
+  const code = String(raw || "").replace(/\D/g, "").slice(0, 6);
+  if (!code || code.length < 4) return;
+
+  const button = document.getElementById("startTvSessionBtn");
+  const original = button ? button.textContent : "";
+  try {
+    if (button) { button.disabled = true; button.textContent = "Vinculando..."; }
+    const snapshot = await db.collection("tvSessions")
+      .where("code", "==", code)
+      .limit(1)
+      .get();
+    if (snapshot.empty) {
+      alert("No encontramos una TV con ese código. Revisa el número e intenta de nuevo.");
+      return;
+    }
+
+    const doc = snapshot.docs[0];
+    const data = doc.data() || {};
+    const expiresAt = Number(data.expiresAt || 0);
+    if (expiresAt && expiresAt < Date.now()) {
+      alert("Ese código ya expiró. Recarga Womo en la TV para generar uno nuevo.");
+      return;
+    }
+
+    if (data.pairedBy && data.pairedBy !== user.uid) {
+      alert("Esa TV ya está vinculada con otro usuario.");
+      return;
+    }
+
+    await doc.ref.set({
+      status: "paired",
+      pairedBy: user.uid,
+      pairedEmail: user.email || "",
+      pairedAt: Date.now(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      controllerLastSeenAt: Date.now()
+    }, { merge: true });
+
+    localStorage.setItem(WOMO_TV_SESSION_ID_KEY, doc.id);
+    localStorage.setItem(WOMO_TV_SESSION_CODE_KEY, code);
+    womoSetTvSessionStatus(`TV vinculada · código ${code}`, true);
+    alert("TV vinculada. Ahora abre un título y usa Reproducir en TV.");
+  } catch (error) {
+    console.error("No se pudo vincular la TV.", error);
+    alert("No se pudo vincular la TV. Revisa reglas de Firebase para tvSessions e intenta de nuevo.");
+  } finally {
+    if (button) { button.disabled = false; button.textContent = original || "Ingresar código"; }
+  }
+}
+
+async function womoDisconnectTvSession() {
+  const sessionId = womoGetStoredTvSessionId();
+  localStorage.removeItem(WOMO_TV_SESSION_ID_KEY);
+  localStorage.removeItem(WOMO_TV_SESSION_CODE_KEY);
+  womoSetTvSessionStatus("Vincula una Smart TV con el código que aparece en pantalla.", false);
+  try {
+    if (sessionId) await db.collection("tvSessions").doc(sessionId).set({
+      status: "disconnected",
+      pairedBy: null,
+      disconnectedAt: Date.now(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (_) {}
+}
+
+function womoBuildTvMediaPayload(item, episode = null, startAt = 0) {
+  const url = getPlayableUrl(item, episode);
+  return {
+    id: item?.id || "",
+    type: item?.type || "movie",
+    title: item?.title || "",
+    poster: item?.poster || "",
+    backdrop: item?.backdropUrl || item?.backdrop || "",
+    url,
+    startAt: Number(startAt || 0),
+    episode: episode ? {
+      id: episode.id || "",
+      title: episode.title || "",
+      season: Number(episode.season || episode.seasonNumber || 1),
+      episodeNumber: Number(episode.episodeNumber || episode.episode || episode.number || 1),
+      url
+    } : null
+  };
+}
+
+async function womoSendPlayToTv(item, episode = null, startAt = 0) {
+  const sessionId = womoGetStoredTvSessionId();
+  const user = firebase.auth().currentUser;
+  if (!sessionId) {
+    alert("Primero vincula una TV desde Configuración.");
+    return false;
+  }
+  if (!user) {
+    alert("Inicia sesión para controlar la TV.");
+    return false;
+  }
+  const media = womoBuildTvMediaPayload(item, episode, startAt);
+  if (!media.url) {
+    alert("Este título todavía no tiene video configurado.");
+    return false;
+  }
+  try {
+    const commandId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await db.collection("tvSessions").doc(sessionId).set({
+      status: "paired",
+      pairedBy: user.uid,
+      pairedEmail: user.email || "",
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      controllerLastSeenAt: Date.now(),
+      currentCommand: {
+        id: commandId,
+        type: "play",
+        media,
+        createdAt: Date.now(),
+        createdBy: user.uid
+      }
+    }, { merge: true });
+    alert("Enviado a la TV.");
+    return true;
+  } catch (error) {
+    console.error("No se pudo enviar a la TV.", error);
+    alert("No se pudo enviar a la TV. Desvincula y vuelve a vincular si la sesión expiró.");
+    return false;
+  }
+}
+
+function womoSetupTvSessionSettings() {
+  const startBtn = document.getElementById("startTvSessionBtn");
+  const disconnectBtn = document.getElementById("disconnectTvSessionBtn");
+  if (startBtn && startBtn.dataset.ready !== "true") {
+    startBtn.dataset.ready = "true";
+    startBtn.addEventListener("click", womoStartTvSessionFromCode);
+  }
+  if (disconnectBtn && disconnectBtn.dataset.ready !== "true") {
+    disconnectBtn.dataset.ready = "true";
+    disconnectBtn.addEventListener("click", womoDisconnectTvSession);
+  }
+  womoRefreshTvSessionStatus();
+}
+
 function setupSettings() {
   const resetPasswordBtn = document.getElementById("resetPasswordBtn");
   const clearBtn = document.getElementById("clearMemoryBtn");
@@ -1508,6 +1711,8 @@ function setupSettings() {
     logoutBtn.dataset.ready = "true";
     logoutBtn.addEventListener("click", logoutCurrentDevice);
   }
+
+  if (typeof womoSetupTvSessionSettings === "function") womoSetupTvSessionSettings();
 }
 
 
@@ -2004,6 +2209,39 @@ function getFirstUnfinishedEpisode() {
   ) || null;
 }
 
+function getPreferredSeriesPreviewEpisode(seriesId, episodes, preferredSeason = null) {
+  const sorted = [...(episodes || [])].sort((a, b) =>
+    (Number(a.season || a.seasonNumber || 1) - Number(b.season || b.seasonNumber || 1)) ||
+    (Number(a.episodeNumber || a.episode || 1) - Number(b.episodeNumber || b.episode || 1))
+  );
+  if (!seriesId || !sorted.length) return null;
+
+  const state = loadContinueState().find(x => x.id === seriesId && x.type === 'series');
+  const seasonFilter = preferredSeason != null ? Number(preferredSeason) : null;
+  const inSeason = seasonFilter != null
+    ? sorted.filter(ep => Number(ep.season || ep.seasonNumber || 1) === seasonFilter)
+    : sorted;
+  const pool = inSeason.length ? inSeason : sorted;
+
+  if (state && seasonFilter == null) {
+    const stateEpisode = sorted.find(ep =>
+      Number(ep.season || ep.seasonNumber || 1) === Number(state.season || 1) &&
+      Number(ep.episodeNumber || ep.episode || 1) === Number(state.episode || state.episodeNumber || 1)
+    );
+    if (stateEpisode) {
+      const progress = getEpisodeStoredProgress(seriesId, stateEpisode);
+      if (progress > 0 && progress < WOMO_COMPLETION_PROGRESS) return stateEpisode;
+      const next = sorted.find(ep => getEpisodeStoredProgress(seriesId, ep) < WOMO_COMPLETION_PROGRESS);
+      return next || stateEpisode;
+    }
+  }
+
+  return pool.find(ep => {
+    const progress = getEpisodeStoredProgress(seriesId, ep);
+    return progress > 0 && progress < WOMO_COMPLETION_PROGRESS;
+  }) || pool.find(ep => getEpisodeStoredProgress(seriesId, ep) < WOMO_COMPLETION_PROGRESS) || pool[0] || null;
+}
+
 
 
 
@@ -2113,15 +2351,14 @@ const extra = document.getElementById('previewExtra');
       if (seriesItem) item.addEventListener('click', () => openPlayer(seriesItem, { episode: ep }));
       list.appendChild(item);
     });
-    syncSeriesPreviewPrimaryButton();
   }
 
-  function activateSeason(season) {
+  function activateSeason(season, preferredEpisode = null) {
     tabs.querySelectorAll('.season-tab').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.season === String(season));
     });
     drawSeason(season);
-    syncSeriesPreviewPrimaryButton();
+    syncSeriesPreviewPrimaryButton(preferredEpisode || getPreferredSeriesPreviewEpisode(seriesId, episodes, season));
   }
 
   tabs.addEventListener('click', (event) => {
@@ -2133,8 +2370,8 @@ const extra = document.getElementById('previewExtra');
   block.appendChild(tabs);
   block.appendChild(list);
   recs.appendChild(block);
-  activateSeason(seasons[0]);
-  syncSeriesPreviewPrimaryButton();
+  const initialEpisode = getPreferredSeriesPreviewEpisode(seriesId, episodes);
+  activateSeason(initialEpisode?.season || seasons[0], initialEpisode);
 }
 
 
@@ -2230,13 +2467,31 @@ async function openPreview(item) {
 
   if (item.type === 'series') {
     const episodes = await readSeriesEpisodes(item.id);
-    actions.innerHTML = `<button class="primary" data-preview-play>${getSeriesContinueLabel(item, episodes)}</button><button class="secondary" data-preview-shuffle>SHUFFLE</button>`;
+    actions.innerHTML = `<button class="primary" data-preview-play>${getSeriesContinueLabel(item, episodes)}</button><button class="secondary" data-preview-shuffle>SHUFFLE</button>${womoHasStoredTvSession() ? '<button class="secondary tv-session-play" data-preview-tv>Reproducir en TV</button>' : ''}`;
     const currentSeason = state?.season || episodes[0]?.season || 1;
     const currentEpisodeNumber = state?.episode || episodes[0]?.episodeNumber || 1;
     const currentEpisode = episodes.find(ep => ep.season === Number(currentSeason) && ep.episodeNumber === Number(currentEpisodeNumber)) || episodes[0] || null;
     const playBtn = actions.querySelector('[data-preview-play]');
     const shuffleBtn = actions.querySelector('[data-preview-shuffle]');
-    if (playBtn) playBtn.onclick = () => openPlayer(item, { episode: currentEpisode });
+    const tvBtn = actions.querySelector('[data-preview-tv]');
+    const resolveSelectedEpisodeForPreview = () => {
+      const selectedSeason = Number(playBtn?.dataset.season || currentEpisode?.season || currentSeason || 1);
+      const selectedEpisodeNumber = Number(playBtn?.dataset.episode || currentEpisode?.episodeNumber || currentEpisode?.episode || currentEpisodeNumber || 1);
+      const selectedEpisodeId = playBtn?.dataset.episodeId || "";
+      return episodes.find(ep =>
+        Number(ep.season || ep.seasonNumber || 1) === selectedSeason &&
+        Number(ep.episodeNumber || ep.episode || 1) === selectedEpisodeNumber &&
+        (!selectedEpisodeId || String(ep.id || "") === String(selectedEpisodeId))
+      ) || currentEpisode;
+    };
+    if (playBtn) playBtn.onclick = () => {
+      const selectedEpisode = resolveSelectedEpisodeForPreview();
+      openPlayer(item, { episode: selectedEpisode });
+    };
+    if (tvBtn) {
+      tvBtn.setAttribute('type', 'button');
+      tvBtn.onclick = () => womoSendPlayToTv(item, resolveSelectedEpisodeForPreview(), 0);
+    }
     if (shuffleBtn) {
       shuffleBtn.setAttribute('type', 'button');
       shuffleBtn.onclick = async (event) => {
@@ -2273,15 +2528,20 @@ async function openPreview(item) {
     renderEpisodes(item.id, episodes);
   } else {
     actions.innerHTML = state
-      ? '<button class="primary" data-preview-play>Continuar</button><button class="secondary" data-preview-restart>Reiniciar</button>'
-      : '<button class="primary" data-preview-play>Reproducir</button>';
+      ? `<button class="primary" data-preview-play>Continuar</button><button class="secondary" data-preview-restart>Reiniciar</button>${womoHasStoredTvSession() ? '<button class="secondary tv-session-play" data-preview-tv>Reproducir en TV</button>' : ''}`
+      : `<button class="primary" data-preview-play>Reproducir</button>${womoHasStoredTvSession() ? '<button class="secondary tv-session-play" data-preview-tv>Reproducir en TV</button>' : ''}`;
 
     const playBtn = actions.querySelector('[data-preview-play]');
     const restartBtn = actions.querySelector('[data-preview-restart]');
+    const tvBtn = actions.querySelector('[data-preview-tv]');
     if (playBtn) playBtn.onclick = () => openPlayer(item);
     if (restartBtn) restartBtn.onclick = () => {
       openPlayer(item, { startAt: 0 });
     };
+    if (tvBtn) {
+      tvBtn.setAttribute('type', 'button');
+      tvBtn.onclick = () => womoSendPlayToTv(item, null, 0);
+    }
 
     renderPreviewRecommendationsForItem(item);
   }

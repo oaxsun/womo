@@ -5,7 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Web</title>
 
-  <link rel="stylesheet" href="styles.css?v=48" />
+  <link rel="stylesheet" href="styles.css?v=52" />
+
+  <script>
+    (function(){
+      try {
+        var params = new URLSearchParams(window.location.search || "");
+        var ua = String(navigator.userAgent || "").toLowerCase();
+        var forced = params.has("tv") || params.has("womoTv") || params.has("tvapp");
+        var looksLikeTv = /(smart-tv|smarttv|tizen|webos|netcast|viera|bravia|hbbtv|roku|firetv|aftb|aftm|aftt|hisense|vidaa|appletv|googletv|crkey)/i.test(ua);
+        if ((forced || looksLikeTv) && !/\/tvapp\//.test(window.location.pathname)) {
+          var base = window.location.pathname.replace(/[^\/]*$/, "");
+          window.location.replace(base + "tvapp/" + window.location.search);
+        }
+      } catch (_) {}
+    })();
+  </script>
 </head>
 <body>
 
@@ -218,6 +233,18 @@
           <button type="button" id="logoutEverywhereBtn" class="settings-action secondary">Cerrar en todos lados</button>
         </div>
 
+
+        <div class="settings-card tv-session-settings-card">
+          <div>
+            <h2>Iniciar sesión TV</h2>
+            <p id="tvSessionStatus">Vincula una Smart TV con el código que aparece en pantalla.</p>
+          </div>
+          <div class="settings-tv-actions">
+            <button type="button" id="startTvSessionBtn" class="settings-action secondary">Ingresar código</button>
+            <button type="button" id="disconnectTvSessionBtn" class="settings-action danger" hidden>Desvincular</button>
+          </div>
+        </div>
+
         <div class="settings-card">
           <div>
             <h2>Cerrar sesión</h2>
@@ -227,7 +254,7 @@
         </div>
 
         <div class="app-version-note" aria-label="Versión de la app">
-          Womo Web v1.1209.1727
+          Womo Web v1.1309.1551
         </div>
       </div>
     </section>
@@ -285,8 +312,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="src/core/audioManager.js?v=49"></script>
-  <script src="src/core/wmoMediaEngine.js?v=4"></script>
-  <script src="src/core/womo-core.js?v=51"></script>
+  <script src="src/core/audioManager.js?v=52"></script>
+  <script src="src/core/wmoMediaEngine.js?v=5"></script>
+  <script src="src/core/womo-core.js?v=52"></script>
 </body>
 </html>

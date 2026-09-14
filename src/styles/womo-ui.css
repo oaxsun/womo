@@ -9356,3 +9356,20 @@ body.player-open{
 #womoPlayer::-webkit-media-controls-download-button{
   display:none !important;
 }
+
+
+/* TV session settings */
+.settings-tv-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.tv-session-settings-card #tvSessionStatus.is-connected {
+  color: var(--accent);
+}
+.preview-actions .tv-session-play {
+  border-color: rgba(215,255,0,.65);
+  color: var(--accent);
+}
