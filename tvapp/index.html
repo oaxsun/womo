@@ -4,17 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo TV</title>
-  <link rel="stylesheet" href="tv.css?v=3" />
+  <link rel="stylesheet" href="tv.css?v=4" />
 </head>
 <body>
   <main class="tv-shell">
     <section id="pairScreen" class="tv-pair-screen">
       <img src="assets/logo.svg" alt="Womo" class="tv-logo" />
       <p class="tv-eyebrow">Womo TV</p>
-      <h1>Vincula esta pantalla</h1>
-      <p class="tv-copy">Abre Womo en tu celular, entra a Configuración y toca <strong>Iniciar sesión TV</strong>.</p>
-      <div id="tvCode" class="tv-code">------</div>
-      <p id="tvStatus" class="tv-status">Creando sesión...</p>
+      <h1>Ingresa tu código</h1>
+      <p class="tv-copy">Abre Womo en tu celular, entra a Configuración, toca <strong>Iniciar sesión TV</strong> y escribe aquí el código.</p>
+      <form id="tvPairForm" class="tv-pin-form" autocomplete="off">
+        <input id="tvCodeInput" class="tv-code-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="______" aria-label="Código TV" />
+        <button id="tvPairBtn" class="tv-pair-btn" type="submit">Conectar</button>
+      </form>
+      <p id="tvStatus" class="tv-status">Esperando código del celular...</p>
     </section>
 
     <section id="playerScreen" class="tv-player-screen" hidden>
@@ -31,10 +34,9 @@
   </main>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script src="../src/core/wmoMediaEngine.js?v=5"></script>
-  <script src="tv.js?v=3"></script>
+  <script src="tv.js?v=4"></script>
 </body>
 </html>

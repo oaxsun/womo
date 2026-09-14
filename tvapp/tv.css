@@ -25,3 +25,39 @@ h1 { margin: 0; font-size: clamp(46px, 6vw, 86px); line-height: .95; letter-spac
 .tv-player-topbar p { margin: 0; color: var(--muted); font-size: 18px; }
 .tv-player-message { position: fixed; z-index: 5; left: 50%; bottom: 54px; transform: translateX(-50%); padding: 16px 22px; border-radius: 999px; background: rgba(0,0,0,.65); color: #fff; font-size: 20px; opacity: 0; transition: opacity .2s ease; }
 .tv-player-message.show { opacity: 1; }
+
+.tv-pin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  align-items: center;
+  margin-top: 6px;
+}
+.tv-code-input {
+  width: min(520px, 78vw);
+  padding: 28px 42px;
+  border: 0;
+  outline: none;
+  border-radius: 28px;
+  background: #fff;
+  color: #090909;
+  font-size: clamp(64px, 8vw, 112px);
+  line-height: 1;
+  letter-spacing: .14em;
+  font-weight: 950;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 12px rgba(255,255,255,.07), 0 30px 80px rgba(0,0,0,.42);
+}
+.tv-code-input::placeholder { color: rgba(0,0,0,.25); }
+.tv-pair-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 18px 34px;
+  background: var(--accent);
+  color: #111;
+  font-size: 22px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.tv-pair-btn:disabled { opacity: .55; cursor: wait; }

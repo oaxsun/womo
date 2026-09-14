@@ -1,22 +1,24 @@
-# Womo TV Receiver Session v1
+# Womo Web TV Receiver - Phone PIN Session
 
-Primera versión del modo Womo Web TV como receiver.
+Esta versión usa un flujo sin Anonymous Auth.
 
 ## Flujo
 
-1. La Smart TV entra automáticamente a `/tvapp/` cuando el navegador parece ser TV, o manualmente con `?tv=1`.
-2. `/tvapp/` crea una sesión temporal en `tvSessions` y muestra un código numérico de 6 dígitos.
-3. En Womo Web normal, el usuario abre Configuración -> Iniciar sesión TV e ingresa el código.
-4. El teléfono queda vinculado como controlador.
-5. En el preview de películas, conciertos o episodios aparece `Reproducir en TV` si existe una sesión activa.
-6. La TV recibe el comando y reproduce el media URL enviado por el teléfono.
+1. El usuario abre Womo Web normal en celular/desktop con su cuenta real.
+2. En Configuración toca **Iniciar sesión TV / Generar código**.
+3. Womo crea `tvSessions/{codigo}` desde el usuario autenticado.
+4. La Smart TV entra a `/tvapp/` y muestra un input de PIN.
+5. El usuario escribe el código generado desde el celular.
+6. La TV escucha esa sesión y reproduce los comandos enviados desde el celular.
+
+La TV no navega contenido. Solo funciona como receiver/reproductor.
 
 ## Firestore
 
 Colección nueva:
 
 ```txt
-tvSessions/{sessionId}
+tvSessions/{code}
 ```
 
 Campos principales:
@@ -24,45 +26,35 @@ Campos principales:
 ```json
 {
   "code": "123456",
-  "status": "waiting|paired|disconnected",
-  "pairedBy": "uid",
-  "pairedEmail": "email",
-  "currentCommand": {
-    "id": "timestamp_random",
-    "type": "play",
-    "media": {
-      "id": "mediaId",
-      "type": "movie|series|concert",
-      "title": "Titulo",
-      "url": "https://...",
-      "startAt": 0,
-      "episode": null
-    }
+  "status": "waiting_tv",
+  "createdBy": "uid-del-usuario",
+  "createdAt": 0,
+  "expiresAt": 0,
+  "currentCommand": null,
+  "playerState": {
+    "status": "waiting_tv"
   }
 }
 ```
 
-## Reglas requeridas
+## Reglas iniciales para pruebas privadas
 
-Esta primera versión espera que la TV pueda crear y escuchar una sesión. Lo más práctico es activar Anonymous Auth en Firebase para la TV y permitir operaciones sobre `tvSessions`.
-
-Ejemplo básico para Womo privado:
+Como la TV entra sin Firebase Auth, necesita leer/actualizar `tvSessions` por código. Para la primera versión privada se puede usar:
 
 ```js
 match /tvSessions/{sessionId} {
-  allow create: if request.auth != null;
-  allow read: if request.auth != null;
-  allow update: if request.auth != null;
-  allow delete: if false;
+  allow read: if true;
+  allow create: if isSignedIn();
+  allow update: if true;
+  allow delete: if isSignedIn();
 }
 ```
 
-En una versión futura se pueden endurecer reglas por `pairedBy`, expiración y ownership del documento.
+Esto evita Anonymous Auth, pero deja `tvSessions` accesible por PIN. El PIN es temporal y no contiene catálogo ni datos sensibles. Más adelante se puede mover esta validación a PHP para endurecer seguridad.
 
-## Limitaciones v1
+## Notas
 
-- Sin QR todavía.
-- La TV no navega contenido; solo recibe comandos.
-- La sesión se vincula por código numérico.
-- El teléfono selecciona contenido y manda reproducción.
-- Progreso global en TV se deja para una fase posterior, para no abrir escrituras cross-user desde una sesión anónima.
+- No se usa Anonymous Auth.
+- No se activa login desde TV.
+- El usuario real es el que genera el PIN desde Womo Web.
+- El receiver conserva compatibilidad con `.wmo`, `.mp4` y `.m3u8`.

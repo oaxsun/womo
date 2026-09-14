@@ -1487,6 +1487,7 @@ async function sendPasswordResetEmail() {
 /* Womo TV Receiver session - phone/controller side */
 const WOMO_TV_SESSION_ID_KEY = "womo_tv_session_id";
 const WOMO_TV_SESSION_CODE_KEY = "womo_tv_session_code";
+const WOMO_TV_SESSION_TTL_MS = 30 * 60 * 1000;
 
 function womoGetStoredTvSessionId() {
   return localStorage.getItem(WOMO_TV_SESSION_ID_KEY) || "";
@@ -1500,21 +1501,27 @@ function womoHasStoredTvSession() {
   return Boolean(womoGetStoredTvSessionId());
 }
 
+function womoGenerateTvCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
 function womoSetTvSessionStatus(message, connected = false) {
   const status = document.getElementById("tvSessionStatus");
   const disconnect = document.getElementById("disconnectTvSessionBtn");
+  const startBtn = document.getElementById("startTvSessionBtn");
   if (status) {
-    status.textContent = message || "Vincula una Smart TV con el código que aparece en pantalla.";
+    status.textContent = message || "Genera un código y escríbelo en Womo TV para vincular esta sesión.";
     status.classList.toggle("is-connected", Boolean(connected));
   }
   if (disconnect) disconnect.hidden = !connected;
+  if (startBtn) startBtn.textContent = connected ? "Generar nuevo código" : "Generar código";
 }
 
 async function womoRefreshTvSessionStatus() {
   const sessionId = womoGetStoredTvSessionId();
   const code = womoGetStoredTvSessionCode();
   if (!sessionId) {
-    womoSetTvSessionStatus("Vincula una Smart TV con el código que aparece en pantalla.", false);
+    womoSetTvSessionStatus("Genera un código y escríbelo en Womo TV para vincular esta sesión.", false);
     return false;
   }
 
@@ -1522,77 +1529,82 @@ async function womoRefreshTvSessionStatus() {
     const user = firebase.auth().currentUser;
     const snap = await db.collection("tvSessions").doc(sessionId).get();
     const data = snap.exists ? (snap.data() || {}) : null;
-    if (!data || (data.pairedBy && user && data.pairedBy !== user.uid)) {
+    if (!data || (data.createdBy && user && data.createdBy !== user.uid)) {
       localStorage.removeItem(WOMO_TV_SESSION_ID_KEY);
       localStorage.removeItem(WOMO_TV_SESSION_CODE_KEY);
-      womoSetTvSessionStatus("Vincula una Smart TV con el código que aparece en pantalla.", false);
+      womoSetTvSessionStatus("Genera un código y escríbelo en Womo TV para vincular esta sesión.", false);
       return false;
     }
-    const label = code || data.code || sessionId.slice(-6);
-    womoSetTvSessionStatus(`TV vinculada · código ${label}`, true);
+    const expiresAt = Number(data.expiresAt || 0);
+    if (expiresAt && expiresAt < Date.now()) {
+      localStorage.removeItem(WOMO_TV_SESSION_ID_KEY);
+      localStorage.removeItem(WOMO_TV_SESSION_CODE_KEY);
+      womoSetTvSessionStatus("El código expiró. Genera uno nuevo para vincular Womo TV.", false);
+      return false;
+    }
+    const label = code || data.code || sessionId;
+    const connected = data.status === "paired" || data.status === "tv_connected";
+    womoSetTvSessionStatus(connected ? `TV vinculada · código ${label}` : `Código TV activo: ${label}. Escríbelo en Womo TV.`, true);
     return true;
   } catch (error) {
     console.warn("No se pudo verificar la sesión TV.", error);
-    womoSetTvSessionStatus("TV vinculada localmente. Si no responde, desvincula y vuelve a intentar.", true);
+    womoSetTvSessionStatus("Sesión TV local activa. Si no responde, genera un nuevo código.", true);
     return true;
   }
 }
 
-async function womoStartTvSessionFromCode() {
+async function womoCreateTvPinSession() {
   const user = firebase.auth().currentUser;
   if (!user) {
-    alert("Inicia sesión para vincular una TV.");
+    alert("Inicia sesión para generar un código TV.");
     return;
   }
-
-  const raw = prompt("Ingresa el código que aparece en tu TV");
-  const code = String(raw || "").replace(/\D/g, "").slice(0, 6);
-  if (!code || code.length < 4) return;
 
   const button = document.getElementById("startTvSessionBtn");
   const original = button ? button.textContent : "";
   try {
-    if (button) { button.disabled = true; button.textContent = "Vinculando..."; }
-    const snapshot = await db.collection("tvSessions")
-      .where("code", "==", code)
-      .limit(1)
-      .get();
-    if (snapshot.empty) {
-      alert("No encontramos una TV con ese código. Revisa el número e intenta de nuevo.");
-      return;
+    if (button) { button.disabled = true; button.textContent = "Generando..."; }
+
+    let code = "";
+    let ref = null;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const candidate = womoGenerateTvCode();
+      const candidateRef = db.collection("tvSessions").doc(candidate);
+      const existing = await candidateRef.get();
+      const existingData = existing.exists ? (existing.data() || {}) : null;
+      const expired = existingData && Number(existingData.expiresAt || 0) < Date.now();
+      if (!existing.exists || expired || existingData?.createdBy === user.uid) {
+        code = candidate;
+        ref = candidateRef;
+        break;
+      }
     }
 
-    const doc = snapshot.docs[0];
-    const data = doc.data() || {};
-    const expiresAt = Number(data.expiresAt || 0);
-    if (expiresAt && expiresAt < Date.now()) {
-      alert("Ese código ya expiró. Recarga Womo en la TV para generar uno nuevo.");
-      return;
-    }
+    if (!code || !ref) throw new Error("No available TV PIN code");
 
-    if (data.pairedBy && data.pairedBy !== user.uid) {
-      alert("Esa TV ya está vinculada con otro usuario.");
-      return;
-    }
+    const now = Date.now();
+    await ref.set({
+      code,
+      status: "waiting_tv",
+      createdBy: user.uid,
+      createdAt: now,
+      expiresAt: now + WOMO_TV_SESSION_TTL_MS,
+      controllerLastSeenAt: now,
+      currentCommand: null,
+      playerState: { status: "waiting_tv", updatedAt: now },
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: false });
 
-    await doc.ref.set({
-      status: "paired",
-      pairedBy: user.uid,
-      pairedEmail: user.email || "",
-      pairedAt: Date.now(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      controllerLastSeenAt: Date.now()
-    }, { merge: true });
-
-    localStorage.setItem(WOMO_TV_SESSION_ID_KEY, doc.id);
+    localStorage.setItem(WOMO_TV_SESSION_ID_KEY, code);
     localStorage.setItem(WOMO_TV_SESSION_CODE_KEY, code);
-    womoSetTvSessionStatus(`TV vinculada · código ${code}`, true);
-    alert("TV vinculada. Ahora abre un título y usa Reproducir en TV.");
+    womoSetTvSessionStatus(`Código TV activo: ${code}. Escríbelo en Womo TV.`, true);
+    alert(`Código TV: ${code}\n\nAbre Womo TV en la pantalla y escribe este código.`);
   } catch (error) {
-    console.error("No se pudo vincular la TV.", error);
-    alert("No se pudo vincular la TV. Revisa reglas de Firebase para tvSessions e intenta de nuevo.");
+    console.error("No se pudo generar código TV.", error);
+    alert("No se pudo generar el código TV. Revisa reglas de Firebase para tvSessions e intenta de nuevo.");
   } finally {
-    if (button) { button.disabled = false; button.textContent = original || "Ingresar código"; }
+    if (button) { button.disabled = false; button.textContent = original || "Generar código"; }
+    womoRefreshTvSessionStatus();
   }
 }
 
@@ -1600,11 +1612,10 @@ async function womoDisconnectTvSession() {
   const sessionId = womoGetStoredTvSessionId();
   localStorage.removeItem(WOMO_TV_SESSION_ID_KEY);
   localStorage.removeItem(WOMO_TV_SESSION_CODE_KEY);
-  womoSetTvSessionStatus("Vincula una Smart TV con el código que aparece en pantalla.", false);
+  womoSetTvSessionStatus("Genera un código y escríbelo en Womo TV para vincular esta sesión.", false);
   try {
     if (sessionId) await db.collection("tvSessions").doc(sessionId).set({
       status: "disconnected",
-      pairedBy: null,
       disconnectedAt: Date.now(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -1635,7 +1646,7 @@ async function womoSendPlayToTv(item, episode = null, startAt = 0) {
   const sessionId = womoGetStoredTvSessionId();
   const user = firebase.auth().currentUser;
   if (!sessionId) {
-    alert("Primero vincula una TV desde Configuración.");
+    alert("Primero genera un código TV desde Configuración y escríbelo en Womo TV.");
     return false;
   }
   if (!user) {
@@ -1648,11 +1659,26 @@ async function womoSendPlayToTv(item, episode = null, startAt = 0) {
     return false;
   }
   try {
+    const sessionRef = db.collection("tvSessions").doc(sessionId);
+    const sessionSnap = await sessionRef.get();
+    const sessionData = sessionSnap.exists ? (sessionSnap.data() || {}) : null;
+    if (!sessionData || sessionData.createdBy !== user.uid) {
+      localStorage.removeItem(WOMO_TV_SESSION_ID_KEY);
+      localStorage.removeItem(WOMO_TV_SESSION_CODE_KEY);
+      womoSetTvSessionStatus("Genera un nuevo código TV para volver a vincular.", false);
+      alert("La sesión TV ya no está disponible. Genera un nuevo código.");
+      return false;
+    }
+    const expiresAt = Number(sessionData.expiresAt || 0);
+    if (expiresAt && expiresAt < Date.now()) {
+      alert("El código TV expiró. Genera uno nuevo desde Configuración.");
+      return false;
+    }
+
     const commandId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    await db.collection("tvSessions").doc(sessionId).set({
+    await sessionRef.set({
       status: "paired",
-      pairedBy: user.uid,
-      pairedEmail: user.email || "",
+      createdBy: user.uid,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       controllerLastSeenAt: Date.now(),
       currentCommand: {
@@ -1667,7 +1693,7 @@ async function womoSendPlayToTv(item, episode = null, startAt = 0) {
     return true;
   } catch (error) {
     console.error("No se pudo enviar a la TV.", error);
-    alert("No se pudo enviar a la TV. Desvincula y vuelve a vincular si la sesión expiró.");
+    alert("No se pudo enviar a la TV. Genera un nuevo código si la sesión expiró.");
     return false;
   }
 }
@@ -1677,7 +1703,7 @@ function womoSetupTvSessionSettings() {
   const disconnectBtn = document.getElementById("disconnectTvSessionBtn");
   if (startBtn && startBtn.dataset.ready !== "true") {
     startBtn.dataset.ready = "true";
-    startBtn.addEventListener("click", womoStartTvSessionFromCode);
+    startBtn.addEventListener("click", womoCreateTvPinSession);
   }
   if (disconnectBtn && disconnectBtn.dataset.ready !== "true") {
     disconnectBtn.dataset.ready = "true";

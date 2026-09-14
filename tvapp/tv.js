@@ -9,17 +9,16 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
 const db = firebase.firestore();
 
-const SESSION_TTL_MS = 10 * 60 * 1000;
 let sessionRef = null;
 let unsubscribeSession = null;
 let currentHls = null;
 let lastCommandId = "";
+let heartbeatTimer = null;
 
 function $(id) { return document.getElementById(id); }
-function makeCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
+function cleanCode(value) { return String(value || "").replace(/\D/g, "").slice(0, 6); }
 function setStatus(text, paired = false) {
   const el = $("tvStatus");
   if (!el) return;
@@ -37,39 +36,65 @@ function showMessage(text) {
 function isWmoUrl(url) { return Boolean(window.WmoMediaEngine && WmoMediaEngine.isWmoUrl(url)); }
 function isHlsUrl(url) { return /\.m3u8(\?|#|$)/i.test(String(url || "")); }
 
-async function ensureAuth() {
-  if (auth.currentUser) return auth.currentUser;
+async function connectWithCode(rawCode) {
+  const code = cleanCode(rawCode);
+  if (code.length !== 6) {
+    setStatus("Escribe el código de 6 dígitos que aparece en tu celular.");
+    return;
+  }
+
+  const btn = $("tvPairBtn");
+  const input = $("tvCodeInput");
+  const original = btn ? btn.textContent : "";
   try {
-    const cred = await auth.signInAnonymously();
-    return cred.user;
+    if (btn) { btn.disabled = true; btn.textContent = "Conectando..."; }
+    setStatus("Buscando sesión...");
+
+    const ref = db.collection("tvSessions").doc(code);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      setStatus("No encontramos ese código. Genera uno nuevo desde tu celular.");
+      return;
+    }
+
+    const data = snap.data() || {};
+    const expiresAt = Number(data.expiresAt || 0);
+    if (expiresAt && expiresAt < Date.now()) {
+      setStatus("Ese código expiró. Genera uno nuevo desde tu celular.");
+      return;
+    }
+    if (!data.createdBy) {
+      setStatus("Ese código no está vinculado a un usuario válido.");
+      return;
+    }
+
+    sessionRef = ref;
+    await sessionRef.set({
+      status: "paired",
+      tvConnectedAt: Date.now(),
+      tvLastSeenAt: Date.now(),
+      playerState: { status: "connected", updatedAt: Date.now() },
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    localStorage.setItem("womo_tv_receiver_code", code);
+    if (input) input.blur();
+    setStatus("TV vinculada. Elige un título desde tu celular.", true);
+    startHeartbeat();
+    listenSession();
   } catch (error) {
-    console.warn("Anonymous auth failed. tvSessions rules or anonymous auth may need to be enabled.", error);
-    throw error;
+    console.error("No se pudo conectar Womo TV.", error);
+    setStatus("No se pudo conectar. Revisa reglas de Firebase para tvSessions.");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original || "Conectar"; }
   }
 }
 
-async function createSession() {
-  await ensureAuth();
-  const code = makeCode();
-  const now = Date.now();
-  const payload = {
-    code,
-    status: "waiting",
-    createdAt: now,
-    expiresAt: now + SESSION_TTL_MS,
-    lastSeenAt: now,
-    tvUserAgent: navigator.userAgent || "",
-    currentCommand: null,
-    playerState: { status: "waiting", updatedAt: now },
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  };
-  sessionRef = await db.collection("tvSessions").add(payload);
-  $("tvCode").textContent = code;
-  setStatus("Esperando vinculación desde tu celular...");
-  listenSession();
-  setInterval(() => {
+function startHeartbeat() {
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = setInterval(() => {
     if (!sessionRef) return;
-    sessionRef.set({ lastSeenAt: Date.now() }, { merge: true }).catch(() => {});
+    sessionRef.set({ tvLastSeenAt: Date.now() }, { merge: true }).catch(() => {});
   }, 20000);
 }
 
@@ -78,10 +103,16 @@ function listenSession() {
   if (unsubscribeSession) unsubscribeSession();
   unsubscribeSession = sessionRef.onSnapshot(snapshot => {
     const data = snapshot.data() || {};
-    if (data.status === "paired") {
+    if (data.status === "paired" || data.status === "tv_connected") {
       setStatus("TV vinculada. Elige un título desde tu celular.", true);
     } else if (data.status === "disconnected") {
-      setStatus("Sesión desvinculada. Recarga para generar otro código.");
+      setStatus("Sesión desvinculada. Genera otro código desde tu celular.");
+      if (unsubscribeSession) unsubscribeSession();
+      unsubscribeSession = null;
+      sessionRef = null;
+      clearInterval(heartbeatTimer);
+      $("playerScreen").hidden = true;
+      $("pairScreen").hidden = false;
     }
     const cmd = data.currentCommand || null;
     if (cmd && cmd.id && cmd.id !== lastCommandId) {
@@ -93,7 +124,7 @@ function listenSession() {
     }
   }, error => {
     console.error("Session listener failed", error);
-    setStatus("No se pudo escuchar la sesión. Revisa Firebase.");
+    setStatus("No se pudo escuchar la sesión. Revisa reglas de Firebase.");
   });
 }
 
@@ -169,9 +200,25 @@ async function playMedia(media) {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  createSession().catch(error => {
-    console.error(error);
-    setStatus("No se pudo crear la sesión. Activa Anonymous Auth o ajusta reglas de tvSessions.");
+function setupPairForm() {
+  const form = $("tvPairForm");
+  const input = $("tvCodeInput");
+  if (!form || !input) return;
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    connectWithCode(input.value);
   });
-});
+  input.addEventListener("input", () => {
+    input.value = cleanCode(input.value);
+    if (input.value.length === 6) connectWithCode(input.value);
+  });
+  const saved = cleanCode(localStorage.getItem("womo_tv_receiver_code"));
+  if (saved.length === 6) {
+    input.value = saved;
+    connectWithCode(saved);
+  } else {
+    setTimeout(() => input.focus(), 350);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", setupPairForm);
