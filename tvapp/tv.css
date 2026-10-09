@@ -61,3 +61,45 @@ h1 { margin: 0; font-size: clamp(46px, 6vw, 86px); line-height: .95; letter-spac
   cursor: pointer;
 }
 .tv-pair-btn:disabled { opacity: .55; cursor: wait; }
+
+.tv-login-form {
+  width: min(560px, 82vw);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-items: stretch;
+  margin-top: 8px;
+}
+.tv-login-input {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,.14);
+  outline: none;
+  border-radius: 22px;
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  padding: 22px 24px;
+  font-size: clamp(22px, 2vw, 30px);
+  font-weight: 700;
+  text-align: center;
+}
+.tv-login-input::placeholder { color: rgba(255,255,255,.42); }
+.tv-login-input:focus { border-color: rgba(215,255,0,.7); box-shadow: 0 0 0 6px rgba(215,255,0,.08); }
+.tv-account-label {
+  margin: 0 0 22px;
+  color: rgba(255,255,255,.58);
+  font-size: clamp(18px, 1.5vw, 24px);
+  font-weight: 700;
+}
+.tv-logout-btn {
+  margin-top: 18px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 999px;
+  padding: 13px 22px;
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.8);
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.tv-status.is-error,
+#tvLoginStatus.is-error { color: #ff7b7b; }

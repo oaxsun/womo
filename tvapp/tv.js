@@ -9,6 +9,7 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
 const db = firebase.firestore();
 
 let sessionRef = null;
@@ -16,6 +17,7 @@ let unsubscribeSession = null;
 let currentHls = null;
 let lastCommandId = "";
 let heartbeatTimer = null;
+let authReady = false;
 
 function $(id) { return document.getElementById(id); }
 function cleanCode(value) { return String(value || "").replace(/\D/g, "").slice(0, 6); }
@@ -24,6 +26,12 @@ function setStatus(text, paired = false) {
   if (!el) return;
   el.textContent = text;
   el.classList.toggle("is-paired", Boolean(paired));
+}
+function setLoginStatus(text, isError = false) {
+  const el = $("tvLoginStatus");
+  if (!el) return;
+  el.textContent = text || "";
+  el.classList.toggle("is-error", Boolean(isError));
 }
 function showMessage(text) {
   const el = $("tvPlayerMessage");
@@ -36,7 +44,53 @@ function showMessage(text) {
 function isWmoUrl(url) { return Boolean(window.WmoMediaEngine && WmoMediaEngine.isWmoUrl(url)); }
 function isHlsUrl(url) { return /\.m3u8(\?|#|$)/i.test(String(url || "")); }
 
+function stopSessionWatchers() {
+  try { if (unsubscribeSession) unsubscribeSession(); } catch (_) {}
+  unsubscribeSession = null;
+  sessionRef = null;
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
+function showLoginScreen(message = "Inicia sesión con tu cuenta Womo para conectar esta pantalla.") {
+  stopSessionWatchers();
+  $("loginScreen").hidden = false;
+  $("pairScreen").hidden = true;
+  $("playerScreen").hidden = true;
+  setLoginStatus(message, false);
+  setTimeout(() => $("tvEmailInput")?.focus(), 250);
+}
+
+function showPairScreen() {
+  $("loginScreen").hidden = true;
+  $("pairScreen").hidden = false;
+  $("playerScreen").hidden = true;
+  const user = auth.currentUser;
+  const label = user?.email ? `Sesión iniciada como ${user.email}.` : "Sesión iniciada.";
+  const account = $("tvAccountLabel");
+  if (account) account.textContent = label;
+  setStatus("Escribe el código generado desde Womo en tu celular.");
+  setTimeout(() => $("tvCodeInput")?.focus(), 250);
+}
+
+function firebaseAuthMessage(error) {
+  const code = error?.code || "";
+  if (code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found")) {
+    return "Correo o contraseña incorrectos.";
+  }
+  if (code.includes("invalid-email")) return "Revisa el formato del correo.";
+  if (code.includes("too-many-requests")) return "Demasiados intentos. Espera un momento e intenta de nuevo.";
+  if (code.includes("network")) return "Error de red. Revisa la conexión de la TV.";
+  return "No se pudo iniciar sesión. Intenta de nuevo.";
+}
+
 async function connectWithCode(rawCode) {
+  const user = auth.currentUser;
+  if (!user) {
+    showLoginScreen("Primero inicia sesión para conectar esta pantalla.");
+    return;
+  }
+
   const code = cleanCode(rawCode);
   if (code.length !== 6) {
     setStatus("Escribe el código de 6 dígitos que aparece en tu celular.");
@@ -67,12 +121,18 @@ async function connectWithCode(rawCode) {
       setStatus("Ese código no está vinculado a un usuario válido.");
       return;
     }
+    if (data.createdBy !== user.uid) {
+      setStatus("Ese código pertenece a otra cuenta. Inicia sesión con la misma cuenta del celular.");
+      return;
+    }
 
     sessionRef = ref;
     await sessionRef.set({
       status: "paired",
       tvConnectedAt: Date.now(),
       tvLastSeenAt: Date.now(),
+      tvUserId: user.uid,
+      tvUserEmail: user.email || "",
       playerState: { status: "connected", updatedAt: Date.now() },
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -84,7 +144,7 @@ async function connectWithCode(rawCode) {
     listenSession();
   } catch (error) {
     console.error("No se pudo conectar Womo TV.", error);
-    setStatus("No se pudo conectar. Revisa reglas de Firebase para tvSessions.");
+    setStatus("No se pudo conectar. Revisa que la TV haya iniciado sesión y que existan reglas para tvSessions.");
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = original || "Conectar"; }
   }
@@ -93,7 +153,7 @@ async function connectWithCode(rawCode) {
 function startHeartbeat() {
   clearInterval(heartbeatTimer);
   heartbeatTimer = setInterval(() => {
-    if (!sessionRef) return;
+    if (!sessionRef || !auth.currentUser) return;
     sessionRef.set({ tvLastSeenAt: Date.now() }, { merge: true }).catch(() => {});
   }, 20000);
 }
@@ -107,10 +167,8 @@ function listenSession() {
       setStatus("TV vinculada. Elige un título desde tu celular.", true);
     } else if (data.status === "disconnected") {
       setStatus("Sesión desvinculada. Genera otro código desde tu celular.");
-      if (unsubscribeSession) unsubscribeSession();
-      unsubscribeSession = null;
-      sessionRef = null;
-      clearInterval(heartbeatTimer);
+      stopSessionWatchers();
+      localStorage.removeItem("womo_tv_receiver_code");
       $("playerScreen").hidden = true;
       $("pairScreen").hidden = false;
     }
@@ -200,25 +258,76 @@ async function playMedia(media) {
   }
 }
 
+function setupLoginForm() {
+  const form = $("tvLoginForm");
+  if (!form) return;
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    const email = String($("tvEmailInput")?.value || "").trim();
+    const password = String($("tvPasswordInput")?.value || "");
+    const btn = $("tvLoginBtn");
+    const original = btn ? btn.textContent : "";
+    if (!email || !password) {
+      setLoginStatus("Escribe correo y contraseña.", true);
+      return;
+    }
+    try {
+      if (btn) { btn.disabled = true; btn.textContent = "Entrando..."; }
+      setLoginStatus("Iniciando sesión...", false);
+      await auth.signInWithEmailAndPassword(email, password);
+      setLoginStatus("", false);
+    } catch (error) {
+      console.error("TV login failed", error);
+      setLoginStatus(firebaseAuthMessage(error), true);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = original || "Entrar"; }
+    }
+  });
+}
+
 function setupPairForm() {
   const form = $("tvPairForm");
   const input = $("tvCodeInput");
-  if (!form || !input) return;
-  form.addEventListener("submit", event => {
-    event.preventDefault();
-    connectWithCode(input.value);
-  });
-  input.addEventListener("input", () => {
-    input.value = cleanCode(input.value);
-    if (input.value.length === 6) connectWithCode(input.value);
-  });
-  const saved = cleanCode(localStorage.getItem("womo_tv_receiver_code"));
-  if (saved.length === 6) {
-    input.value = saved;
-    connectWithCode(saved);
-  } else {
-    setTimeout(() => input.focus(), 350);
+  const logoutBtn = $("tvLogoutBtn");
+  if (form && input) {
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      connectWithCode(input.value);
+    });
+    input.addEventListener("input", () => {
+      input.value = cleanCode(input.value);
+      if (auth.currentUser && input.value.length === 6) connectWithCode(input.value);
+    });
+  }
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      localStorage.removeItem("womo_tv_receiver_code");
+      stopSessionWatchers();
+      try { await auth.signOut(); } catch (_) {}
+    });
   }
 }
 
-document.addEventListener("DOMContentLoaded", setupPairForm);
+function setupAuthFlow() {
+  auth.onAuthStateChanged(user => {
+    authReady = true;
+    if (!user) {
+      localStorage.removeItem("womo_tv_receiver_code");
+      showLoginScreen();
+      return;
+    }
+    showPairScreen();
+    const saved = cleanCode(localStorage.getItem("womo_tv_receiver_code"));
+    const input = $("tvCodeInput");
+    if (saved.length === 6) {
+      if (input) input.value = saved;
+      connectWithCode(saved);
+    }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  setupLoginForm();
+  setupPairForm();
+  setupAuthFlow();
+});

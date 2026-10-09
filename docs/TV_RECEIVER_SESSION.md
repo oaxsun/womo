@@ -1,60 +1,40 @@
-# Womo Web TV Receiver - Phone PIN Session
+# Womo TV Receiver - PIN desde celular con login en TV
 
-Esta versión usa un flujo sin Anonymous Auth.
+## Flujo actual
 
-## Flujo
-
-1. El usuario abre Womo Web normal en celular/desktop con su cuenta real.
-2. En Configuración toca **Iniciar sesión TV / Generar código**.
+1. El usuario abre Womo normal en celular/desktop e inicia sesión.
+2. En **Configuración > Iniciar sesión TV** toca **Generar código**.
 3. Womo crea `tvSessions/{codigo}` desde el usuario autenticado.
-4. La Smart TV entra a `/tvapp/` y muestra un input de PIN.
-5. El usuario escribe el código generado desde el celular.
-6. La TV escucha esa sesión y reproduce los comandos enviados desde el celular.
+4. La TV abre `/tvapp/`.
+5. La TV primero muestra login. El usuario inicia sesión con la misma cuenta Womo.
+6. Después la TV pide el código generado desde el celular.
+7. La TV valida que el código exista, no haya expirado y pertenezca a la misma cuenta.
+8. El celular ya puede enviar títulos con **Reproducir en TV**.
 
-La TV no navega contenido. Solo funciona como receiver/reproductor.
+Este flujo no requiere Anonymous Auth y no necesita reglas públicas para `tvSessions`.
 
-## Firestore
+## Reglas Firestore recomendadas para esta versión
 
-Colección nueva:
-
-```txt
-tvSessions/{code}
-```
-
-Campos principales:
-
-```json
-{
-  "code": "123456",
-  "status": "waiting_tv",
-  "createdBy": "uid-del-usuario",
-  "createdAt": 0,
-  "expiresAt": 0,
-  "currentCommand": null,
-  "playerState": {
-    "status": "waiting_tv"
-  }
-}
-```
-
-## Reglas iniciales para pruebas privadas
-
-Como la TV entra sin Firebase Auth, necesita leer/actualizar `tvSessions` por código. Para la primera versión privada se puede usar:
+Con la TV autenticada, las reglas pueden mantenerse privadas:
 
 ```js
 match /tvSessions/{sessionId} {
-  allow read: if true;
-  allow create: if isSignedIn();
-  allow update: if true;
-  allow delete: if isSignedIn();
+  allow read, write: if isSignedIn();
 }
 ```
 
-Esto evita Anonymous Auth, pero deja `tvSessions` accesible por PIN. El PIN es temporal y no contiene catálogo ni datos sensibles. Más adelante se puede mover esta validación a PHP para endurecer seguridad.
+Más adelante se pueden endurecer para validar `createdBy == request.auth.uid`, pero esta versión usa la misma política privada que el resto de Womo mientras se valida el receiver.
+
+## Compatibilidad
+
+La pantalla TV conserva soporte para:
+
+- MP4
+- HLS / `.m3u8`
+- WMO mediante `src/core/wmoMediaEngine.js`
 
 ## Notas
 
-- No se usa Anonymous Auth.
-- No se activa login desde TV.
-- El usuario real es el que genera el PIN desde Womo Web.
-- El receiver conserva compatibilidad con `.wmo`, `.mp4` y `.m3u8`.
+- La TV debe iniciar sesión con la misma cuenta que generó el código en el celular.
+- Si la TV inicia sesión con otra cuenta, mostrará: `Ese código pertenece a otra cuenta`.
+- El PIN sigue siendo temporal y expira según `WOMO_TV_SESSION_TTL_MS`.
