@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo TV</title>
-  <link rel="stylesheet" href="tv.css?v=5" />
+  <link rel="stylesheet" href="tv.css?v=6" />
 </head>
 <body>
   <main class="tv-shell">
@@ -32,6 +32,7 @@
         <button id="tvPairBtn" class="tv-pair-btn" type="submit">Conectar</button>
       </form>
       <button id="tvLogoutBtn" class="tv-logout-btn" type="button">Cambiar cuenta</button>
+      <button id="tvExitBtn" class="tv-logout-btn tv-exit-btn" type="button" hidden>Salir</button>
       <p id="tvStatus" class="tv-status">Esperando código del celular...</p>
     </section>
 
@@ -52,7 +53,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <script src="../src/core/wmoMediaEngine.js?v=5"></script>
-  <script src="tv.js?v=5"></script>
+  <script src="../src/core/wmoMediaEngine.js?v=6"></script>
+  <script src="tv.js?v=6"></script>
 </body>
 </html>

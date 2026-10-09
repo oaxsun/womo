@@ -9373,3 +9373,108 @@ body.player-open{
   border-color: rgba(215,255,0,.65);
   color: var(--accent);
 }
+
+/* Womo TV Remote Mode */
+.womo-tv-remote-badge {
+  position: fixed;
+  z-index: 95;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 1px solid rgba(215,255,0,.55);
+  border-radius: 999px;
+  padding: 9px 15px;
+  background: rgba(20,32,12,.82);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  box-shadow: 0 14px 32px rgba(0,0,0,.26), 0 0 22px rgba(215,255,0,.12);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+}
+.womo-tv-remote-badge[hidden] { display: none !important; }
+.womo-tv-remote-modal.hidden { display: none !important; }
+.womo-tv-remote-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.womo-tv-remote-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.58);
+  backdrop-filter: blur(14px);
+}
+.womo-tv-remote-card {
+  position: relative;
+  width: min(460px, 92vw);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 28px;
+  padding: 24px;
+  background: linear-gradient(180deg, rgba(22,26,34,.98), rgba(8,10,14,.98));
+  box-shadow: 0 34px 100px rgba(0,0,0,.55);
+  color: #fff;
+}
+.womo-tv-remote-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+.womo-tv-remote-head p {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.womo-tv-remote-head h2 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -.04em;
+}
+.womo-tv-remote-close {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.womo-tv-remote-status {
+  margin: 18px 0 22px;
+  color: rgba(255,255,255,.68);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.womo-tv-remote-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.womo-tv-remote-controls + .womo-tv-remote-controls { margin-top: 10px; }
+.womo-tv-remote-controls button {
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 16px;
+  padding: 15px 12px;
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.womo-tv-remote-controls button:hover { border-color: rgba(215,255,0,.45); color: var(--accent); }
+.womo-tv-remote-controls.secondary button:last-child { color: #ff9b9b; }
+@media (max-width: 720px) {
+  .womo-tv-remote-badge { top: 10px; font-size: 11px; padding: 8px 12px; }
+  .womo-tv-remote-card { padding: 20px; border-radius: 24px; }
+}

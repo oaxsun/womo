@@ -1501,6 +1501,152 @@ function womoHasStoredTvSession() {
   return Boolean(womoGetStoredTvSessionId());
 }
 
+function womoEnsureTvRemoteUi() {
+  let badge = document.getElementById("womoTvRemoteBadge");
+  if (!badge) {
+    badge = document.createElement("button");
+    badge.id = "womoTvRemoteBadge";
+    badge.type = "button";
+    badge.className = "womo-tv-remote-badge";
+    badge.textContent = "Remote Mode";
+    badge.hidden = true;
+    document.body.appendChild(badge);
+    badge.addEventListener("click", womoOpenTvRemoteModal);
+  }
+
+  let modal = document.getElementById("womoTvRemoteModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "womoTvRemoteModal";
+    modal.className = "womo-tv-remote-modal hidden";
+    modal.innerHTML = `
+      <div class="womo-tv-remote-backdrop" data-tv-remote-close></div>
+      <section class="womo-tv-remote-card" role="dialog" aria-modal="true" aria-label="Control remoto Womo TV">
+        <div class="womo-tv-remote-head">
+          <div>
+            <p>Womo TV</p>
+            <h2>Remote Mode</h2>
+          </div>
+          <button type="button" class="womo-tv-remote-close" data-tv-remote-close>×</button>
+        </div>
+        <p id="womoTvRemoteStatus" class="womo-tv-remote-status">TV vinculada. Elige un título o controla la reproducción.</p>
+        <div class="womo-tv-remote-controls">
+          <button type="button" data-tv-command="rewind">-10s</button>
+          <button type="button" data-tv-command="pause">Pausar</button>
+          <button type="button" data-tv-command="resume">Play</button>
+          <button type="button" data-tv-command="forward">+10s</button>
+        </div>
+        <div class="womo-tv-remote-controls secondary">
+          <button type="button" data-tv-command="restart">Reiniciar</button>
+          <button type="button" data-tv-command="stop">Cerrar player</button>
+          <button type="button" data-tv-command="disconnect">Salir de TV</button>
+        </div>
+      </section>`;
+    document.body.appendChild(modal);
+    modal.addEventListener("click", event => {
+      const close = event.target.closest("[data-tv-remote-close]");
+      const cmd = event.target.closest("[data-tv-command]");
+      if (close) womoCloseTvRemoteModal();
+      if (cmd) womoHandleTvRemoteCommand(cmd.dataset.tvCommand);
+    });
+  }
+  womoUpdateTvRemoteBadge();
+}
+
+function womoUpdateTvRemoteBadge() {
+  const badge = document.getElementById("womoTvRemoteBadge");
+  if (!badge) return;
+  const active = womoHasStoredTvSession();
+  badge.hidden = !active;
+  document.body.classList.toggle("womo-tv-remote-active", active);
+}
+
+function womoOpenTvRemoteModal() {
+  womoEnsureTvRemoteUi();
+  const modal = document.getElementById("womoTvRemoteModal");
+  if (modal) modal.classList.remove("hidden");
+  womoRefreshTvRemoteState();
+}
+
+function womoCloseTvRemoteModal() {
+  const modal = document.getElementById("womoTvRemoteModal");
+  if (modal) modal.classList.add("hidden");
+}
+
+function womoSetTvRemoteStatus(message) {
+  const status = document.getElementById("womoTvRemoteStatus");
+  if (status) status.textContent = message || "TV vinculada.";
+}
+
+async function womoRefreshTvRemoteState() {
+  const sessionId = womoGetStoredTvSessionId();
+  if (!sessionId) {
+    womoSetTvRemoteStatus("No hay una TV vinculada. Genera un código desde Configuración.");
+    womoUpdateTvRemoteBadge();
+    return null;
+  }
+  try {
+    const snap = await db.collection("tvSessions").doc(sessionId).get();
+    const data = snap.exists ? (snap.data() || {}) : null;
+    const state = data?.playerState || {};
+    const title = state.title || data?.currentCommand?.media?.title || "TV vinculada";
+    const status = state.status ? ` · ${state.status}` : "";
+    womoSetTvRemoteStatus(`${title}${status}`);
+    return data;
+  } catch (_) {
+    womoSetTvRemoteStatus("TV vinculada. No se pudo leer el estado en este momento.");
+    return null;
+  }
+}
+
+async function womoSendTvRemoteCommand(type, payload = {}) {
+  const sessionId = womoGetStoredTvSessionId();
+  const user = firebase.auth().currentUser;
+  if (!sessionId || !user) {
+    alert("Primero vincula Womo TV desde Configuración.");
+    return false;
+  }
+  try {
+    const commandId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await db.collection("tvSessions").doc(sessionId).set({
+      status: type === "disconnect" ? "disconnected" : "paired",
+      controllerLastSeenAt: Date.now(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      currentCommand: {
+        id: commandId,
+        type,
+        createdAt: Date.now(),
+        createdBy: user.uid,
+        ...payload
+      }
+    }, { merge: true });
+    return true;
+  } catch (error) {
+    console.error("No se pudo enviar comando TV.", error);
+    alert("No se pudo controlar la TV. Revisa la conexión o genera un nuevo código.");
+    return false;
+  }
+}
+
+async function womoHandleTvRemoteCommand(command) {
+  if (command === "pause") return womoSendTvRemoteCommand("pause");
+  if (command === "resume") return womoSendTvRemoteCommand("resume");
+  if (command === "rewind") return womoSendTvRemoteCommand("relativeSeek", { delta: -10 });
+  if (command === "forward") return womoSendTvRemoteCommand("relativeSeek", { delta: 10 });
+  if (command === "restart") return womoSendTvRemoteCommand("restart");
+  if (command === "stop") return womoSendTvRemoteCommand("stop");
+  if (command === "disconnect") {
+    const ok = await womoSendTvRemoteCommand("disconnect");
+    if (ok) {
+      localStorage.removeItem(WOMO_TV_SESSION_ID_KEY);
+      localStorage.removeItem(WOMO_TV_SESSION_CODE_KEY);
+      womoUpdateTvRemoteBadge();
+      womoCloseTvRemoteModal();
+      womoSetTvSessionStatus("Genera un código y escríbelo en Womo TV para vincular esta sesión.", false);
+    }
+  }
+}
+
 function womoGenerateTvCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -1515,6 +1661,7 @@ function womoSetTvSessionStatus(message, connected = false) {
   }
   if (disconnect) disconnect.hidden = !connected;
   if (startBtn) startBtn.textContent = connected ? "Generar nuevo código" : "Generar código";
+  womoUpdateTvRemoteBadge();
 }
 
 async function womoRefreshTvSessionStatus() {
@@ -1642,7 +1789,34 @@ function womoBuildTvMediaPayload(item, episode = null, startAt = 0) {
   };
 }
 
-async function womoSendPlayToTv(item, episode = null, startAt = 0) {
+async function womoResolveTvStartAt(item, episode = null, explicitStartAt = null) {
+  if (explicitStartAt !== null && explicitStartAt !== undefined && Number.isFinite(Number(explicitStartAt)) && Number(explicitStartAt) > 0) {
+    return Number(explicitStartAt);
+  }
+  try {
+    const resume = await loadPlaybackResumeDirectFromCloud(item, episode);
+    if (resume?.ok && resume.hasExactPosition && Number(resume.positionSeconds || 0) > 0) {
+      return Number(resume.positionSeconds || 0);
+    }
+  } catch (_) {}
+  try {
+    if (item?.type === "series" && episode) {
+      const progress = getEpisodeStoredProgress(item.id, episode);
+      const duration = Number(episode.durationSeconds || episode.duration || 0);
+      if (progress > 0 && progress < WOMO_COMPLETION_PROGRESS && duration > 0) {
+        return Math.max(0, (progress / 100) * duration);
+      }
+      return 0;
+    }
+    const entry = getContinueEntry(item);
+    if (entry && Number(entry.positionSeconds || 0) > 0 && Number(entry.progress || 0) < WOMO_COMPLETION_PROGRESS) {
+      return Number(entry.positionSeconds || 0);
+    }
+  } catch (_) {}
+  return 0;
+}
+
+async function womoSendPlayToTv(item, episode = null, startAt = null) {
   const sessionId = womoGetStoredTvSessionId();
   const user = firebase.auth().currentUser;
   if (!sessionId) {
@@ -1653,7 +1827,8 @@ async function womoSendPlayToTv(item, episode = null, startAt = 0) {
     alert("Inicia sesión para controlar la TV.");
     return false;
   }
-  const media = womoBuildTvMediaPayload(item, episode, startAt);
+  const resolvedStartAt = await womoResolveTvStartAt(item, episode, startAt);
+  const media = womoBuildTvMediaPayload(item, episode, resolvedStartAt);
   if (!media.url) {
     alert("Este título todavía no tiene video configurado.");
     return false;
@@ -1699,6 +1874,7 @@ async function womoSendPlayToTv(item, episode = null, startAt = 0) {
 }
 
 function womoSetupTvSessionSettings() {
+  womoEnsureTvRemoteUi();
   const startBtn = document.getElementById("startTvSessionBtn");
   const disconnectBtn = document.getElementById("disconnectTvSessionBtn");
   if (startBtn && startBtn.dataset.ready !== "true") {
@@ -2516,7 +2692,7 @@ async function openPreview(item) {
     };
     if (tvBtn) {
       tvBtn.setAttribute('type', 'button');
-      tvBtn.onclick = () => womoSendPlayToTv(item, resolveSelectedEpisodeForPreview(), 0);
+      tvBtn.onclick = () => womoSendPlayToTv(item, resolveSelectedEpisodeForPreview());
     }
     if (shuffleBtn) {
       shuffleBtn.setAttribute('type', 'button');
@@ -2566,7 +2742,7 @@ async function openPreview(item) {
     };
     if (tvBtn) {
       tvBtn.setAttribute('type', 'button');
-      tvBtn.onclick = () => womoSendPlayToTv(item, null, 0);
+      tvBtn.onclick = () => womoSendPlayToTv(item, null);
     }
 
     renderPreviewRecommendationsForItem(item);

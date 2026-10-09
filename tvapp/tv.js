@@ -17,6 +17,8 @@ let unsubscribeSession = null;
 let currentHls = null;
 let lastCommandId = "";
 let heartbeatTimer = null;
+let playerStateTimer = null;
+let currentMediaPayload = null;
 let authReady = false;
 
 function $(id) { return document.getElementById(id); }
@@ -50,6 +52,8 @@ function stopSessionWatchers() {
   sessionRef = null;
   clearInterval(heartbeatTimer);
   heartbeatTimer = null;
+  clearInterval(playerStateTimer);
+  playerStateTimer = null;
 }
 
 function showLoginScreen(message = "Inicia sesión con tu cuenta Womo para conectar esta pantalla.") {
@@ -65,12 +69,39 @@ function showPairScreen() {
   $("loginScreen").hidden = true;
   $("pairScreen").hidden = false;
   $("playerScreen").hidden = true;
+  $("pairScreen").classList.remove("is-linked");
+  const exit = $("tvExitBtn");
+  if (exit) exit.hidden = true;
+  const logout = $("tvLogoutBtn");
+  if (logout) logout.hidden = false;
   const user = auth.currentUser;
   const label = user?.email ? `Sesión iniciada como ${user.email}.` : "Sesión iniciada.";
   const account = $("tvAccountLabel");
   if (account) account.textContent = label;
+  const title = document.querySelector("#pairScreen h1");
+  const copy = document.querySelector("#pairScreen .tv-copy");
+  if (title) title.textContent = "Ingresa tu código";
+  if (copy) copy.innerHTML = 'Abre Womo en tu celular, entra a Configuración, toca <strong>Iniciar sesión TV</strong> y escribe aquí el código.';
   setStatus("Escribe el código generado desde Womo en tu celular.");
   setTimeout(() => $("tvCodeInput")?.focus(), 250);
+}
+
+function showLinkedScreen() {
+  $("loginScreen").hidden = true;
+  $("pairScreen").hidden = false;
+  $("playerScreen").hidden = true;
+  $("pairScreen").classList.add("is-linked");
+  const title = document.querySelector("#pairScreen h1");
+  const copy = document.querySelector("#pairScreen .tv-copy");
+  const input = $("tvCodeInput");
+  const exit = $("tvExitBtn");
+  const logout = $("tvLogoutBtn");
+  if (title) title.textContent = "Pantalla vinculada";
+  if (copy) copy.textContent = "Elige un título desde tu celular y toca Reproducir en TV.";
+  if (input) input.blur();
+  if (exit) exit.hidden = false;
+  if (logout) logout.hidden = true;
+  setStatus("Lista para reproducir. Usa tu celular como control remoto.", true);
 }
 
 function firebaseAuthMessage(error) {
@@ -139,7 +170,7 @@ async function connectWithCode(rawCode) {
 
     localStorage.setItem("womo_tv_receiver_code", code);
     if (input) input.blur();
-    setStatus("TV vinculada. Elige un título desde tu celular.", true);
+    showLinkedScreen();
     startHeartbeat();
     listenSession();
   } catch (error) {
@@ -164,13 +195,16 @@ function listenSession() {
   unsubscribeSession = sessionRef.onSnapshot(snapshot => {
     const data = snapshot.data() || {};
     if (data.status === "paired" || data.status === "tv_connected") {
-      setStatus("TV vinculada. Elige un título desde tu celular.", true);
+      if ($("playerScreen")?.hidden) showLinkedScreen();
+      else setStatus("TV vinculada. Elige un título desde tu celular.", true);
     } else if (data.status === "disconnected") {
       setStatus("Sesión desvinculada. Genera otro código desde tu celular.");
       stopSessionWatchers();
       localStorage.removeItem("womo_tv_receiver_code");
+      clearInterval(playerStateTimer);
+      playerStateTimer = null;
       $("playerScreen").hidden = true;
-      $("pairScreen").hidden = false;
+      showPairScreen();
     }
     const cmd = data.currentCommand || null;
     if (cmd && cmd.id && cmd.id !== lastCommandId) {
@@ -190,20 +224,72 @@ async function handleCommand(cmd) {
   if (!cmd || !cmd.type) return;
   const video = $("tvPlayer");
   if (cmd.type === "play") return playMedia(cmd.media || {});
-  if (cmd.type === "pause") return video?.pause();
-  if (cmd.type === "resume") return video?.play().catch(() => {});
+  if (cmd.type === "pause") { video?.pause(); updatePlayerState("paused"); return; }
+  if (cmd.type === "resume") { await video?.play().catch(() => {}); updatePlayerState("playing"); return; }
   if (cmd.type === "seek" && video) {
     video.currentTime = Math.max(0, Number(cmd.time || 0));
+    updatePlayerState(video.paused ? "paused" : "playing");
+    return;
+  }
+  if (cmd.type === "relativeSeek" && video) {
+    const delta = Number(cmd.delta || 0);
+    const duration = Number(video.duration || 0);
+    const next = Math.max(0, Number(video.currentTime || 0) + delta);
+    video.currentTime = duration > 0 ? Math.min(next, Math.max(0, duration - 0.25)) : next;
+    updatePlayerState(video.paused ? "paused" : "playing");
+    return;
+  }
+  if (cmd.type === "restart" && video) {
+    video.currentTime = 0;
+    await video.play().catch(() => {});
+    updatePlayerState("playing");
     return;
   }
   if (cmd.type === "stop") {
     video?.pause();
+    clearInterval(playerStateTimer);
+    playerStateTimer = null;
     $("playerScreen").hidden = true;
-    $("pairScreen").hidden = false;
+    showLinkedScreen();
+    updatePlayerState("stopped");
+    return;
+  }
+  if (cmd.type === "disconnect") {
+    video?.pause();
+    stopSessionWatchers();
+    localStorage.removeItem("womo_tv_receiver_code");
+    showPairScreen();
   }
 }
 
+function updatePlayerState(status = null) {
+  if (!sessionRef) return;
+  const video = $("tvPlayer");
+  const media = currentMediaPayload || {};
+  const title = media.episode ? `${media.title || "Serie"}` : (media.title || "Womo TV");
+  const subtitle = media.episode ? `T${media.episode.season} E${media.episode.episodeNumber} · ${media.episode.title || "Episodio"}` : "Reproduciendo en TV";
+  sessionRef.set({
+    playerState: {
+      status: status || (video?.paused ? "paused" : "playing"),
+      title,
+      subtitle,
+      mediaId: media.id || "",
+      mediaType: media.type || "",
+      currentTime: Number(video?.currentTime || 0),
+      duration: Number(video?.duration || 0),
+      updatedAt: Date.now()
+    }
+  }, { merge: true }).catch(() => {});
+}
+
+function startPlayerStateSync() {
+  clearInterval(playerStateTimer);
+  updatePlayerState("playing");
+  playerStateTimer = setInterval(() => updatePlayerState(), 5000);
+}
+
 async function playMedia(media) {
+  currentMediaPayload = media || {};
   const url = media.url || media.episode?.url || "";
   if (!url) throw new Error("Missing media URL");
   const video = $("tvPlayer");
@@ -216,6 +302,8 @@ async function playMedia(media) {
   pairScreen.hidden = true;
   playerScreen.hidden = false;
   showMessage("Cargando...");
+  clearInterval(playerStateTimer);
+  playerStateTimer = null;
 
   try { if (currentHls) { currentHls.destroy(); currentHls = null; } } catch (_) {}
   try { if (window.WmoMediaEngine) WmoMediaEngine.destroy(); } catch (_) {}
@@ -244,18 +332,7 @@ async function playMedia(media) {
     video.load();
   }
 
-  if (sessionRef) {
-    sessionRef.set({
-      playerState: {
-        status: "playing",
-        title,
-        subtitle,
-        mediaId: media.id || "",
-        mediaType: media.type || "",
-        updatedAt: Date.now()
-      }
-    }, { merge: true }).catch(() => {});
-  }
+  startPlayerStateSync();
 }
 
 function setupLoginForm() {
@@ -289,6 +366,7 @@ function setupPairForm() {
   const form = $("tvPairForm");
   const input = $("tvCodeInput");
   const logoutBtn = $("tvLogoutBtn");
+  const exitBtn = $("tvExitBtn");
   if (form && input) {
     form.addEventListener("submit", event => {
       event.preventDefault();
@@ -306,6 +384,37 @@ function setupPairForm() {
       try { await auth.signOut(); } catch (_) {}
     });
   }
+  if (exitBtn) {
+    exitBtn.addEventListener("click", async () => {
+      try {
+        if (sessionRef) {
+          await sessionRef.set({
+            status: "disconnected",
+            playerState: { status: "disconnected", updatedAt: Date.now() },
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        }
+      } catch (_) {}
+      localStorage.removeItem("womo_tv_receiver_code");
+      stopSessionWatchers();
+      showPairScreen();
+    });
+  }
+}
+
+function setupPlayerEvents() {
+  const video = $("tvPlayer");
+  if (!video) return;
+  video.addEventListener("play", () => updatePlayerState("playing"));
+  video.addEventListener("pause", () => updatePlayerState("paused"));
+  video.addEventListener("waiting", () => updatePlayerState("buffering"));
+  video.addEventListener("playing", () => updatePlayerState("playing"));
+  video.addEventListener("ended", () => {
+    clearInterval(playerStateTimer);
+    playerStateTimer = null;
+    updatePlayerState("ended");
+  });
+  video.addEventListener("error", () => updatePlayerState("error"));
 }
 
 function setupAuthFlow() {
@@ -329,5 +438,6 @@ function setupAuthFlow() {
 document.addEventListener("DOMContentLoaded", () => {
   setupLoginForm();
   setupPairForm();
+  setupPlayerEvents();
   setupAuthFlow();
 });

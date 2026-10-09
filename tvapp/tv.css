@@ -19,7 +19,7 @@ h1 { margin: 0; font-size: clamp(46px, 6vw, 86px); line-height: .95; letter-spac
 .tv-status.is-paired { color: var(--accent); }
 .tv-player-screen { position: fixed; inset: 0; background: #000; }
 .tv-player { width: 100vw; height: 100vh; display: block; background: #000; }
-.tv-player-topbar { position: fixed; z-index: 4; left: 42px; right: 42px; top: 38px; display: flex; align-items: center; gap: 20px; padding: 18px 22px; border-radius: 22px; background: rgba(0,0,0,.42); backdrop-filter: blur(12px); pointer-events: none; }
+.tv-player-topbar { display: none !important; position: fixed; z-index: 4; left: 42px; right: 42px; top: 38px; display: flex; align-items: center; gap: 20px; padding: 18px 22px; border-radius: 22px; background: rgba(0,0,0,.42); backdrop-filter: blur(12px); pointer-events: none; }
 .tv-player-topbar img { width: 54px; }
 .tv-player-topbar h2 { margin: 0 0 4px; font-size: 28px; }
 .tv-player-topbar p { margin: 0; color: var(--muted); font-size: 18px; }
@@ -103,3 +103,34 @@ h1 { margin: 0; font-size: clamp(46px, 6vw, 86px); line-height: .95; letter-spac
 }
 .tv-status.is-error,
 #tvLoginStatus.is-error { color: #ff7b7b; }
+
+
+/* Linked TV state cleanup */
+.tv-pair-screen.is-linked {
+  min-height: 58vh;
+  padding-top: 58px;
+  padding-bottom: 58px;
+}
+.tv-pair-screen.is-linked .tv-logo { margin-bottom: 24px; }
+.tv-pair-screen.is-linked h1 { font-size: clamp(42px, 5vw, 72px); }
+.tv-pair-screen.is-linked .tv-copy,
+.tv-pair-screen.is-linked .tv-account-label,
+.tv-pair-screen.is-linked .tv-pin-form,
+.tv-pair-screen.is-linked #tvLogoutBtn {
+  display: none !important;
+}
+.tv-pair-screen.is-linked .tv-status {
+  max-width: 720px;
+  margin-top: 24px;
+  color: rgba(255,255,255,.68);
+}
+.tv-exit-btn {
+  margin-top: 28px;
+  border-color: rgba(215,255,0,.28);
+  color: var(--accent);
+}
+.tv-pair-screen.is-linked .tv-exit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
