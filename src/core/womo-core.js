@@ -1488,6 +1488,7 @@ async function sendPasswordResetEmail() {
 const WOMO_TV_SESSION_ID_KEY = "womo_tv_session_id";
 const WOMO_TV_SESSION_CODE_KEY = "womo_tv_session_code";
 const WOMO_TV_SESSION_TTL_MS = 30 * 60 * 1000;
+let womoTvRemoteRefreshTimer = null;
 
 function womoGetStoredTvSessionId() {
   return localStorage.getItem(WOMO_TV_SESSION_ID_KEY) || "";
@@ -1525,21 +1526,30 @@ function womoEnsureTvRemoteUi() {
         <div class="womo-tv-remote-head">
           <div>
             <p>Womo TV</p>
-            <h2>Remote Mode</h2>
+            <h2>Control remoto</h2>
           </div>
           <button type="button" class="womo-tv-remote-close" data-tv-remote-close>×</button>
         </div>
-        <p id="womoTvRemoteStatus" class="womo-tv-remote-status">TV vinculada. Elige un título o controla la reproducción.</p>
-        <div class="womo-tv-remote-controls">
-          <button type="button" data-tv-command="rewind">-10s</button>
-          <button type="button" data-tv-command="pause">Pausar</button>
-          <button type="button" data-tv-command="resume">Play</button>
-          <button type="button" data-tv-command="forward">+10s</button>
+
+        <div class="womo-tv-now-playing">
+          <span id="womoTvRemoteStatePill" class="womo-tv-state-pill">Conectada</span>
+          <h3 id="womoTvRemoteTitle">TV vinculada</h3>
+          <p id="womoTvRemoteStatus" class="womo-tv-remote-status">Elige un título o controla la reproducción.</p>
+          <div class="womo-tv-remote-progress" aria-hidden="true"><span id="womoTvRemoteProgressBar"></span></div>
+          <div id="womoTvRemoteTime" class="womo-tv-remote-time">--:-- / --:--</div>
         </div>
-        <div class="womo-tv-remote-controls secondary">
+
+        <div class="womo-tv-remote-pad" aria-label="Controles de reproducción">
+          <button type="button" class="remote-round" data-tv-command="rewind" aria-label="Regresar 10 segundos">↺<span>10</span></button>
+          <button type="button" class="remote-main" data-tv-command="pause" aria-label="Pausar">Ⅱ</button>
+          <button type="button" class="remote-round" data-tv-command="forward" aria-label="Avanzar 10 segundos">↻<span>10</span></button>
+          <button type="button" class="remote-wide" data-tv-command="resume">Reproducir</button>
+        </div>
+
+        <div class="womo-tv-remote-actions">
           <button type="button" data-tv-command="restart">Reiniciar</button>
           <button type="button" data-tv-command="stop">Cerrar player</button>
-          <button type="button" data-tv-command="disconnect">Salir de TV</button>
+          <button type="button" class="danger" data-tv-command="disconnect">Salir de TV</button>
         </div>
       </section>`;
     document.body.appendChild(modal);
@@ -1565,12 +1575,25 @@ function womoOpenTvRemoteModal() {
   womoEnsureTvRemoteUi();
   const modal = document.getElementById("womoTvRemoteModal");
   if (modal) modal.classList.remove("hidden");
+  clearInterval(womoTvRemoteRefreshTimer);
   womoRefreshTvRemoteState();
+  womoTvRemoteRefreshTimer = setInterval(womoRefreshTvRemoteState, 3500);
 }
 
 function womoCloseTvRemoteModal() {
   const modal = document.getElementById("womoTvRemoteModal");
   if (modal) modal.classList.add("hidden");
+  clearInterval(womoTvRemoteRefreshTimer);
+  womoTvRemoteRefreshTimer = null;
+}
+
+function womoFormatTvTime(seconds) {
+  const value = Math.max(0, Number(seconds || 0));
+  if (!Number.isFinite(value) || value <= 0) return "--:--";
+  const h = Math.floor(value / 3600);
+  const m = Math.floor((value % 3600) / 60);
+  const s = Math.floor(value % 60);
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function womoSetTvRemoteStatus(message) {
@@ -1578,10 +1601,28 @@ function womoSetTvRemoteStatus(message) {
   if (status) status.textContent = message || "TV vinculada.";
 }
 
+function womoSetTvRemoteDetails({ title = "TV vinculada", subtitle = "Elige un título o controla la reproducción.", status = "connected", currentTime = 0, duration = 0 } = {}) {
+  const titleEl = document.getElementById("womoTvRemoteTitle");
+  const statusEl = document.getElementById("womoTvRemoteStatus");
+  const pill = document.getElementById("womoTvRemoteStatePill");
+  const bar = document.getElementById("womoTvRemoteProgressBar");
+  const time = document.getElementById("womoTvRemoteTime");
+  if (titleEl) titleEl.textContent = title || "TV vinculada";
+  if (statusEl) statusEl.textContent = subtitle || "Elige un título o controla la reproducción.";
+  const statusLabel = { playing: "Reproduciendo", paused: "Pausado", buffering: "Cargando", stopped: "Listo", connected: "Conectada", ended: "Terminado", error: "Error" }[status] || "Conectada";
+  if (pill) {
+    pill.textContent = statusLabel;
+    pill.dataset.state = status || "connected";
+  }
+  const pct = duration > 0 ? Math.max(0, Math.min(100, (Number(currentTime || 0) / Number(duration || 1)) * 100)) : 0;
+  if (bar) bar.style.width = `${pct}%`;
+  if (time) time.textContent = `${womoFormatTvTime(currentTime)} / ${womoFormatTvTime(duration)}`;
+}
+
 async function womoRefreshTvRemoteState() {
   const sessionId = womoGetStoredTvSessionId();
   if (!sessionId) {
-    womoSetTvRemoteStatus("No hay una TV vinculada. Genera un código desde Configuración.");
+    womoSetTvRemoteDetails({ title: "Sin TV vinculada", subtitle: "Genera un código desde Configuración.", status: "stopped" });
     womoUpdateTvRemoteBadge();
     return null;
   }
@@ -1589,12 +1630,16 @@ async function womoRefreshTvRemoteState() {
     const snap = await db.collection("tvSessions").doc(sessionId).get();
     const data = snap.exists ? (snap.data() || {}) : null;
     const state = data?.playerState || {};
-    const title = state.title || data?.currentCommand?.media?.title || "TV vinculada";
-    const status = state.status ? ` · ${state.status}` : "";
-    womoSetTvRemoteStatus(`${title}${status}`);
+    womoSetTvRemoteDetails({
+      title: state.title || data?.currentCommand?.media?.title || "TV vinculada",
+      subtitle: state.subtitle || "Lista para reproducir desde Womo.",
+      status: state.status || data?.status || "connected",
+      currentTime: Number(state.currentTime || 0),
+      duration: Number(state.duration || 0)
+    });
     return data;
   } catch (_) {
-    womoSetTvRemoteStatus("TV vinculada. No se pudo leer el estado en este momento.");
+    womoSetTvRemoteDetails({ title: "TV vinculada", subtitle: "No se pudo leer el estado en este momento.", status: "error" });
     return null;
   }
 }
@@ -1620,6 +1665,7 @@ async function womoSendTvRemoteCommand(type, payload = {}) {
         ...payload
       }
     }, { merge: true });
+    setTimeout(womoRefreshTvRemoteState, 550);
     return true;
   } catch (error) {
     console.error("No se pudo enviar comando TV.", error);

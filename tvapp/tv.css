@@ -6,6 +6,7 @@
   --accent: #d7ff00;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow: hidden; }
 body::before { content: ""; position: fixed; inset: 0; background: radial-gradient(circle at 22% 18%, rgba(215,255,0,.11), transparent 30%), radial-gradient(circle at 80% 12%, rgba(50,120,255,.13), transparent 34%), linear-gradient(135deg, #050505, #08111d 54%, #020305); pointer-events: none; }
 .tv-shell { position: relative; z-index: 1; min-height: 100vh; display: grid; place-items: center; padding: 6vh 6vw; }
