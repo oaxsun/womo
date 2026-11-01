@@ -49,11 +49,26 @@
     </section>
   </main>
 
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <script src="../src/core/wmoMediaEngine.js?v=6"></script>
-  <script src="tv.js?v=6"></script>
+  <script>
+  (function(){
+    var ua=navigator.userAgent||'';
+    var legacy=/Web0S|webOS|NetCast/i.test(ua) && /Chrome\/(?:[0-6]?[0-9])\.|WebKit\/53[0-8]/i.test(ua);
+    if(/[?&]legacyTv=1(?:&|$)/.test(location.search)) legacy=true;
+    if(legacy){
+      document.write('<link rel="stylesheet" href="legacy.css?v=7">');
+      document.write('<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"><\/script>');
+      document.write('<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"><\/script>');
+      document.write('<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"><\/script>');
+      document.write('<script src="legacy-login.js?v=7"><\/script>');
+    }else{
+      document.write('<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"><\/script>');
+      document.write('<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"><\/script>');
+      document.write('<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"><\/script>');
+      document.write('<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"><\/script>');
+      document.write('<script src="../src/core/wmoMediaEngine.js?v=7"><\/script>');
+      document.write('<script src="tv.js?v=7"><\/script>');
+    }
+  }());
+  </script>
 </body>
 </html>
