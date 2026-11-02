@@ -9,7 +9,7 @@
   function err(e){return e && e.code ? e.code : (e && e.message ? e.message : 'error desconocido');}
   function boot(){
     view('loginScreen');
-    if(!window.firebase || !firebase.auth || !firebase.firestore){fail('Este navegador no pudo cargar Firebase. Error de compatibilidad o conexión segura (TLS).');return;}
+    if(!window.firebase || !firebase.auth || !firebase.firestore){fail('Firebase no cargó. Comprueba la fecha de la TV y la conexión HTTPS. Diagnóstico LG v7.');return;}
     try {if(!firebase.apps.length)firebase.initializeApp(config);}catch(e){fail('Firebase init: '+err(e));return;}
     var auth=firebase.auth(), db=firebase.firestore(), currentRef=null, unsub=null, heartbeat=null;
     function showPair(user){view('pairScreen');text('tvAccountLabel','Sesión iniciada como '+(user.email||'usuario Womo'));text('tvStatus','Ingresa el PIN generado desde tu celular.');}
