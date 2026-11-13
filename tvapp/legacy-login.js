@@ -16,13 +16,49 @@
     function showLinked(){view('pairScreen');el('tvPairForm').style.display='none';el('tvLogoutBtn').style.display='none';el('tvExitBtn').style.display='inline-block';var h=el('pairScreen').getElementsByTagName('h1')[0];if(h)h.textContent='Pantalla vinculada';text('tvStatus','Pantalla conectada. Elige un título desde el celular.');}
     auth.onAuthStateChanged(function(user){if(user){showPair(user);}else{view('loginScreen');fail('Inicia sesión con tu cuenta Womo.');}},function(e){fail('Error autenticación: '+err(e));});
     el('tvLoginForm').onsubmit=function(event){if(event && event.preventDefault)event.preventDefault();var email=el('tvEmailInput').value.replace(/^\s+|\s+$/g,''), password=el('tvPasswordInput').value;if(!email||!password){fail('Escribe correo y contraseña.');return false;}el('tvLoginBtn').disabled=true;fail('Conectando con Firebase...');auth.signInWithEmailAndPassword(email,password).then(function(){fail('Sesión iniciada.');},function(e){fail('Error de acceso: '+err(e));}).then(function(){el('tvLoginBtn').disabled=false;});return false;};
+    function receiverId(){
+      var id=localStorage.getItem('womo_tv_receiver_id');
+      if(!id){
+        var bytes=new Uint8Array(24);
+        if(!window.crypto||!window.crypto.getRandomValues)throw new Error('El navegador no puede generar el ID seguro del dispositivo.');
+        window.crypto.getRandomValues(bytes);
+        id='';
+        for(var i=0;i<bytes.length;i++){var h=bytes[i].toString(16);id+=(h.length<2?'0':'')+h;}
+        localStorage.setItem('womo_tv_receiver_id',id);
+      }
+      return id;
+    }
     function pairWithPin(ref,user){
-      currentRef=ref;
-      return ref.set({status:'paired',tvConnectedAt:Date.now(),tvLastSeenAt:Date.now(),tvUserId:user.uid,tvUserEmail:user.email||'',playerState:{status:'connected',updatedAt:Date.now()}},{merge:true}).then(function(){
+      var rid=receiverId();
+      return db.runTransaction(function(tx){
+        return tx.get(ref).then(function(snap){
+          if(!snap.exists)return 'missing';
+          var data=snap.data()||{};
+          if(data.createdBy!==user.uid)return 'wrong_user';
+          if(data.status==='waiting_tv'&&!data.receiverId){
+            tx.update(ref,{
+              status:'paired',receiverId:rid,
+              tvConnectedAt:firebase.firestore.FieldValue.serverTimestamp(),
+              tvLastSeenAt:Date.now(),tvUserId:user.uid,tvUserEmail:user.email||'',
+              playerState:{status:'connected',updatedAt:Date.now()},
+              updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+            });
+            return 'paired';
+          }
+          if((data.status==='paired'||data.status==='tv_connected')&&data.receiverId===rid)return 'resume';
+          return 'used';
+        });
+      }).then(function(result){
+        if(result!=='paired'&&result!=='resume'){
+          text('tvStatus',result==='wrong_user'?'El PIN pertenece a otra cuenta.':result==='missing'?'Código no encontrado.':'Este PIN ya se utilizó o desvinculó. Genera otro.');
+          return;
+        }
+        currentRef=ref;
         showLinked();
+        if(unsub)unsub();
         unsub=ref.onSnapshot(function(s){
           var d=s.data()||{};
-          if(d.status==='disconnected'){
+          if(d.status==='disconnected'||d.status==='revoked'){
             if(unsub)unsub();unsub=null;currentRef=null;
             if(heartbeat)clearInterval(heartbeat);heartbeat=null;
             el('tvPairForm').style.display='block';
@@ -32,6 +68,7 @@
           }
           if(d.currentCommand&&d.currentCommand.type==='play')text('tvStatus','Comando recibido. Reproducción pendiente de compatibilidad multimedia de webOS.');
         },function(e){text('tvStatus','Error sesión: '+err(e));});
+        if(heartbeat)clearInterval(heartbeat);
         heartbeat=setInterval(function(){if(currentRef)currentRef.set({tvLastSeenAt:Date.now()},{merge:true});},20000);
       });
     }
@@ -43,21 +80,8 @@
       text('tvStatus','Buscando PIN...');
       db.collection('tvSessions').doc(code).get().then(function(snap){
         if(!snap.exists){text('tvStatus','Código no encontrado.');return;}
-        var d=snap.data()||{};
-        if(d.createdBy!==user.uid){text('tvStatus','El PIN pertenece a otra cuenta.');return;}
-        if(d.status==='paired'||d.status==='tv_connected')return pairWithPin(snap.ref,user);
-        if(!d.createdAtServer||!d.createdAtServer.toMillis){text('tvStatus','Genera un PIN nuevo desde tu celular.');return;}
-        return snap.ref.set({pinCheckedAtServer:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})
-          .then(function(){return snap.ref.get({source:'server'});})
-          .then(function(checked){
-            var current=checked.data()||{};
-            var issued=current.createdAtServer&&current.createdAtServer.toMillis?current.createdAtServer.toMillis():0;
-            var verified=current.pinCheckedAtServer&&current.pinCheckedAtServer.toMillis?current.pinCheckedAtServer.toMillis():0;
-            if(!issued||!verified){text('tvStatus','No se pudo validar la hora de Firebase. Reintenta.');return;}
-            if(verified-issued>Number(current.pinTtlMs||1800000)){text('tvStatus','El PIN expiró. Genera uno nuevo.');return;}
-            return pairWithPin(snap.ref,user);
-          });
-      }).catch(function(e){text('tvStatus','Error Firebase: '+err(e));});
+        return pairWithPin(snap.ref,user);
+      }).catch(function(e){text('tvStatus','Error al vincular: '+err(e));});
       return false;
     };
     el('tvLogoutBtn').onclick=function(){auth.signOut();};
