@@ -143,10 +143,27 @@ async function connectWithCode(rawCode) {
     }
 
     const data = snap.data() || {};
-    const expiresAt = Number(data.expiresAt || 0);
-    if (expiresAt && expiresAt < Date.now()) {
-      setStatus("Ese código expiró. Genera uno nuevo desde tu celular.");
-      return;
+    // Compare two Firestore server timestamps rather than the phone/TV clocks.
+    // The server owns both the PIN creation time and the validation time.
+    if (data.status !== "paired" && data.status !== "tv_connected") {
+      if (!data.createdAtServer || !data.createdAtServer.toMillis) {
+        setStatus("Este código se creó con la versión anterior. Genera uno nuevo desde tu celular.");
+        return;
+      }
+      await ref.set({ pinCheckedAtServer: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      const checked = await ref.get({ source: "server" });
+      const latest = checked.data() || {};
+      const issued = latest.createdAtServer && latest.createdAtServer.toMillis ? latest.createdAtServer.toMillis() : 0;
+      const checkedAt = latest.pinCheckedAtServer && latest.pinCheckedAtServer.toMillis ? latest.pinCheckedAtServer.toMillis() : 0;
+      const ttl = Number(latest.pinTtlMs || 30 * 60 * 1000);
+      if (!issued || !checkedAt) {
+        setStatus("No se pudo verificar la hora de Firebase. Reintenta la conexión.");
+        return;
+      }
+      if (checkedAt - issued > ttl) {
+        setStatus("Ese código expiró. Genera uno nuevo desde tu celular.");
+        return;
+      }
     }
     if (!data.createdBy) {
       setStatus("Ese código no está vinculado a un usuario válido.");
