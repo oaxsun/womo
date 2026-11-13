@@ -23,6 +23,17 @@ let authReady = false;
 
 function $(id) { return document.getElementById(id); }
 function cleanCode(value) { return String(value || "").replace(/\D/g, "").slice(0, 6); }
+function getReceiverId() {
+  let id = localStorage.getItem("womo_tv_receiver_id");
+  if (!id) {
+    const random = new Uint8Array(24);
+    if (!window.crypto || !window.crypto.getRandomValues) throw new Error("This TV cannot generate a secure receiver identifier");
+    window.crypto.getRandomValues(random);
+    id = Array.from(random, b => b.toString(16).padStart(2, "0")).join("");
+    localStorage.setItem("womo_tv_receiver_id", id);
+  }
+  return id;
+}
 function setStatus(text, paired = false) {
   const el = $("tvStatus");
   if (!el) return;
@@ -142,48 +153,38 @@ async function connectWithCode(rawCode) {
       return;
     }
 
-    const data = snap.data() || {};
-    // Compare two Firestore server timestamps rather than the phone/TV clocks.
-    // The server owns both the PIN creation time and the validation time.
-    if (data.status !== "paired" && data.status !== "tv_connected") {
-      if (!data.createdAtServer || !data.createdAtServer.toMillis) {
-        setStatus("Este código se creó con la versión anterior. Genera uno nuevo desde tu celular.");
-        return;
+    const receiverId = getReceiverId();
+    const result = await db.runTransaction(async tx => {
+      const current = await tx.get(ref);
+      if (!current.exists) return "missing";
+      const data = current.data() || {};
+      if (data.createdBy !== user.uid) return "wrong_user";
+      if (data.status === "waiting_tv" && !data.receiverId) {
+        tx.update(ref, {
+          status: "paired",
+          receiverId,
+          tvConnectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          tvLastSeenAt: Date.now(),
+          tvUserId: user.uid,
+          tvUserEmail: user.email || "",
+          playerState: { status: "connected", updatedAt: Date.now() },
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        return "paired";
       }
-      await ref.set({ pinCheckedAtServer: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-      const checked = await ref.get({ source: "server" });
-      const latest = checked.data() || {};
-      const issued = latest.createdAtServer && latest.createdAtServer.toMillis ? latest.createdAtServer.toMillis() : 0;
-      const checkedAt = latest.pinCheckedAtServer && latest.pinCheckedAtServer.toMillis ? latest.pinCheckedAtServer.toMillis() : 0;
-      const ttl = Number(latest.pinTtlMs || 30 * 60 * 1000);
-      if (!issued || !checkedAt) {
-        setStatus("No se pudo verificar la hora de Firebase. Reintenta la conexión.");
-        return;
-      }
-      if (checkedAt - issued > ttl) {
-        setStatus("Ese código expiró. Genera uno nuevo desde tu celular.");
-        return;
-      }
-    }
-    if (!data.createdBy) {
-      setStatus("Ese código no está vinculado a un usuario válido.");
+      if ((data.status === "paired" || data.status === "tv_connected") && data.receiverId === receiverId) return "resume";
+      return "used";
+    });
+    if (result !== "paired" && result !== "resume") {
+      const messages = {
+        missing: "No encontramos ese código. Genera otro desde tu celular.",
+        wrong_user: "Este código pertenece a otra cuenta. Inicia sesión con la misma cuenta.",
+        used: "Este PIN ya fue utilizado o desvinculado. Genera uno nuevo desde el celular."
+      };
+      setStatus(messages[result] || "No se pudo vincular la pantalla.");
       return;
     }
-    if (data.createdBy !== user.uid) {
-      setStatus("Ese código pertenece a otra cuenta. Inicia sesión con la misma cuenta del celular.");
-      return;
-    }
-
     sessionRef = ref;
-    await sessionRef.set({
-      status: "paired",
-      tvConnectedAt: Date.now(),
-      tvLastSeenAt: Date.now(),
-      tvUserId: user.uid,
-      tvUserEmail: user.email || "",
-      playerState: { status: "connected", updatedAt: Date.now() },
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
 
     localStorage.setItem("womo_tv_receiver_code", code);
     if (input) input.blur();
@@ -214,7 +215,7 @@ function listenSession() {
     if (data.status === "paired" || data.status === "tv_connected") {
       if ($("playerScreen")?.hidden) showLinkedScreen();
       else setStatus("TV vinculada. Elige un título desde tu celular.", true);
-    } else if (data.status === "disconnected") {
+    } else if (data.status === "disconnected" || data.status === "revoked") {
       setStatus("Sesión desvinculada. Genera otro código desde tu celular.");
       stopSessionWatchers();
       localStorage.removeItem("womo_tv_receiver_code");
