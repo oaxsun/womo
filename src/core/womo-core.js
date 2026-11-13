@@ -1728,13 +1728,8 @@ async function womoRefreshTvSessionStatus() {
       womoSetTvSessionStatus("Genera un código y escríbelo en Womo TV para vincular esta sesión.", false);
       return false;
     }
-    const expiresAt = Number(data.expiresAt || 0);
-    if (expiresAt && expiresAt < Date.now()) {
-      localStorage.removeItem(WOMO_TV_SESSION_ID_KEY);
-      localStorage.removeItem(WOMO_TV_SESSION_CODE_KEY);
-      womoSetTvSessionStatus("El código expiró. Genera uno nuevo para vincular Womo TV.", false);
-      return false;
-    }
+    // The PIN expires only for initial pairing. Never invalidate a connected
+    // session using a client device's local clock.
     const label = code || data.code || sessionId;
     const connected = data.status === "paired" || data.status === "tv_connected";
     womoSetTvSessionStatus(connected ? `TV vinculada · código ${label}` : `Código TV activo: ${label}. Escríbelo en Womo TV.`, true);
@@ -1765,8 +1760,8 @@ async function womoCreateTvPinSession() {
       const candidateRef = db.collection("tvSessions").doc(candidate);
       const existing = await candidateRef.get();
       const existingData = existing.exists ? (existing.data() || {}) : null;
-      const expired = existingData && Number(existingData.expiresAt || 0) < Date.now();
-      if (!existing.exists || expired || existingData?.createdBy === user.uid) {
+      // Do not recycle a PIN based on the controller's possibly inaccurate clock.
+      if (!existing.exists || existingData?.createdBy === user.uid) {
         code = candidate;
         ref = candidateRef;
         break;
@@ -1781,7 +1776,9 @@ async function womoCreateTvPinSession() {
       status: "waiting_tv",
       createdBy: user.uid,
       createdAt: now,
+      createdAtServer: firebase.firestore.FieldValue.serverTimestamp(),
       expiresAt: now + WOMO_TV_SESSION_TTL_MS,
+      pinTtlMs: WOMO_TV_SESSION_TTL_MS,
       controllerLastSeenAt: now,
       currentCommand: null,
       playerState: { status: "waiting_tv", updatedAt: now },
@@ -1890,9 +1887,10 @@ async function womoSendPlayToTv(item, episode = null, startAt = null) {
       alert("La sesión TV ya no está disponible. Genera un nuevo código.");
       return false;
     }
-    const expiresAt = Number(sessionData.expiresAt || 0);
-    if (expiresAt && expiresAt < Date.now()) {
-      alert("El código TV expiró. Genera uno nuevo desde Configuración.");
+    // Once the receiver is paired, the PIN expiry must not stop playback.
+    // An unpaired receiver will validate the PIN with server timestamps.
+    if (sessionData.status !== "paired" && sessionData.status !== "tv_connected") {
+      alert("La TV todavía no está vinculada. Ingresa el PIN en la pantalla.");
       return false;
     }
 
