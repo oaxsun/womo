@@ -1487,7 +1487,6 @@ async function sendPasswordResetEmail() {
 /* Womo TV Receiver session - phone/controller side */
 const WOMO_TV_SESSION_ID_KEY = "womo_tv_session_id";
 const WOMO_TV_SESSION_CODE_KEY = "womo_tv_session_code";
-const WOMO_TV_SESSION_TTL_MS = 30 * 60 * 1000;
 let womoTvRemoteRefreshTimer = null;
 
 function womoGetStoredTvSessionId() {
@@ -1728,11 +1727,16 @@ async function womoRefreshTvSessionStatus() {
       womoSetTvSessionStatus("Genera un código y escríbelo en Womo TV para vincular esta sesión.", false);
       return false;
     }
-    // The PIN expires only for initial pairing. Never invalidate a connected
-    // session using a client device's local clock.
+    // A PIN remains pending until paired, replaced or explicitly disconnected.
     const label = code || data.code || sessionId;
     const connected = data.status === "paired" || data.status === "tv_connected";
-    womoSetTvSessionStatus(connected ? `TV vinculada · código ${label}` : `Código TV activo: ${label}. Escríbelo en Womo TV.`, true);
+    if (data.status === "disconnected" || data.status === "revoked") {
+      localStorage.removeItem(WOMO_TV_SESSION_ID_KEY);
+      localStorage.removeItem(WOMO_TV_SESSION_CODE_KEY);
+      womoSetTvSessionStatus("Sesión TV cerrada. Genera un código para vincular de nuevo.", false);
+      return false;
+    }
+    womoSetTvSessionStatus(connected ? "TV vinculada. Control disponible." : `Código TV pendiente: ${label}. Escríbelo en Womo TV.`, true);
     return true;
   } catch (error) {
     console.warn("No se pudo verificar la sesión TV.", error);
@@ -1753,37 +1757,44 @@ async function womoCreateTvPinSession() {
   try {
     if (button) { button.disabled = true; button.textContent = "Generando..."; }
 
+    const previousId = womoGetStoredTvSessionId();
     let code = "";
-    let ref = null;
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    const now = Date.now();
+    for (let attempt = 0; attempt < 12; attempt += 1) {
       const candidate = womoGenerateTvCode();
       const candidateRef = db.collection("tvSessions").doc(candidate);
-      const existing = await candidateRef.get();
-      const existingData = existing.exists ? (existing.data() || {}) : null;
-      // Do not recycle a PIN based on the controller's possibly inaccurate clock.
-      if (!existing.exists || existingData?.createdBy === user.uid) {
-        code = candidate;
-        ref = candidateRef;
-        break;
-      }
+      // Create atomically: never recycle an existing code, even for its owner.
+      const created = await db.runTransaction(async tx => {
+        const existing = await tx.get(candidateRef);
+        if (existing.exists) return false;
+        tx.set(candidateRef, {
+          code: candidate,
+          status: "waiting_tv",
+          createdBy: user.uid,
+          createdAt: now,
+          createdAtServer: firebase.firestore.FieldValue.serverTimestamp(),
+          controllerLastSeenAt: now,
+          currentCommand: null,
+          playerState: { status: "waiting_tv", updatedAt: now },
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        return true;
+      });
+      if (created) { code = candidate; break; }
     }
-
-    if (!code || !ref) throw new Error("No available TV PIN code");
-
-    const now = Date.now();
-    await ref.set({
-      code,
-      status: "waiting_tv",
-      createdBy: user.uid,
-      createdAt: now,
-      createdAtServer: firebase.firestore.FieldValue.serverTimestamp(),
-      expiresAt: now + WOMO_TV_SESSION_TTL_MS,
-      pinTtlMs: WOMO_TV_SESSION_TTL_MS,
-      controllerLastSeenAt: now,
-      currentCommand: null,
-      playerState: { status: "waiting_tv", updatedAt: now },
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: false });
+    if (!code) throw new Error("No available TV PIN code");
+    // A new PIN revokes the previous session only after the new code exists.
+    if (previousId && previousId !== code) {
+      try {
+        const previousRef = db.collection("tvSessions").doc(previousId);
+        await db.runTransaction(async tx => {
+          const old = await tx.get(previousRef);
+          if (old.exists && old.data()?.createdBy === user.uid) {
+            tx.update(previousRef, { status: "revoked", updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+          }
+        });
+      } catch (error) { console.warn("Previous TV session could not be revoked.", error); }
+    }
 
     localStorage.setItem(WOMO_TV_SESSION_ID_KEY, code);
     localStorage.setItem(WOMO_TV_SESSION_CODE_KEY, code);
@@ -1887,8 +1898,7 @@ async function womoSendPlayToTv(item, episode = null, startAt = null) {
       alert("La sesión TV ya no está disponible. Genera un nuevo código.");
       return false;
     }
-    // Once the receiver is paired, the PIN expiry must not stop playback.
-    // An unpaired receiver will validate the PIN with server timestamps.
+    // A PIN can control playback only after the receiving device is paired.
     if (sessionData.status !== "paired" && sessionData.status !== "tv_connected") {
       alert("La TV todavía no está vinculada. Ingresa el PIN en la pantalla.");
       return false;
