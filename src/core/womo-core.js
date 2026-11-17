@@ -131,8 +131,8 @@ function renderWatchListRow() {
   if (button && current) {
     const saved = isInWatchList(current);
     button.classList.toggle("active", saved);
-    button.textContent = saved ? "✓ Guardado" : "＋ Guardar";
     button.setAttribute("aria-pressed", String(saved));
+    button.setAttribute("aria-label", saved ? "Quitar de Watch List" : "Guardar en Watch List");
   }
 }
 
@@ -140,7 +140,6 @@ function syncWatchListPreviewButton(item) {
   const button = document.getElementById("previewWatchList");
   if (!button || !item) return;
   const saved = isInWatchList(item);
-  button.textContent = saved ? "✓ Guardado" : "＋ Guardar";
   button.classList.toggle("active", saved);
   button.setAttribute("aria-pressed", String(saved));
   button.setAttribute("aria-label", saved ? "Quitar de Watch List" : "Guardar en Watch List");
@@ -2948,14 +2947,10 @@ async function openPreview(item) {
 
   // Add the save action for movies, series and concerts without replacing
   // their play, shuffle, restart or TV controls.
-  if (actions) {
-    const saveButton = document.createElement("button");
-    saveButton.type = "button";
-    saveButton.id = "previewWatchList";
-    saveButton.className = "secondary watch-list-save-btn";
-    actions.appendChild(saveButton);
+  const watchButton = document.getElementById("previewWatchList");
+  if (watchButton) {
     syncWatchListPreviewButton(item);
-    saveButton.addEventListener("click", () => toggleWatchListItem(item));
+    watchButton.onclick = () => toggleWatchListItem(item);
   }
   modal.classList.add('open');
   if (window.lucide) lucide.createIcons();
