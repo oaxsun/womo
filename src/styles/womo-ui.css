@@ -9655,3 +9655,78 @@ body.player-open{
     right: 64px !important;
   }
 }
+
+/* Preview top controls: one geometrically consistent row on desktop and mobile.
+   Override historical per-breakpoint rules that stretched or offset these buttons. */
+#previewModal .preview-hero > .preview-close,
+#previewModal .preview-hero > #previewFavorite,
+#previewModal .preview-hero > #previewWatchList {
+  box-sizing: border-box !important;
+  position: absolute !important;
+  top: 16px !important;
+  bottom: auto !important;
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+  aspect-ratio: 1 / 1 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: none !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  transform: none !important;
+  z-index: 100 !important;
+}
+#previewModal .preview-hero > .preview-close {
+  left: 16px !important;
+  right: auto !important;
+  background: rgba(18,18,18,.72) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  color: #fff !important;
+  font-size: 0 !important;
+}
+#previewModal .preview-hero > #previewFavorite {
+  right: 16px !important;
+  left: auto !important;
+}
+#previewModal .preview-hero > #previewWatchList {
+  right: 64px !important;
+  left: auto !important;
+}
+#previewModal .preview-hero > .preview-close svg,
+#previewModal .preview-hero > #previewFavorite svg,
+#previewModal .preview-hero > #previewWatchList svg {
+  display: block !important;
+  width: 19px !important;
+  height: 19px !important;
+  flex: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+#previewModal .preview-hero > .preview-close svg {
+  stroke-width: 2.4 !important;
+}
+@media (max-width: 760px) {
+  #previewModal .preview-hero > .preview-close,
+  #previewModal .preview-hero > #previewFavorite,
+  #previewModal .preview-hero > #previewWatchList {
+    top: 20px !important;
+    width: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    max-height: 42px !important;
+  }
+  #previewModal .preview-hero > .preview-close { left: 20px !important; right: auto !important; }
+  #previewModal .preview-hero > #previewFavorite { right: 20px !important; left: auto !important; }
+  #previewModal .preview-hero > #previewWatchList { right: 70px !important; left: auto !important; }
+}
