@@ -9589,3 +9589,27 @@ body.player-open{
   .remote-round { width: 68px; height: 68px; }
   .remote-main { width: 78px; height: 78px; }
 }
+
+/* Watch List: discreet saved-state action in title previews. */
+#previewActions .watch-list-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 118px;
+  white-space: nowrap;
+  border: 1px solid rgba(255,255,255,.38);
+  background: rgba(255,255,255,.06);
+  color: #f7f7f7;
+  transition: background .2s ease, border-color .2s ease, color .2s ease;
+}
+#previewActions .watch-list-save-btn:hover {
+  background: rgba(215,255,0,.1);
+  border-color: var(--accent);
+}
+#previewActions .watch-list-save-btn.active {
+  background: rgba(215,255,0,.14);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#watchListHomeSection.hidden { display: none !important; }
