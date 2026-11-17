@@ -1418,7 +1418,7 @@ async function clearUserMetaDocs(userRef) {
 
 function clearLocalMemoryState() {
   localStorage.removeItem(FAVORITES_KEY);
-  localStorage.removeItem(WATCH_LIST_KEY);
+  // Preserve Watch List: an admin history reset should not erase saved titles.
   localStorage.removeItem(CONTINUE_KEY);
   localStorage.removeItem(EPISODE_PROGRESS_KEY);
   localStorage.setItem(MEMORY_CLEARED_KEY, "true");
