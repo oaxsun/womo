@@ -192,6 +192,50 @@ function toggleWatchListItem(item) {
   });
 }
 
+// Completion removes saved titles from Watch List, but does not affect favorites.
+function removeCompletedFromWatchList(item) {
+  if (!item || !item.id || !item.type || !isInWatchList(item)) return;
+  const type = item.type, id = item.id;
+  saveWatchListState(loadWatchListState().filter(e => !(e.id === id && e.type === type)));
+  renderWatchListRow();
+  syncWatchListPreviewButton(item);
+  womoWatchListMutation = womoWatchListMutation.catch(() => {}).then(async () => {
+    const ref = getUserDocRef();
+    if (!ref) return;
+    const updated = await db.runTransaction(async tx => {
+      const snapshot = await tx.get(ref);
+      const current = snapshot.exists && Array.isArray(snapshot.data()?.watchList) ? snapshot.data().watchList : [];
+      const next = current.filter(e => !(e.id === id && e.type === type));
+      if (next.length !== current.length) {
+        tx.set(ref, { watchList: next, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      }
+      return next;
+    });
+    saveWatchListState(updated);
+    renderWatchListRow();
+    syncWatchListPreviewButton(item);
+  }).catch(error => {
+    console.warn("No se pudo quitar el título completado de Watch List.", error);
+    return loadWatchListFromCloud().then(() => { renderWatchListRow(); syncWatchListPreviewButton(item); });
+  });
+}
+
+// A series stays on Watch List until every published episode has reached 90%.
+// Series progress is stored per episode; do not remove for a single finished episode.
+async function removeCompletedSeriesFromWatchList(seriesItem) {
+  if (!seriesItem || seriesItem.type !== "series" || !isInWatchList(seriesItem)) return;
+  try {
+    const episodes = await readSeriesEpisodes(seriesItem.id);
+    if (!episodes.length) return;
+    const allCompleted = episodes.every(episode =>
+      Number(getEpisodeStoredProgress(seriesItem.id, episode) || 0) >= WOMO_COMPLETION_PROGRESS
+    );
+    if (allCompleted) removeCompletedFromWatchList(seriesItem);
+  } catch (error) {
+    console.warn("No se pudo verificar el final de la serie para Watch List.", error);
+  }
+}
+
 function getAllCatalogItems() {
   return [...allItemsByContinueKey.values()];
 }
@@ -3053,6 +3097,8 @@ async function womoPersistPlaybackProgress(forceCompleted = false, forceWrite = 
       state.unshift(continueEntry);
       saveContinueState(state);
       if (snapshot.completed) {
+        // Only drop a series from Watch List when every episode is finished.
+        if (isInWatchList(item)) await removeCompletedSeriesFromWatchList(item);
         const nextEpisode = getEpisodeAfter(item.id, episode) || getFirstUnfinishedEpisode();
         if (!womoShouldDeferPlaybackUiWork()) {
           refreshCurrentPreviewEpisodes();
@@ -3215,6 +3261,7 @@ async function prepareReplayAsNewProgress(item, episode = null) {
 
 function markPlayableCompleted(item) {
   if (!item) return;
+  if (item.type !== "series") removeCompletedFromWatchList(item);
   setItemCompleted(item, true);
   item.progress = 0;
   removeContinueEverywhere(item);
