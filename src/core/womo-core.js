@@ -98,6 +98,100 @@ function toggleFavoriteItem(item) {
   return !exists;
 }
 
+/* Watch List: separate from favorites, private to the authenticated user. */
+const WATCH_LIST_KEY = "womo_watch_list";
+let womoWatchListMutation = Promise.resolve();
+
+function loadWatchListState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(WATCH_LIST_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) { return []; }
+}
+
+function saveWatchListState(entries) {
+  localStorage.setItem(WATCH_LIST_KEY, JSON.stringify(entries));
+}
+
+function isInWatchList(item) {
+  return Boolean(item && loadWatchListState().some(entry => entry.id === item.id && entry.type === item.type));
+}
+
+function renderWatchListRow() {
+  const row = document.getElementById("watchListRow");
+  if (!row) return;
+  const items = loadWatchListState()
+    .map(entry => allItemsByContinueKey.get(`${entry.type}:${entry.id}`))
+    .filter(Boolean);
+  fillRow("watchListRow", items, false, true, { loop: true });
+  const section = document.getElementById("watchListHomeSection");
+  if (section) section.classList.toggle("hidden", !items.length);
+  const button = document.getElementById("previewWatchList");
+  const current = typeof currentPreviewItem !== "undefined" ? currentPreviewItem : null;
+  if (button && current) {
+    const saved = isInWatchList(current);
+    button.classList.toggle("active", saved);
+    button.textContent = saved ? "✓ Guardado" : "＋ Guardar";
+    button.setAttribute("aria-pressed", String(saved));
+  }
+}
+
+function syncWatchListPreviewButton(item) {
+  const button = document.getElementById("previewWatchList");
+  if (!button || !item) return;
+  const saved = isInWatchList(item);
+  button.textContent = saved ? "✓ Guardado" : "＋ Guardar";
+  button.classList.toggle("active", saved);
+  button.setAttribute("aria-pressed", String(saved));
+  button.setAttribute("aria-label", saved ? "Quitar de Watch List" : "Guardar en Watch List");
+}
+
+async function loadWatchListFromCloud() {
+  const ref = getUserDocRef();
+  if (!ref) return;
+  const snapshot = await ref.get();
+  const entries = snapshot.exists && Array.isArray(snapshot.data()?.watchList) ? snapshot.data().watchList : [];
+  saveWatchListState(entries.filter(e => e && e.id && e.type));
+}
+
+function toggleWatchListItem(item) {
+  if (!item || !firebase.auth().currentUser) return;
+  const entry = { id: item.id, type: item.type, addedAt: Date.now() };
+  const wasSaved = isInWatchList(item);
+  const next = wasSaved
+    ? loadWatchListState().filter(e => !(e.id === entry.id && e.type === entry.type))
+    : [entry, ...loadWatchListState()];
+  saveWatchListState(next);
+  renderWatchListRow();
+  syncWatchListPreviewButton(item);
+  // Serialize mutations and use a Firestore transaction to avoid losing changes
+  // when several tabs or devices edit the same user's Watch List.
+  womoWatchListMutation = womoWatchListMutation.catch(() => {}).then(async () => {
+    const ref = getUserDocRef();
+    if (!ref) return;
+    const finalList = await db.runTransaction(async tx => {
+      const snapshot = await tx.get(ref);
+      const current = snapshot.exists && Array.isArray(snapshot.data()?.watchList) ? snapshot.data().watchList : [];
+      const exists = current.some(e => e.id === entry.id && e.type === entry.type);
+      const updated = wasSaved
+        ? current.filter(e => !(e.id === entry.id && e.type === entry.type))
+        : exists ? current : [entry, ...current];
+      tx.set(ref, {
+        watchList: updated,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      return updated;
+    });
+    saveWatchListState(finalList);
+    renderWatchListRow();
+    syncWatchListPreviewButton(item);
+  }).catch(error => {
+    console.error("No se pudo sincronizar Watch List.", error);
+    // Refresh from the server to avoid a false saved indicator.
+    return loadWatchListFromCloud().then(() => { renderWatchListRow(); syncWatchListPreviewButton(item); });
+  });
+}
+
 function getAllCatalogItems() {
   return [...allItemsByContinueKey.values()];
 }
@@ -479,6 +573,10 @@ function applyDynamicHomeSectionOrder(homeConfig, genreEntries = [], collectionE
   });
 
   entries.sort((a, b) => a.order - b.order).forEach(entry => root.appendChild(entry.el));
+  // Watch List is always directly after Novedades, independent of dynamic ordering.
+  const watch = document.getElementById("watchListHomeSection");
+  const news = document.getElementById("moviesHomeSection");
+  if (watch && news && news.parentNode === root) news.insertAdjacentElement("afterend", watch);
 }
 
 function stopHeroTimer() {
@@ -1320,6 +1418,7 @@ async function clearUserMetaDocs(userRef) {
 
 function clearLocalMemoryState() {
   localStorage.removeItem(FAVORITES_KEY);
+  localStorage.removeItem(WATCH_LIST_KEY);
   localStorage.removeItem(CONTINUE_KEY);
   localStorage.removeItem(EPISODE_PROGRESS_KEY);
   localStorage.setItem(MEMORY_CLEARED_KEY, "true");
@@ -2091,6 +2190,7 @@ async function init() {
   setHero(0);
   fillRow("continueRow", continueItems, true, true, { loop: true });
   fillRow("moviesRow", noveltyItems, false, true, { loop: true, limit: 20 });
+  renderWatchListRow();
   fillRow("seriesRow", seriesItems, false, true);
   const taxonomyEntries = womoBuildHomeGenreSections(sortedItems, homeConfig.visibleGenres, homeConfig.visibleCollections);
   fillRow("concertsRow", concertItems, false, true);
@@ -2802,6 +2902,17 @@ async function openPreview(item) {
     renderPreviewRecommendationsForItem(item);
   }
 
+  // Add the save action for movies, series and concerts without replacing
+  // their play, shuffle, restart or TV controls.
+  if (actions) {
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.id = "previewWatchList";
+    saveButton.className = "secondary watch-list-save-btn";
+    actions.appendChild(saveButton);
+    syncWatchListPreviewButton(item);
+    saveButton.addEventListener("click", () => toggleWatchListItem(item));
+  }
   modal.classList.add('open');
   if (window.lucide) lucide.createIcons();
 }
@@ -4899,12 +5010,14 @@ async function bootWomoAppAfterLogin() {
   if (user) await user.getIdToken();
 
   localStorage.removeItem(FAVORITES_KEY);
+  localStorage.removeItem(WATCH_LIST_KEY);
   localStorage.removeItem(CONTINUE_KEY);
   localStorage.removeItem(EPISODE_PROGRESS_KEY);
   localStorage.setItem(MEMORY_CLEARED_KEY, "true");
 
   await Promise.all([
     loadFavoritesFromCloud(),
+    loadWatchListFromCloud(),
     loadContinueFromCloud(),
     loadEpisodeProgressFromCloud()
   ]);
@@ -4949,6 +5062,7 @@ function setupLogin() {
     } else {
       localStorage.removeItem("womoUser");
       localStorage.removeItem(FAVORITES_KEY);
+      localStorage.removeItem(WATCH_LIST_KEY);
       localStorage.removeItem(CONTINUE_KEY);
       localStorage.removeItem(EPISODE_PROGRESS_KEY);
       resetLocalSession();
