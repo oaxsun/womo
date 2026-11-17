@@ -9613,3 +9613,45 @@ body.player-open{
   color: var(--accent);
 }
 #watchListHomeSection.hidden { display: none !important; }
+
+/* Watch List uses the same compact icon treatment as Favorites. */
+#previewModal #previewWatchList.watch-list-icon-btn {
+  position: absolute !important;
+  top: 16px !important;
+  right: 64px !important;
+  left: auto !important;
+  z-index: 25 !important;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+  display: grid !important;
+  place-items: center !important;
+  border: 1px solid rgba(215,255,0,.9) !important;
+  background: rgba(18,18,18,.48) !important;
+  color: var(--accent) !important;
+  cursor: pointer;
+}
+#previewModal #previewWatchList.watch-list-icon-btn:hover {
+  background: rgba(215,255,0,.12) !important;
+}
+#previewModal #previewWatchList.watch-list-icon-btn.active {
+  background: var(--accent) !important;
+  color: #111 !important;
+}
+#previewModal #previewWatchList.watch-list-icon-btn svg {
+  width: 18px !important;
+  height: 18px !important;
+  stroke-width: 2 !important;
+}
+#previewModal #previewWatchList.watch-list-icon-btn.active svg {
+  fill: currentColor !important;
+}
+@media (max-width: 720px) {
+  #previewModal #previewWatchList.watch-list-icon-btn {
+    top: 16px !important;
+    right: 64px !important;
+  }
+}
