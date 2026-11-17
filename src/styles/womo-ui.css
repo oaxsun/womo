@@ -9730,3 +9730,45 @@ body.player-open{
   #previewModal .preview-hero > #previewFavorite { right: 20px !important; left: auto !important; }
   #previewModal .preview-hero > #previewWatchList { right: 70px !important; left: auto !important; }
 }
+
+/* 2026-11-17: Match Watch List to Favorites and keep back arrow visible.
+   These rules override the old green outline and mobile button variants. */
+#previewModal .preview-hero > #previewWatchList.watch-list-icon-btn {
+  border: 1px solid rgba(255,255,255,.12) !important;
+  background: rgba(18,18,18,.72) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+#previewModal .preview-hero > #previewWatchList.watch-list-icon-btn:hover {
+  background: rgba(255,255,255,.12) !important;
+  border-color: rgba(255,255,255,.2) !important;
+}
+#previewModal .preview-hero > #previewWatchList.watch-list-icon-btn.active {
+  border-color: rgba(255,255,255,.12) !important;
+  background: var(--accent) !important;
+  color: #111 !important;
+  box-shadow: none !important;
+}
+#previewModal .preview-hero > #previewWatchList.watch-list-icon-btn.active svg {
+  fill: currentColor !important;
+}
+#previewModal .preview-hero > .preview-close > svg.preview-back-chevron {
+  display: block !important;
+  position: static !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 20px !important;
+  min-width: 20px !important;
+  height: 20px !important;
+  min-height: 20px !important;
+  stroke: currentColor !important;
+  fill: none !important;
+  margin: 0 !important;
+  transform: translateX(-1px) !important;
+  pointer-events: none !important;
+}
+#previewModal .preview-hero > .preview-close {
+  font-size: 20px !important;
+  color: #fff !important;
+}
