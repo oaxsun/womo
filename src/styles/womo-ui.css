@@ -9775,10 +9775,10 @@ body.player-open{
 
 /* Preview controls refinement: larger back chevron, mobile Favorite matches Watch List. */
 #previewModal .preview-hero > .preview-close > svg.preview-back-chevron {
-  width: 27px !important;
-  min-width: 27px !important;
-  height: 27px !important;
-  min-height: 27px !important;
+  width: 35px !important;
+  min-width: 35px !important;
+  height: 35px !important;
+  min-height: 35px !important;
   stroke-width: 2.35 !important;
   transform: translateX(-1px) !important;
 }
