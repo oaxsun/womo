@@ -9772,3 +9772,35 @@ body.player-open{
   font-size: 20px !important;
   color: #fff !important;
 }
+
+/* Preview controls refinement: larger back chevron, mobile Favorite matches Watch List. */
+#previewModal .preview-hero > .preview-close > svg.preview-back-chevron {
+  width: 27px !important;
+  min-width: 27px !important;
+  height: 27px !important;
+  min-height: 27px !important;
+  stroke-width: 2.35 !important;
+  transform: translateX(-1px) !important;
+}
+@media (max-width: 760px) {
+  #previewModal .preview-hero > #previewFavorite.preview-fav-btn {
+    border: 1px solid rgba(255,255,255,.12) !important;
+    background: rgba(18,18,18,.72) !important;
+    color: #fff !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+  #previewModal .preview-hero > #previewFavorite.preview-fav-btn:hover {
+    border-color: rgba(255,255,255,.2) !important;
+    background: rgba(255,255,255,.12) !important;
+  }
+  #previewModal .preview-hero > #previewFavorite.preview-fav-btn.active {
+    border-color: rgba(255,255,255,.12) !important;
+    background: var(--accent) !important;
+    color: #111 !important;
+  }
+  #previewModal .preview-hero > #previewFavorite.preview-fav-btn.active svg {
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+}
