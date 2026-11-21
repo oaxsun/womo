@@ -4634,6 +4634,9 @@ function womoBindExplicitPauseGuard(video) {
   }, true);
 
   video.addEventListener('pause', function(){
+    // A source switch calls video.pause() internally. It is NOT a user pause
+    // and must not block the first automatic play in browser fullscreen.
+    if (video.dataset.womoStartingPlayback === 'true') return;
     if (!playerIsOpen() || !isCurrentWmo() || video.ended) return;
     // Treat any settled WMO pause as explicit. This is intentionally stronger
     // than the old guard because MediaSource seek/buffer helpers may emit extra
@@ -4647,6 +4650,13 @@ function womoBindExplicitPauseGuard(video) {
 
   video.addEventListener('play', function(){
     if (!playerIsOpen() || !isCurrentWmo()) return;
+    if (video.dataset.womoStartingPlayback === 'true') {
+      delete video.dataset.womoStartingPlayback;
+      userPauseIntent = false;
+      userPlayIntentUntil = 0;
+      womoClearExplicitPause(video);
+      return;
+    }
     // Native fullscreen video controls do not always forward pointer/touch
     // events to the page. A real 'play' event while the user has paused in
     // fullscreen must release the latch instead of immediately re-pausing.
@@ -4773,6 +4783,11 @@ async function openPlayer(item, options = {}) {
   const overlay = document.getElementById('playerOverlay');
   const video = document.getElementById('womoPlayer');
   womoSetupPlayerPip();
+  // Let the browser start playback when media becomes ready, even if
+  // fullscreen was entered while Firebase/WMO was still loading.
+  video.dataset.womoStartingPlayback = 'true';
+  video.autoplay = true;
+  video.setAttribute('autoplay', '');
   womoClearExplicitPause(video);
   womoBindExplicitPauseGuard(video);
   document.body.classList.add('player-open');
@@ -5015,6 +5030,12 @@ function closePlayer() {
   womoClearForcedPlayerVisibleState();
   womoClearTsSeekTimer();
   womoCurrentPlaybackUrl = "";
+  const closingVideo = document.getElementById('womoPlayer');
+  if (closingVideo) {
+    delete closingVideo.dataset.womoStartingPlayback;
+    closingVideo.autoplay = false;
+    closingVideo.removeAttribute('autoplay');
+  }
   window.__womoPlayerOpenedAt = 0;
   womoTsIsRecovering = false;
   const isShuffleNoProgress = typeof womoIsShuffleNoProgressPlayback === "function" && womoIsShuffleNoProgressPlayback();
