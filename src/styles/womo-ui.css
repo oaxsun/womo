@@ -9804,3 +9804,88 @@ body.player-open{
     stroke: currentColor !important;
   }
 }
+
+/* Immersive Womo playback: completely isolate the catalog while video is open. */
+html:has(body.player-open),
+html:has(body.player-open):fullscreen,
+html:fullscreen:has(body.player-open) {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  background: #000 !important;
+}
+html:has(body.player-open) body,
+body.player-open {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  background: #000 !important;
+}
+body.player-open .app-shell,
+body.player-open #homePage,
+body.player-open #searchPage,
+body.player-open #favoritesPage,
+body.player-open #viewAllPage,
+body.player-open .sidebar,
+body.player-open .topbar,
+body.player-open .mobile-nav {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+body.player-open #playerOverlay.open,
+body.player-open #playerOverlay.open:fullscreen {
+  display: flex !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  background: #000 !important;
+  overflow: hidden !important;
+  overscroll-behavior: contain !important;
+  isolation: isolate !important;
+  z-index: 2147483000 !important;
+}
+html:fullscreen body.player-open #playerOverlay.open {
+  width: 100% !important;
+  height: 100% !important;
+}
+body.player-open #playerOverlay.open #womoPlayer {
+  background: #000 !important;
+}
+#womoPlayer::-webkit-media-controls-fullscreen-button,
+#womoPlayer::-webkit-media-controls-picture-in-picture-button {
+  display: none !important;
+}
+/* Native fullscreen/PiP controls are browser-owned; show our own PiP affordance. */
+#playerOverlay #playerPip.player-pip-btn {
+  box-sizing: border-box !important;
+  flex: 0 0 38px !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: rgba(0,0,0,.46) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  color: #fff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  z-index: 2147483020 !important;
+  margin-left: auto !important;
+}
+#playerOverlay #playerPip.player-pip-btn[hidden] {
+  display: none !important;
+}
+#playerOverlay #playerPip.player-pip-btn svg {
+  display: block !important;
+  width: 19px !important;
+  height: 19px !important;
+}
+#playerOverlay #playerPip.player-pip-btn:hover {
+  border-color: rgba(215,255,0,.5) !important;
+}
