@@ -4647,7 +4647,16 @@ function womoBindExplicitPauseGuard(video) {
 
   video.addEventListener('play', function(){
     if (!playerIsOpen() || !isCurrentWmo()) return;
-    const userReallyPressedPlay = Date.now() <= userPlayIntentUntil;
+    // Native fullscreen video controls do not always forward pointer/touch
+    // events to the page. A real 'play' event while the user has paused in
+    // fullscreen must release the latch instead of immediately re-pausing.
+    const fullscreenActive = Boolean(
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      video.webkitDisplayingFullscreen
+    );
+    const nativeFullscreenResume = fullscreenActive && womoHasExplicitPause(video);
+    const userReallyPressedPlay = Date.now() <= userPlayIntentUntil || nativeFullscreenResume;
     if (userReallyPressedPlay) {
       userPauseIntent = false;
       userPlayIntentUntil = 0;
@@ -4666,6 +4675,38 @@ function womoBindExplicitPauseGuard(video) {
     }
   });
 }
+
+/* Enter browser fullscreen from the original playback gesture.
+   Requesting it after openPlayer's Firebase awaits loses user activation.
+   Keep the existing player overlay and renderer entirely unchanged. */
+(function womoBindImmersivePlaybackGesture() {
+  if (window.__womoImmersivePlaybackGestureBound) return;
+  window.__womoImmersivePlaybackGestureBound = true;
+
+  document.addEventListener("click", function(event) {
+    const target = event.target && event.target.closest
+      ? event.target.closest("[data-preview-play], [data-preview-restart], #shufflePlayBtn")
+      : null;
+    if (!target || target.disabled) return;
+    const overlay = document.getElementById("playerOverlay");
+    if (!overlay) return;
+    if (document.fullscreenElement || document.webkitFullscreenElement) return;
+    const root = document.documentElement;
+    const request = root.requestFullscreen || root.webkitRequestFullscreen;
+    if (typeof request !== "function") return;
+    try {
+      const pending = request.call(root, { navigationUI: "hide" });
+      if (pending && typeof pending.catch === "function") {
+        pending.catch(function(error) {
+          // Browser/OS may disallow fullscreen; never prevent playback.
+          console.info("Fullscreen no disponible en este navegador.", error);
+        });
+      }
+    } catch (error) {
+      console.info("El navegador no permitió fullscreen automático.", error);
+    }
+  }, true);
+})();
 
 async function openPlayer(item, options = {}) {
   // If the player is switching directly to another item/episode, persist the
