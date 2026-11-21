@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Womo Web</title>
 
-  <link rel="stylesheet" href="styles.css?v=59" />
+  <link rel="stylesheet" href="styles.css?v=60" />
 
   <script>
     (function(){
@@ -261,7 +261,7 @@
         </div>
 
         <div class="app-version-note" aria-label="Versión de la app">
-          Womo Web v1.2111.1613
+          Womo Web v1.2111.1635
         </div>
       </div>
     </section>
@@ -304,6 +304,7 @@
       <div id="playerTitle" class="player-title"></div>
       <div id="playerSubtitle" class="player-subtitle"></div>
     </div>
+    <button type="button" id="playerPip" class="player-pip-btn" aria-label="Pantalla flotante" title="Pantalla flotante" hidden><i data-lucide="picture-in-picture-2"></i></button>
   </div>
   <div id="playerAudioControl" class="player-audio-control" hidden>
     <button type="button" id="playerAudioButton" class="player-audio-button" aria-label="Cambiar idioma" aria-expanded="false">
@@ -311,7 +312,7 @@
     </button>
     <div id="playerAudioMenu" class="player-audio-menu" role="menu"></div>
   </div>
-  <video id="womoPlayer" class="womo-player" controls playsinline controlsList="nodownload noplaybackrate noremoteplayback" disablePictureInPicture disableRemotePlayback x-webkit-airplay="deny"></video>
+  <video id="womoPlayer" class="womo-player" controls playsinline controlsList="nodownload noplaybackrate noremoteplayback nofullscreen" disablePictureInPicture disableRemotePlayback x-webkit-airplay="deny"></video>
 </div>
 
 
@@ -322,6 +323,6 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="src/core/audioManager.js?v=52"></script>
   <script src="src/core/wmoMediaEngine.js?v=5"></script>
-  <script src="src/core/womo-core.js?v=59"></script>
+  <script src="src/core/womo-core.js?v=60"></script>
 </body>
 </html>
