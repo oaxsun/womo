@@ -4691,6 +4691,9 @@ function womoBindExplicitPauseGuard(video) {
     const overlay = document.getElementById("playerOverlay");
     if (!overlay) return;
     if (document.fullscreenElement || document.webkitFullscreenElement) return;
+    // Keep browser fullscreen on the document root, and lock the catalog
+    // underneath using the player-open styles. This preserves WMO video
+    // playback and native controls while hiding the rest of the page.
     const root = document.documentElement;
     const request = root.requestFullscreen || root.webkitRequestFullscreen;
     if (typeof request !== "function") return;
@@ -4707,6 +4710,35 @@ function womoBindExplicitPauseGuard(video) {
     }
   }, true);
 })();
+
+/* Custom Picture-in-Picture button, separate from native video controls. */
+function womoSetupPlayerPip() {
+  const video = document.getElementById("womoPlayer");
+  const button = document.getElementById("playerPip");
+  if (!video || !button) return;
+  const supported = Boolean(document.pictureInPictureEnabled && typeof video.requestPictureInPicture === "function");
+  button.hidden = !supported;
+  if (!supported) return;
+  video.disablePictureInPicture = false;
+  if (button.dataset.ready === "true") return;
+  button.dataset.ready = "true";
+  button.addEventListener("click", async event => {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      if (document.pictureInPictureElement === video) {
+        await document.exitPictureInPicture();
+      } else {
+        // The browser may exit fullscreen when PiP is activated.
+        await video.requestPictureInPicture();
+      }
+    } catch (error) {
+      console.warn("Picture-in-Picture no disponible.", error);
+    }
+  });
+  video.addEventListener("enterpictureinpicture", () => button.setAttribute("aria-label", "Cerrar pantalla flotante"));
+  video.addEventListener("leavepictureinpicture", () => button.setAttribute("aria-label", "Pantalla flotante"));
+}
 
 async function openPlayer(item, options = {}) {
   // If the player is switching directly to another item/episode, persist the
@@ -4740,6 +4772,7 @@ async function openPlayer(item, options = {}) {
 
   const overlay = document.getElementById('playerOverlay');
   const video = document.getElementById('womoPlayer');
+  womoSetupPlayerPip();
   womoClearExplicitPause(video);
   womoBindExplicitPauseGuard(video);
   document.body.classList.add('player-open');
@@ -4747,8 +4780,8 @@ async function openPlayer(item, options = {}) {
   womoResetMobileFullscreenAttempt(video);
   womoBindMobileNativeFullscreen(video);
   bindTsSeekGuard(video);
-  video.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback');
-  video.disablePictureInPicture = true;
+  video.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback nofullscreen');
+  video.disablePictureInPicture = !Boolean(document.pictureInPictureEnabled && video.requestPictureInPicture);
   video.disableRemotePlayback = true;
   video.setAttribute('x-webkit-airplay', 'deny');
   const title = document.getElementById('playerTitle');
@@ -5024,8 +5057,8 @@ function setupPlayerControls() {
   if (!back || back.dataset.ready === "true") return;
   back.dataset.ready = "true";
 
-  video.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback');
-  video.disablePictureInPicture = true;
+  video.setAttribute('controlsList', 'nodownload noplaybackrate noremoteplayback nofullscreen');
+  video.disablePictureInPicture = !Boolean(document.pictureInPictureEnabled && video.requestPictureInPicture);
   video.disableRemotePlayback = true;
   video.setAttribute('x-webkit-airplay', 'deny');
 
